@@ -102,9 +102,7 @@ pub use utils::{all_super_traits, is_fn_unsafe_to_call};
 
 pub use chalk_ir::cast::Cast;
 pub use chalk_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
-pub use chalk_ir::{
-    AdtId, BoundVar, DebruijnIndex, Mutability, Safety, Scalar, TyVariableKind,
-};
+pub use chalk_ir::{AdtId, BoundVar, DebruijnIndex, Mutability, Safety, Scalar, TyVariableKind};
 
 pub type ClosureId = chalk_ir::ClosureId<Interner>;
 
@@ -117,7 +115,6 @@ pub(crate) type PlaceholderIndex = chalk_ir::PlaceholderIndex;
 pub type CanonicalVarKinds = chalk_ir::CanonicalVarKinds<Interner>;
 
 pub(crate) type VariableKind = chalk_ir::VariableKind<Interner>;
-pub(crate) type VariableKinds = chalk_ir::VariableKinds<Interner>;
 /// Represents generic parameters and an item bound by them. When the item has parent, the binders
 /// also contain the generic parameters for its parent. See chalk's documentation for details.
 ///
@@ -175,17 +172,11 @@ pub type WhereClause = chalk_ir::WhereClause<Interner>;
 pub(crate) type DomainGoal = chalk_ir::DomainGoal<Interner>;
 pub(crate) type Goal = chalk_ir::Goal<Interner>;
 pub(crate) type Solution = chalk_solve::Solution<Interner>;
-pub(crate) type Constraint = chalk_ir::Constraint<Interner>;
-pub(crate) type Constraints = chalk_ir::Constraints<Interner>;
 pub(crate) type Guidance = chalk_solve::Guidance<Interner>;
 
 pub(crate) type CanonicalVarKind = chalk_ir::CanonicalVarKind<Interner>;
 pub(crate) type GoalData = chalk_ir::GoalData<Interner>;
-pub(crate) type Goals = chalk_ir::Goals<Interner>;
-pub(crate) type ProgramClauseData = chalk_ir::ProgramClauseData<Interner>;
 pub(crate) type ProgramClause = chalk_ir::ProgramClause<Interner>;
-pub(crate) type ProgramClauses = chalk_ir::ProgramClauses<Interner>;
-pub(crate) type TyData = chalk_ir::TyData<Interner>;
 
 /// A constant can have reference to other things. Memory map job is holding
 /// the necessary bits of memory of the const eval session to keep the constant
@@ -311,7 +302,7 @@ pub(crate) fn make_type_and_const_binders<T: HasInterner<Interner = Interner>>(
     value: T,
 ) -> Binders<T> {
     Binders::new(
-        VariableKinds::from_iter(
+        chalk_ir::VariableKinds::from_iter(
             Interner,
             which_is_const.map(|x| {
                 if let Some(ty) = x {
@@ -329,7 +320,7 @@ pub(crate) fn make_single_type_binders<T: HasInterner<Interner = Interner>>(
     value: T,
 ) -> Binders<T> {
     Binders::new(
-        VariableKinds::from_iter(
+        chalk_ir::VariableKinds::from_iter(
             Interner,
             std::iter::once(chalk_ir::VariableKind::Ty(chalk_ir::TyVariableKind::General)),
         ),
@@ -343,7 +334,7 @@ pub(crate) fn make_binders<T: HasInterner<Interner = Interner>>(
     value: T,
 ) -> Binders<T> {
     Binders::new(
-        VariableKinds::from_iter(
+        chalk_ir::VariableKinds::from_iter(
             Interner,
             generics.iter_id().map(|x| match x {
                 hir_def::GenericParamId::ConstParamId(id) => {
@@ -998,7 +989,7 @@ impl TypeVisitor<Interner> for PlaceholderCollector<'_> {
         outer_binder: DebruijnIndex,
     ) -> std::ops::ControlFlow<Self::BreakTy> {
         let has_placeholder_bits = TypeFlags::HAS_TY_PLACEHOLDER | TypeFlags::HAS_CT_PLACEHOLDER;
-        let TyData { kind, flags } = ty.data(Interner);
+        let chalk_ir::TyData { kind, flags } = ty.data(Interner);
 
         if let TyKind::Placeholder(idx) = kind {
             self.collect(*idx);

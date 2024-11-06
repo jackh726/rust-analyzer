@@ -3,10 +3,9 @@
 
 use crate::{
     chalk_db, tls, AliasTy, CanonicalVarKind, CanonicalVarKinds, ClosureId, Const, ConstData,
-    ConstScalar, Constraint, Constraints, FnAbi, FnDefId, GenericArg, GenericArgData, Goal,
-    GoalData, Goals, InEnvironment, Lifetime, LifetimeData, OpaqueTy, OpaqueTyId, ProgramClause,
-    ProgramClauseData, ProgramClauses, ProjectionTy, QuantifiedWhereClause, QuantifiedWhereClauses,
-    Substitution, Ty, TyData, TyKind, VariableKind, VariableKinds,
+    ConstScalar, FnAbi, FnDefId, GenericArg, GenericArgData, Goal, GoalData, InEnvironment,
+    Lifetime, LifetimeData, OpaqueTy, OpaqueTyId, ProgramClause, ProjectionTy,
+    QuantifiedWhereClause, QuantifiedWhereClauses, Substitution, Ty, TyKind, VariableKind,
 };
 use base_db::ra_salsa::InternId;
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
@@ -15,6 +14,14 @@ use intern::{impl_internable, Interned};
 use smallvec::SmallVec;
 use std::fmt;
 use triomphe::Arc;
+
+type TyData = chalk_ir::TyData<Interner>;
+type VariableKinds = chalk_ir::VariableKinds<Interner>;
+type Goals = chalk_ir::Goals<Interner>;
+type ProgramClauseData = chalk_ir::ProgramClauseData<Interner>;
+type Constraint = chalk_ir::Constraint<Interner>;
+type Constraints = chalk_ir::Constraints<Interner>;
+type ProgramClauses = chalk_ir::ProgramClauses<Interner>;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Interner;
