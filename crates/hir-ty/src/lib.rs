@@ -100,22 +100,24 @@ pub use method_resolution::check_orphan_rules;
 pub use traits::TraitEnvironment;
 pub use utils::{all_super_traits, is_fn_unsafe_to_call};
 
+pub use chalk_ir::cast::Cast;
+pub use chalk_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 pub use chalk_ir::{
-    cast::Cast,
-    visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor},
     AdtId, BoundVar, DebruijnIndex, Mutability, Safety, Scalar, TyVariableKind,
 };
 
-pub type ForeignDefId = chalk_ir::ForeignDefId<Interner>;
-pub type AssocTypeId = chalk_ir::AssocTypeId<Interner>;
-pub type FnDefId = chalk_ir::FnDefId<Interner>;
 pub type ClosureId = chalk_ir::ClosureId<Interner>;
-pub type OpaqueTyId = chalk_ir::OpaqueTyId<Interner>;
-pub type PlaceholderIndex = chalk_ir::PlaceholderIndex;
 
-pub type VariableKind = chalk_ir::VariableKind<Interner>;
-pub type VariableKinds = chalk_ir::VariableKinds<Interner>;
+pub(crate) type ForeignDefId = chalk_ir::ForeignDefId<Interner>;
+pub(crate) type AssocTypeId = chalk_ir::AssocTypeId<Interner>;
+pub(crate) type FnDefId = chalk_ir::FnDefId<Interner>;
+pub(crate) type OpaqueTyId = chalk_ir::OpaqueTyId<Interner>;
+pub(crate) type PlaceholderIndex = chalk_ir::PlaceholderIndex;
+
 pub type CanonicalVarKinds = chalk_ir::CanonicalVarKinds<Interner>;
+
+pub(crate) type VariableKind = chalk_ir::VariableKind<Interner>;
+pub(crate) type VariableKinds = chalk_ir::VariableKinds<Interner>;
 /// Represents generic parameters and an item bound by them. When the item has parent, the binders
 /// also contain the generic parameters for its parent. See chalk's documentation for details.
 ///
@@ -137,52 +139,53 @@ pub type GenericArgData = chalk_ir::GenericArgData<Interner>;
 pub type Ty = chalk_ir::Ty<Interner>;
 pub type TyKind = chalk_ir::TyKind<Interner>;
 pub type TypeFlags = chalk_ir::TypeFlags;
-pub type DynTy = chalk_ir::DynTy<Interner>;
+pub(crate) type DynTy = chalk_ir::DynTy<Interner>;
 pub type FnPointer = chalk_ir::FnPointer<Interner>;
-// pub type FnSubst = chalk_ir::FnSubst<Interner>; // a re-export so we don't lose the tuple constructor
-pub use chalk_ir::FnSubst;
-pub type ProjectionTy = chalk_ir::ProjectionTy<Interner>;
+pub(crate) use chalk_ir::FnSubst; // a re-export so we don't lose the tuple constructor
+
 pub type AliasTy = chalk_ir::AliasTy<Interner>;
-pub type OpaqueTy = chalk_ir::OpaqueTy<Interner>;
-pub type InferenceVar = chalk_ir::InferenceVar;
 
-pub type Lifetime = chalk_ir::Lifetime<Interner>;
-pub type LifetimeData = chalk_ir::LifetimeData<Interner>;
-pub type LifetimeOutlives = chalk_ir::LifetimeOutlives<Interner>;
+pub(crate) type ProjectionTy = chalk_ir::ProjectionTy<Interner>;
+pub(crate) type OpaqueTy = chalk_ir::OpaqueTy<Interner>;
+pub(crate) type InferenceVar = chalk_ir::InferenceVar;
 
-pub type Const = chalk_ir::Const<Interner>;
-pub type ConstData = chalk_ir::ConstData<Interner>;
+pub(crate) type Lifetime = chalk_ir::Lifetime<Interner>;
+pub(crate) type LifetimeData = chalk_ir::LifetimeData<Interner>;
+pub(crate) type LifetimeOutlives = chalk_ir::LifetimeOutlives<Interner>;
+
 pub type ConstValue = chalk_ir::ConstValue<Interner>;
-pub type ConcreteConst = chalk_ir::ConcreteConst<Interner>;
 
-pub type ChalkTraitId = chalk_ir::TraitId<Interner>;
+pub(crate) type Const = chalk_ir::Const<Interner>;
+pub(crate) type ConstData = chalk_ir::ConstData<Interner>;
+pub(crate) type ConcreteConst = chalk_ir::ConcreteConst<Interner>;
+
 pub type TraitRef = chalk_ir::TraitRef<Interner>;
 pub type QuantifiedWhereClause = Binders<WhereClause>;
-pub type QuantifiedWhereClauses = chalk_ir::QuantifiedWhereClauses<Interner>;
 pub type Canonical<T> = chalk_ir::Canonical<T>;
 
-pub type FnSig = chalk_ir::FnSig<Interner>;
+pub(crate) type ChalkTraitId = chalk_ir::TraitId<Interner>;
+pub(crate) type QuantifiedWhereClauses = chalk_ir::QuantifiedWhereClauses<Interner>;
+
+pub(crate) type FnSig = chalk_ir::FnSig<Interner>;
 
 pub type InEnvironment<T> = chalk_ir::InEnvironment<T>;
-pub type Environment = chalk_ir::Environment<Interner>;
-pub type DomainGoal = chalk_ir::DomainGoal<Interner>;
-pub type Goal = chalk_ir::Goal<Interner>;
 pub type AliasEq = chalk_ir::AliasEq<Interner>;
-pub type Solution = chalk_solve::Solution<Interner>;
-pub type Constraint = chalk_ir::Constraint<Interner>;
-pub type Constraints = chalk_ir::Constraints<Interner>;
-pub type ConstrainedSubst = chalk_ir::ConstrainedSubst<Interner>;
-pub type Guidance = chalk_solve::Guidance<Interner>;
 pub type WhereClause = chalk_ir::WhereClause<Interner>;
 
-pub type CanonicalVarKind = chalk_ir::CanonicalVarKind<Interner>;
-pub type GoalData = chalk_ir::GoalData<Interner>;
-pub type Goals = chalk_ir::Goals<Interner>;
-pub type ProgramClauseData = chalk_ir::ProgramClauseData<Interner>;
-pub type ProgramClause = chalk_ir::ProgramClause<Interner>;
-pub type ProgramClauses = chalk_ir::ProgramClauses<Interner>;
-pub type TyData = chalk_ir::TyData<Interner>;
-pub type Variances = chalk_ir::Variances<Interner>;
+pub(crate) type DomainGoal = chalk_ir::DomainGoal<Interner>;
+pub(crate) type Goal = chalk_ir::Goal<Interner>;
+pub(crate) type Solution = chalk_solve::Solution<Interner>;
+pub(crate) type Constraint = chalk_ir::Constraint<Interner>;
+pub(crate) type Constraints = chalk_ir::Constraints<Interner>;
+pub(crate) type Guidance = chalk_solve::Guidance<Interner>;
+
+pub(crate) type CanonicalVarKind = chalk_ir::CanonicalVarKind<Interner>;
+pub(crate) type GoalData = chalk_ir::GoalData<Interner>;
+pub(crate) type Goals = chalk_ir::Goals<Interner>;
+pub(crate) type ProgramClauseData = chalk_ir::ProgramClauseData<Interner>;
+pub(crate) type ProgramClause = chalk_ir::ProgramClause<Interner>;
+pub(crate) type ProgramClauses = chalk_ir::ProgramClauses<Interner>;
+pub(crate) type TyData = chalk_ir::TyData<Interner>;
 
 /// A constant can have reference to other things. Memory map job is holding
 /// the necessary bits of memory of the const eval session to keep the constant
