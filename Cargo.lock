@@ -188,9 +188,8 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chalk-derive"
-version = "0.98.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9426c8fd0fe61c3da880b801d3b510524df17843a8f9ec1f5b9cec24fb7412df"
+version = "0.98.0-dev.0"
+source = "git+https://github.com/jackh726/chalk.git?branch=simplify#3bca92e50f6e8d95437b6cc69af1a69e4e0146de"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -200,9 +199,8 @@ dependencies = [
 
 [[package]]
 name = "chalk-ir"
-version = "0.98.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5f2eb1cd6054da221bd1ac0197fb2fe5e2caf3dcb93619398fc1433f8f09093"
+version = "0.98.0-dev.0"
+source = "git+https://github.com/jackh726/chalk.git?branch=simplify#3bca92e50f6e8d95437b6cc69af1a69e4e0146de"
 dependencies = [
  "bitflags 2.6.0",
  "chalk-derive",
@@ -210,9 +208,8 @@ dependencies = [
 
 [[package]]
 name = "chalk-recursive"
-version = "0.98.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "129dc03458f71cfb9c3cd621c9c68166a94e87b85b16ccd29af015d7ff9a1c61"
+version = "0.98.0-dev.0"
+source = "git+https://github.com/jackh726/chalk.git?branch=simplify#3bca92e50f6e8d95437b6cc69af1a69e4e0146de"
 dependencies = [
  "chalk-derive",
  "chalk-ir",
@@ -223,9 +220,8 @@ dependencies = [
 
 [[package]]
 name = "chalk-solve"
-version = "0.98.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7e8a8c1e928f98cdf227b868416ef21dcd8cc3c61b347576d783713444d41c8"
+version = "0.98.0-dev.0"
+source = "git+https://github.com/jackh726/chalk.git?branch=simplify#3bca92e50f6e8d95437b6cc69af1a69e4e0146de"
 dependencies = [
  "chalk-derive",
  "chalk-ir",
@@ -322,17 +318,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
 dependencies = [
  "powerfmt",
-]
-
-[[package]]
-name = "derive-where"
-version = "1.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62d671cc41a825ebabc75757b62d3d168c577f9149b2d49ece1dad1f72119d25"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -637,8 +622,6 @@ dependencies = [
  "ra-ap-rustc_pattern_analysis",
  "rustc-hash 2.0.0",
  "rustc_apfloat",
- "rustc_next_trait_solver",
- "rustc_type_ir",
  "scoped-tls",
  "smallvec",
  "span",
@@ -1748,73 +1731,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustc_ast_ir"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-
-[[package]]
-name = "rustc_index"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-dependencies = [
- "arrayvec",
- "rustc_index_macros",
- "smallvec",
-]
-
-[[package]]
-name = "rustc_index_macros"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "rustc_next_trait_solver"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-dependencies = [
- "bitflags 2.6.0",
- "derive-where",
- "rustc_ast_ir",
- "rustc_index",
- "rustc_type_ir",
- "rustc_type_ir_macros",
- "tracing",
-]
-
-[[package]]
-name = "rustc_type_ir"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-dependencies = [
- "bitflags 2.6.0",
- "derive-where",
- "indexmap",
- "rustc-hash 1.1.0",
- "rustc_ast_ir",
- "rustc_index",
- "rustc_type_ir_macros",
- "smallvec",
- "thin-vec",
- "tracing",
-]
-
-[[package]]
-name = "rustc_type_ir_macros"
-version = "0.0.0"
-source = "git+https://github.com/rust-lang/rust.git#4d215e2426d52ca8d1af166d5f6b5e172afbff67"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2105,12 +2021,6 @@ name = "text-size"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
-
-[[package]]
-name = "thin-vec"
-version = "0.2.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a38c90d48152c236a3ab59271da4f4ae63d678c5d7ad6b7714d7cb9760be5e4b"
 
 [[package]]
 name = "thiserror"

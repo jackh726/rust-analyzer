@@ -13,10 +13,7 @@ use std::{
 
 use base_db::{ra_salsa::Cycle, CrateId};
 use chalk_ir::{
-    cast::Cast,
-    fold::{Shift, TypeFoldable},
-    interner::HasInterner,
-    Mutability, Safety, TypeOutlives,
+    cast::Cast, fold::{Shift, TypeFoldable}, interner::HasInterner, DomainGoal, Mutability, Safety, TypeOutlives
 };
 
 use either::Either;
@@ -51,25 +48,12 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits,
-    consteval::{
+    all_super_traits, consteval::{
         intern_const_ref, intern_const_scalar, path_to_const, unknown_const,
         unknown_const_as_generic,
-    },
-    db::HirDatabase,
-    error_lifetime,
-    generics::{generics, trait_self_param_idx, Generics},
-    make_binders,
-    mapping::{from_chalk_trait_id, lt_to_placeholder_idx, ToChalk},
-    static_lifetime, to_assoc_type_id, to_chalk_trait_id, to_placeholder_idx,
-    utils::{
+    }, db::HirDatabase, error_lifetime, generics::{generics, trait_self_param_idx, Generics}, make_binders, mapping::{from_chalk_trait_id, lt_to_placeholder_idx, ToChalk}, static_lifetime, to_assoc_type_id, to_chalk_trait_id, to_placeholder_idx, utils::{
         all_super_trait_refs, associated_type_by_name_including_super_traits, InTypeConstIdMetadata,
-    },
-    AliasEq, AliasTy, Binders, BoundVar, CallableSig, Const, ConstScalar, DebruijnIndex, DynTy,
-    FnAbi, FnPointer, FnSig, FnSubst, ImplTrait, ImplTraitId, ImplTraits, Interner, Lifetime,
-    LifetimeData, LifetimeOutlives, ParamKind, PolyFnSig, ProgramClause, ProjectionTy,
-    QuantifiedWhereClause, QuantifiedWhereClauses, Substitution, TraitEnvironment, TraitRef,
-    TraitRefExt, Ty, TyBuilder, TyKind, WhereClause,
+    }, AliasEq, AliasTy, Binders, BoundVar, CallableSig, Const, ConstScalar, DebruijnIndex, DynTy, FnAbi, FnPointer, FnSig, FnSubst, ImplTrait, ImplTraitId, ImplTraits, Interner, Lifetime, LifetimeData, LifetimeOutlives, ParamKind, PolyFnSig, ProjectionTy, QuantifiedWhereClause, QuantifiedWhereClauses, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder, TyKind, WhereClause
 };
 
 #[derive(Debug, Default)]
@@ -1691,8 +1675,8 @@ pub(crate) fn trait_environment_query(
                     traits_in_scope
                         .push((tr.self_type_parameter(Interner).clone(), tr.hir_trait_id()));
                 }
-                let program_clause: chalk_ir::ProgramClause<Interner> = pred.cast(Interner);
-                clauses.push(program_clause.into_from_env_clause(Interner));
+                let program_clause: Binders<DomainGoal<Interner>> = pred.map(|pred| pred.into_from_env_goal(Interner).cast(Interner));
+                clauses.push(program_clause);
             }
         }
     }
@@ -1705,7 +1689,7 @@ pub(crate) fn trait_environment_query(
         let substs = TyBuilder::placeholder_subst(db, trait_id);
         let trait_ref = TraitRef { trait_id: to_chalk_trait_id(trait_id), substitution: substs };
         let pred = WhereClause::Implemented(trait_ref);
-        clauses.push(pred.cast::<ProgramClause>(Interner).into_from_env_clause(Interner));
+        clauses.push(Binders::empty(Interner, pred.cast::<DomainGoal<Interner>>(Interner).into_from_env_goal(Interner)));
     }
 
     let subst = generics(db.upcast(), def).placeholder_subst(db);
@@ -1716,13 +1700,13 @@ pub(crate) fn trait_environment_query(
         {
             clauses.extend(
                 implicitly_sized_clauses.map(|pred| {
-                    pred.cast::<ProgramClause>(Interner).into_from_env_clause(Interner)
+                    Binders::empty(Interner, pred.into_from_env_goal(Interner).cast::<DomainGoal<Interner>>(Interner))
                 }),
             );
         };
     }
 
-    let env = chalk_ir::Environment::new(Interner).add_clauses(Interner, clauses);
+    let env = chalk_ir::Environment::new(Interner).add_goals(Interner, clauses);
 
     TraitEnvironment::new(resolver.krate(), None, traits_in_scope.into_boxed_slice(), env)
 }
