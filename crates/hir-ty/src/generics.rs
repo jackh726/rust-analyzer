@@ -24,7 +24,7 @@ use itertools::chain;
 use stdx::TupleExt;
 use triomphe::Arc;
 
-use crate::{db::HirDatabase, lt_to_placeholder_idx, to_placeholder_idx, Interner, Substitution};
+use crate::{db::HirDatabase, interner::rustc::RustcGenericArgs, lt_to_placeholder_idx, to_placeholder_idx, Interner, Substitution};
 
 pub(crate) fn generics(db: &dyn DefDatabase, def: GenericDefId) -> Generics {
     let parent_generics = parent_generic_def(db, def).map(|def| Box::new(generics(db, def)));
@@ -235,6 +235,27 @@ impl Generics {
                 }
             }),
         )
+    }
+
+    /// Returns a Substitution that replaces each parameter by itself (i.e. `Ty::Param`).
+    pub(crate) fn rustc_param_subst<'cx>(&self, _db: &'cx dyn HirDatabase) -> RustcGenericArgs<'cx> {
+        /*
+        RustcGenericArgs::from_iter(
+            Interner,
+            self.iter_id().map(|id| match id {
+                GenericParamId::TypeParamId(id) => {
+                    to_placeholder_idx(db, id.into()).to_ty(Interner).cast(Interner)
+                }
+                GenericParamId::ConstParamId(id) => to_placeholder_idx(db, id.into())
+                    .to_const(Interner, db.const_param_ty(id))
+                    .cast(Interner),
+                GenericParamId::LifetimeParamId(id) => {
+                    lt_to_placeholder_idx(db, id).to_lifetime(Interner).cast(Interner)
+                }
+            }),
+        )
+        */
+        todo!()
     }
 }
 

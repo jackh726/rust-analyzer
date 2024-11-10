@@ -2,7 +2,7 @@
 
 use base_db::{ra_salsa::InternId, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
-use hir_def::{BlockId, TypeAliasId};
+use hir_def::{AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, InternStorage, Internable, Interned};
 use smallvec::{smallvec, SmallVec};
 use span::Span;
@@ -12,18 +12,16 @@ use triomphe::Arc;
 use rustc_ast_ir::visit::VisitorResult;
 use rustc_index_in_tree::bit_set::BitSet;
 use rustc_type_ir::{
-    elaborate, fold, inherent, ir_print, relate,
-    solve::{ExternalConstraintsData, PredefinedOpaquesData},
-    visit, CanonicalVarInfo, ConstKind, GenericArgKind, TermKind,
+    elaborate, fold, inherent, ir_print, relate, solve::{ExternalConstraintsData, PredefinedOpaquesData}, visit, CanonicalVarInfo, ConstKind, DebruijnIndex, GenericArgKind, TermKind
 };
 
-use crate::db::HirDatabase;
+use crate::{db::HirDatabase, generics::generics};
+
+use super::InternedWrapper;
 
 #[derive(Copy, Clone)]
 pub struct RustcInterner<'a> {
     pub(crate) db: &'a dyn HirDatabase,
-    pub(crate) krate: CrateId,
-    pub(crate) block: Option<BlockId>,
 }
 
 macro_rules! todo_structural {
@@ -58,8 +56,8 @@ macro_rules! todo_structural {
     };
 }
 
-impl inherent::DefId<RustcInterner<'_>> for InternId {
-    fn as_local(self) -> Option<InternId> {
+impl inherent::DefId<RustcInterner<'_>> for GenericDefId {
+    fn as_local(self) -> Option<GenericDefId> {
         Some(self)
     }
     fn is_local(self) -> bool {
@@ -67,7 +65,7 @@ impl inherent::DefId<RustcInterner<'_>> for InternId {
     }
 }
 
-todo_structural!(InternId);
+todo_structural!(GenericDefId);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct RustcSpan(Option<Span>);
@@ -81,9 +79,22 @@ impl inherent::Span<RustcInterner<'_>> for RustcSpan {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArgs<'cx>(&'cx ());
+pub struct RustcGenericArgs<'cx>(Interned<InternedWrapper<Vec<RustcGenericArg<'cx>>>>);
 
-impl<'cx> inherent::GenericArgs<RustcInterner<'cx>> for GenericArgs<'cx> {
+impl_internable!(
+    InternedWrapper<Vec<RustcGenericArg<'_>>>,
+);
+
+todo_structural!(RustcGenericArgs<'cx>);
+
+fn mk_rustc_genericargs<'cx>(
+    interner: RustcInterner<'cx>,
+    data: impl IntoIterator<Item = RustcGenericArg<'cx>>,
+) -> RustcGenericArgs<'cx> {
+    RustcGenericArgs(Interned::new(InternedWrapper(data.into_iter().collect())))
+}
+
+impl<'cx> inherent::GenericArgs<RustcInterner<'cx>> for RustcGenericArgs<'cx> {
     fn dummy() -> Self {
         todo!()
     }
@@ -139,10 +150,8 @@ impl<'cx> inherent::GenericArgs<RustcInterner<'cx>> for GenericArgs<'cx> {
     }
 }
 
-todo_structural!(GenericArgs<'cx>);
-
-pub struct GenericArgsIter<'cx>(&'cx ());
-impl<'cx> Iterator for GenericArgsIter<'cx> {
+pub struct RustcGenericArgsIter<'cx>(&'cx ());
+impl<'cx> Iterator for RustcGenericArgsIter<'cx> {
     type Item = RustcGenericArg<'cx>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -150,9 +159,9 @@ impl<'cx> Iterator for GenericArgsIter<'cx> {
     }
 }
 
-impl<'cx> inherent::SliceLike for GenericArgs<'cx> {
+impl<'cx> inherent::SliceLike for RustcGenericArgs<'cx> {
     type Item = RustcGenericArg<'cx>;
-    type IntoIter = GenericArgsIter<'cx>;
+    type IntoIter = RustcGenericArgsIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -659,7 +668,7 @@ impl Default for RustcDefiningOpaqueTypes {
 
 pub struct RustcDefiningOpaqueTypesIter;
 impl Iterator for RustcDefiningOpaqueTypesIter {
-    type Item = InternId;
+    type Item = GenericDefId;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
@@ -667,7 +676,7 @@ impl Iterator for RustcDefiningOpaqueTypesIter {
 }
 
 impl inherent::SliceLike for RustcDefiningOpaqueTypes {
-    type Item = InternId;
+    type Item = GenericDefId;
     type IntoIter = RustcDefiningOpaqueTypesIter;
 
     fn iter(self) -> Self::IntoIter {
@@ -1683,17 +1692,17 @@ impl inherent::SliceLike for RustcVariancesOf {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcAdtDef;
+pub struct RustcAdtDef(AdtId);
 
 todo_structural!(RustcAdtDef);
 
 impl<'cx> inherent::AdtDef<RustcInterner<'cx>> for RustcAdtDef {
     fn def_id(&self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId {
-        todo!()
+        self.0.into()
     }
 
     fn is_struct(&self) -> bool {
-        todo!()
+        matches!(self.0, AdtId::StructId(..))
     }
 
     fn struct_tail_ty(
@@ -1705,7 +1714,23 @@ impl<'cx> inherent::AdtDef<RustcInterner<'cx>> for RustcAdtDef {
             <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty,
         >,
     > {
-        todo!()
+        let db = interner.db;
+        let hir_def::AdtId::StructId(struct_id) = self.0 else {
+            return None;
+        };
+        let id: VariantId = struct_id.into();
+        let variant_data = &id.variant_data(db.upcast());
+        let Some((last_idx, _)) = variant_data.fields().iter().last() else {
+            return None
+        };
+        let field_types = db.field_types(id);
+        None
+
+        //let generic_params = generics(db.upcast(), struct_id.into());
+        //let bound_vars_subst = generic_params.bound_vars_subst(db, DebruijnIndex::INNERMOST);
+
+        //let last_ty = field_types[last_idx].clone().substitute(interner, &bound_vars_subst);
+        //Some(last_ty)
     }
 
     fn is_phantom_data(&self) -> bool {
@@ -1719,6 +1744,37 @@ impl<'cx> inherent::AdtDef<RustcInterner<'cx>> for RustcAdtDef {
         RustcInterner<'cx>,
         impl IntoIterator<Item = <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty>,
     > {
+        /*
+        let (kind, variants) = match adt_id {
+            hir_def::AdtId::StructId(id) => {
+                (rust_ir::AdtKind::Struct, vec![variant_id_to_fields(id.into())])
+            }
+            hir_def::AdtId::EnumId(id) => {
+                let variants = db
+                    .enum_data(id)
+                    .variants
+                    .iter()
+                    .map(|&(variant_id, _)| variant_id_to_fields(variant_id.into()))
+                    .collect();
+                (rust_ir::AdtKind::Enum, variants)
+            }
+            hir_def::AdtId::UnionId(id) => {
+                (rust_ir::AdtKind::Union, vec![variant_id_to_fields(id.into())])
+            }
+        };
+        let variant_data = &id.variant_data(db.upcast());
+        let fields = if variant_data.fields().is_empty() {
+            vec![]
+        } else {
+            let field_types = db.field_types(id);
+            variant_data
+                .fields()
+                .iter()
+                .map(|(idx, _)| field_types[idx].clone().substitute(Interner, &bound_vars_subst))
+                .filter(|it| !it.contains_unknown())
+                .collect()
+        };
+        */
         todo!();
         rustc_type_ir::EarlyBinder::bind(None)
     }
@@ -1769,12 +1825,12 @@ impl std::ops::Deref for RustcUnsizingParams {
 }
 
 impl<'cx> rustc_type_ir::Interner for RustcInterner<'cx> {
-    type DefId = InternId;
-    type LocalDefId = InternId;
+    type DefId = GenericDefId;
+    type LocalDefId = GenericDefId;
     type Span = RustcSpan;
 
-    type GenericArgs = GenericArgs<'cx>;
-    type GenericArgsSlice = GenericArgs<'cx>;
+    type GenericArgs = RustcGenericArgs<'cx>;
+    type GenericArgsSlice = RustcGenericArgs<'cx>;
     type GenericArg = RustcGenericArg<'cx>;
 
     type Term = RustcTerm<'cx>;

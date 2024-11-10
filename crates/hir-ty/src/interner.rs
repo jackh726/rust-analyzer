@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 use std::fmt;
 use triomphe::Arc;
 
-mod rustc;
+pub mod rustc;
 
 type TyData = chalk_ir::TyData<Interner>;
 type VariableKinds = chalk_ir::VariableKinds<Interner>;
