@@ -1,9 +1,9 @@
 #![allow(unused)]
 
-use base_db::ra_salsa::InternId;
+use base_db::{ra_salsa::InternId, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
-use hir_def::TypeAliasId;
-use intern::{impl_internable, Interned};
+use hir_def::{BlockId, TypeAliasId};
+use intern::{impl_internable, InternStorage, Internable, Interned};
 use smallvec::{smallvec, SmallVec};
 use span::Span;
 use std::fmt;
@@ -17,27 +17,29 @@ use rustc_type_ir::{
     visit, CanonicalVarInfo, ConstKind, GenericArgKind, TermKind,
 };
 
-use super::InternedWrapper;
+use crate::db::HirDatabase;
 
-impl_internable!(InternedWrapper<SmallVec<[RustcGenericArg; 2]>>,);
-
-#[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
-pub struct RustcInterner;
+#[derive(Copy, Clone)]
+pub struct RustcInterner<'a> {
+    pub(crate) db: &'a dyn HirDatabase,
+    pub(crate) krate: CrateId,
+    pub(crate) block: Option<BlockId>,
+}
 
 macro_rules! todo_structural {
     ($t:ty) => {
-        impl relate::Relate<RustcInterner> for $t {
-            fn relate<R: relate::TypeRelation<RustcInterner>>(
+        impl<'cx> relate::Relate<RustcInterner<'cx>> for $t {
+            fn relate<R: relate::TypeRelation<RustcInterner<'cx>>>(
                 _relation: &mut R,
                 _a: Self,
                 _b: Self,
-            ) -> relate::RelateResult<RustcInterner, Self> {
+            ) -> relate::RelateResult<RustcInterner<'cx>, Self> {
                 todo!()
             }
         }
 
-        impl fold::TypeFoldable<RustcInterner> for $t {
-            fn try_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+        impl<'cx> fold::TypeFoldable<RustcInterner<'cx>> for $t {
+            fn try_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
                 self,
                 _folder: &mut F,
             ) -> Result<Self, F::Error> {
@@ -45,8 +47,8 @@ macro_rules! todo_structural {
             }
         }
 
-        impl visit::TypeVisitable<RustcInterner> for $t {
-            fn visit_with<V: visit::TypeVisitor<RustcInterner>>(
+        impl<'cx> visit::TypeVisitable<RustcInterner<'cx>> for $t {
+            fn visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
                 &self,
                 _visitor: &mut V,
             ) -> V::Result {
@@ -56,7 +58,7 @@ macro_rules! todo_structural {
     };
 }
 
-impl inherent::DefId<RustcInterner> for InternId {
+impl inherent::DefId<RustcInterner<'_>> for InternId {
     fn as_local(self) -> Option<InternId> {
         Some(self)
     }
@@ -72,87 +74,85 @@ pub struct RustcSpan(Option<Span>);
 
 todo_structural!(RustcSpan);
 
-impl inherent::Span<RustcInterner> for RustcSpan {
+impl inherent::Span<RustcInterner<'_>> for RustcSpan {
     fn dummy() -> Self {
         RustcSpan(None)
     }
 }
 
-type InternedGenericArgs = Interned<InternedWrapper<SmallVec<[RustcGenericArg; 2]>>>;
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArgs(InternedGenericArgs);
+pub struct GenericArgs<'cx>(&'cx ());
 
-impl inherent::GenericArgs<RustcInterner> for GenericArgs {
+impl<'cx> inherent::GenericArgs<RustcInterner<'cx>> for GenericArgs<'cx> {
     fn dummy() -> Self {
-        GenericArgs(Interned::new(InternedWrapper(smallvec![])))
+        todo!()
     }
 
     fn rebase_onto(
         self,
-        interner: RustcInterner,
-        source_def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        target: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> <RustcInterner as rustc_type_ir::Interner>::GenericArgs {
+        interner: RustcInterner<'cx>,
+        source_def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        target: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
+    ) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs {
         todo!()
     }
 
-    fn type_at(self, i: usize) -> <RustcInterner as rustc_type_ir::Interner>::Ty {
+    fn type_at(self, i: usize) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty {
         todo!()
     }
 
-    fn region_at(self, i: usize) -> <RustcInterner as rustc_type_ir::Interner>::Region {
+    fn region_at(self, i: usize) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Region {
         todo!()
     }
 
-    fn const_at(self, i: usize) -> <RustcInterner as rustc_type_ir::Interner>::Const {
+    fn const_at(self, i: usize) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Const {
         todo!()
     }
 
     fn identity_for_item(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-    ) -> <RustcInterner as rustc_type_ir::Interner>::GenericArgs {
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+    ) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs {
         todo!()
     }
 
     fn extend_with_error(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        original_args: &[RustcGenericArg],
-    ) -> <RustcInterner as rustc_type_ir::Interner>::GenericArgs {
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        original_args: &[RustcGenericArg<'cx>],
+    ) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs {
         todo!()
     }
 
-    fn split_closure_args(self) -> rustc_type_ir::ClosureArgsParts<RustcInterner> {
+    fn split_closure_args(self) -> rustc_type_ir::ClosureArgsParts<RustcInterner<'cx>> {
         todo!()
     }
 
     fn split_coroutine_closure_args(
         self,
-    ) -> rustc_type_ir::CoroutineClosureArgsParts<RustcInterner> {
+    ) -> rustc_type_ir::CoroutineClosureArgsParts<RustcInterner<'cx>> {
         todo!()
     }
 
-    fn split_coroutine_args(self) -> rustc_type_ir::CoroutineArgsParts<RustcInterner> {
+    fn split_coroutine_args(self) -> rustc_type_ir::CoroutineArgsParts<RustcInterner<'cx>> {
         todo!()
     }
 }
 
-todo_structural!(GenericArgs);
+todo_structural!(GenericArgs<'cx>);
 
-pub struct GenericArgsIter;
-impl Iterator for GenericArgsIter {
-    type Item = RustcGenericArg;
+pub struct GenericArgsIter<'cx>(&'cx ());
+impl<'cx> Iterator for GenericArgsIter<'cx> {
+    type Item = RustcGenericArg<'cx>;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }
 
-impl inherent::SliceLike for GenericArgs {
-    type Item = RustcGenericArg;
-    type IntoIter = GenericArgsIter;
+impl<'cx> inherent::SliceLike for GenericArgs<'cx> {
+    type Item = RustcGenericArg<'cx>;
+    type IntoIter = GenericArgsIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -164,92 +164,92 @@ impl inherent::SliceLike for GenericArgs {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcGenericArg;
+pub struct RustcGenericArg<'cx>(&'cx ());
 
-todo_structural!(RustcGenericArg);
+todo_structural!(RustcGenericArg<'cx>);
 
-impl inherent::GenericArg<RustcInterner> for RustcGenericArg {}
+impl<'cx> inherent::GenericArg<RustcInterner<'cx>> for RustcGenericArg<'cx> {}
 
-impl inherent::IntoKind for RustcGenericArg {
-    type Kind = GenericArgKind<RustcInterner>;
+impl<'cx> inherent::IntoKind for RustcGenericArg<'cx> {
+    type Kind = GenericArgKind<RustcInterner<'cx>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
     }
 }
 
-impl From<RustcTy> for RustcGenericArg {
-    fn from(value: RustcTy) -> Self {
+impl<'cx> From<RustcTy<'cx>> for RustcGenericArg<'cx> {
+    fn from(value: RustcTy<'cx>) -> Self {
         todo!()
     }
 }
 
-impl From<RustcConst> for RustcGenericArg {
-    fn from(value: RustcConst) -> Self {
+impl<'cx> From<RustcConst<'cx>> for RustcGenericArg<'cx> {
+    fn from(value: RustcConst<'cx>) -> Self {
         todo!()
     }
 }
 
-impl From<RustcRegion> for RustcGenericArg {
-    fn from(value: RustcRegion) -> Self {
+impl<'cx> From<RustcRegion<'cx>> for RustcGenericArg<'cx> {
+    fn from(value: RustcRegion<'cx>) -> Self {
         todo!()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RustcTy;
+pub struct RustcTy<'cx>(&'cx ());
 
-todo_structural!(RustcTy);
+todo_structural!(RustcTy<'cx>);
 
-impl inherent::Ty<RustcInterner> for RustcTy {
-    fn new_unit(interner: RustcInterner) -> Self {
+impl<'cx> inherent::Ty<RustcInterner<'cx>> for RustcTy<'cx> {
+    fn new_unit(interner: RustcInterner<'cx>) -> Self {
         todo!()
     }
 
-    fn new_bool(interner: RustcInterner) -> Self {
+    fn new_bool(interner: RustcInterner<'cx>) -> Self {
         todo!()
     }
 
-    fn new_u8(interner: RustcInterner) -> Self {
+    fn new_u8(interner: RustcInterner<'cx>) -> Self {
         todo!()
     }
 
-    fn new_usize(interner: RustcInterner) -> Self {
+    fn new_usize(interner: RustcInterner<'cx>) -> Self {
         todo!()
     }
 
-    fn new_infer(interner: RustcInterner, var: rustc_type_ir::InferTy) -> Self {
+    fn new_infer(interner: RustcInterner<'cx>, var: rustc_type_ir::InferTy) -> Self {
         todo!()
     }
 
-    fn new_var(interner: RustcInterner, var: rustc_type_ir::TyVid) -> Self {
+    fn new_var(interner: RustcInterner<'cx>, var: rustc_type_ir::TyVid) -> Self {
         todo!()
     }
 
     fn new_param(
-        interner: RustcInterner,
-        param: <RustcInterner as rustc_type_ir::Interner>::ParamTy,
+        interner: RustcInterner<'cx>,
+        param: <RustcInterner<'cx> as rustc_type_ir::Interner>::ParamTy,
     ) -> Self {
         todo!()
     }
 
     fn new_placeholder(
-        interner: RustcInterner,
-        param: <RustcInterner as rustc_type_ir::Interner>::PlaceholderTy,
+        interner: RustcInterner<'cx>,
+        param: <RustcInterner<'cx> as rustc_type_ir::Interner>::PlaceholderTy,
     ) -> Self {
         todo!()
     }
 
     fn new_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         debruijn: rustc_type_ir::DebruijnIndex,
-        var: <RustcInterner as rustc_type_ir::Interner>::BoundTy,
+        var: <RustcInterner<'cx> as rustc_type_ir::Interner>::BoundTy,
     ) -> Self {
         todo!()
     }
 
     fn new_anon_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         debruijn: rustc_type_ir::DebruijnIndex,
         var: rustc_type_ir::BoundVar,
     ) -> Self {
@@ -257,83 +257,83 @@ impl inherent::Ty<RustcInterner> for RustcTy {
     }
 
     fn new_alias(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         kind: rustc_type_ir::AliasTyKind,
-        alias_ty: rustc_type_ir::AliasTy<RustcInterner>,
+        alias_ty: rustc_type_ir::AliasTy<RustcInterner<'cx>>,
     ) -> Self {
         todo!()
     }
 
     fn new_error(
-        interner: RustcInterner,
-        guar: <RustcInterner as rustc_type_ir::Interner>::ErrorGuaranteed,
+        interner: RustcInterner<'cx>,
+        guar: <RustcInterner<'cx> as rustc_type_ir::Interner>::ErrorGuaranteed,
     ) -> Self {
         todo!()
     }
 
     fn new_adt(
-        interner: RustcInterner,
-        adt_def: <RustcInterner as rustc_type_ir::Interner>::AdtDef,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        adt_def: <RustcInterner<'cx> as rustc_type_ir::Interner>::AdtDef,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
     fn new_foreign(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
     ) -> Self {
         todo!()
     }
 
     fn new_dynamic(
-        interner: RustcInterner,
-        preds: <RustcInterner as rustc_type_ir::Interner>::BoundExistentialPredicates,
-        region: <RustcInterner as rustc_type_ir::Interner>::Region,
+        interner: RustcInterner<'cx>,
+        preds: <RustcInterner<'cx> as rustc_type_ir::Interner>::BoundExistentialPredicates,
+        region: <RustcInterner<'cx> as rustc_type_ir::Interner>::Region,
         kind: rustc_type_ir::DynKind,
     ) -> Self {
         todo!()
     }
 
     fn new_coroutine(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
     fn new_coroutine_closure(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
     fn new_closure(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
     fn new_coroutine_witness(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
-    fn new_ptr(interner: RustcInterner, ty: Self, mutbl: rustc_ast_ir::Mutability) -> Self {
+    fn new_ptr(interner: RustcInterner<'cx>, ty: Self, mutbl: rustc_ast_ir::Mutability) -> Self {
         todo!()
     }
 
     fn new_ref(
-        interner: RustcInterner,
-        region: <RustcInterner as rustc_type_ir::Interner>::Region,
+        interner: RustcInterner<'cx>,
+        region: <RustcInterner<'cx> as rustc_type_ir::Interner>::Region,
         ty: Self,
         mutbl: rustc_ast_ir::Mutability,
     ) -> Self {
@@ -341,25 +341,25 @@ impl inherent::Ty<RustcInterner> for RustcTy {
     }
 
     fn new_array_with_const_len(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         ty: Self,
-        len: <RustcInterner as rustc_type_ir::Interner>::Const,
+        len: <RustcInterner<'cx> as rustc_type_ir::Interner>::Const,
     ) -> Self {
         todo!()
     }
 
-    fn new_slice(interner: RustcInterner, ty: Self) -> Self {
+    fn new_slice(interner: RustcInterner<'cx>, ty: Self) -> Self {
         todo!()
     }
 
     fn new_tup(
-        interner: RustcInterner,
-        tys: &[<RustcInterner as rustc_type_ir::Interner>::Ty],
+        interner: RustcInterner<'cx>,
+        tys: &[<RustcInterner<'cx> as rustc_type_ir::Interner>::Ty],
     ) -> Self {
         todo!()
     }
 
-    fn new_tup_from_iter<It, T>(interner: RustcInterner, iter: It) -> T::Output
+    fn new_tup_from_iter<It, T>(interner: RustcInterner<'cx>, iter: It) -> T::Output
     where
         It: Iterator<Item = T>,
         T: rustc_type_ir::CollectAndApply<Self, Self>,
@@ -368,29 +368,29 @@ impl inherent::Ty<RustcInterner> for RustcTy {
     }
 
     fn new_fn_def(
-        interner: RustcInterner,
-        def_id: <RustcInterner as rustc_type_ir::Interner>::DefId,
-        args: <RustcInterner as rustc_type_ir::Interner>::GenericArgs,
+        interner: RustcInterner<'cx>,
+        def_id: <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId,
+        args: <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs,
     ) -> Self {
         todo!()
     }
 
     fn new_fn_ptr(
-        interner: RustcInterner,
-        sig: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::FnSig<RustcInterner>>,
+        interner: RustcInterner<'cx>,
+        sig: rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::FnSig<RustcInterner<'cx>>>,
     ) -> Self {
         todo!()
     }
 
     fn new_pat(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         ty: Self,
-        pat: <RustcInterner as rustc_type_ir::Interner>::Pat,
+        pat: <RustcInterner<'cx> as rustc_type_ir::Interner>::Pat,
     ) -> Self {
         todo!()
     }
 
-    fn tuple_fields(self) -> <RustcInterner as rustc_type_ir::Interner>::Tys {
+    fn tuple_fields(self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Tys {
         todo!()
     }
 
@@ -398,12 +398,12 @@ impl inherent::Ty<RustcInterner> for RustcTy {
         todo!()
     }
 
-    fn from_closure_kind(interner: RustcInterner, kind: rustc_type_ir::ClosureKind) -> Self {
+    fn from_closure_kind(interner: RustcInterner<'cx>, kind: rustc_type_ir::ClosureKind) -> Self {
         todo!()
     }
 
     fn from_coroutine_closure_kind(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         kind: rustc_type_ir::ClosureKind,
     ) -> Self {
         todo!()
@@ -411,20 +411,20 @@ impl inherent::Ty<RustcInterner> for RustcTy {
 
     fn discriminant_ty(
         self,
-        interner: RustcInterner,
-    ) -> <RustcInterner as rustc_type_ir::Interner>::Ty {
+        interner: RustcInterner<'cx>,
+    ) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty {
         todo!()
     }
 
     fn async_destructor_ty(
         self,
-        interner: RustcInterner,
-    ) -> <RustcInterner as rustc_type_ir::Interner>::Ty {
+        interner: RustcInterner<'cx>,
+    ) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty {
         todo!()
     }
 }
 
-impl visit::Flags for RustcTy {
+impl<'cx> visit::Flags for RustcTy<'cx> {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
         todo!()
     }
@@ -434,8 +434,8 @@ impl visit::Flags for RustcTy {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcTy {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcTy<'cx> {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -443,14 +443,17 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcTy {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcTy {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcTy<'cx> {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
 
-impl inherent::IntoKind for RustcTy {
-    type Kind = rustc_type_ir::TyKind<RustcInterner>;
+impl<'cx> inherent::IntoKind for RustcTy<'cx> {
+    type Kind = rustc_type_ir::TyKind<RustcInterner<'cx>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
@@ -458,33 +461,33 @@ impl inherent::IntoKind for RustcTy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RustcConst;
+pub struct RustcConst<'cx>(&'cx ());
 
-todo_structural!(RustcConst);
+todo_structural!(RustcConst<'cx>);
 
-impl inherent::Const<RustcInterner> for RustcConst {
-    fn try_to_target_usize(self, interner: RustcInterner) -> Option<u64> {
+impl<'cx> inherent::Const<RustcInterner<'cx>> for RustcConst<'cx> {
+    fn try_to_target_usize(self, interner: RustcInterner<'cx>) -> Option<u64> {
         todo!()
     }
 
-    fn new_infer(interner: RustcInterner, var: rustc_type_ir::InferConst) -> Self {
+    fn new_infer(interner: RustcInterner<'cx>, var: rustc_type_ir::InferConst) -> Self {
         todo!()
     }
 
-    fn new_var(interner: RustcInterner, var: rustc_type_ir::ConstVid) -> Self {
+    fn new_var(interner: RustcInterner<'cx>, var: rustc_type_ir::ConstVid) -> Self {
         todo!()
     }
 
     fn new_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         debruijn: rustc_type_ir::DebruijnIndex,
-        var: <RustcInterner as rustc_type_ir::Interner>::BoundConst,
+        var: <RustcInterner<'cx> as rustc_type_ir::Interner>::BoundConst,
     ) -> Self {
         todo!()
     }
 
     fn new_anon_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
         debruijn: rustc_type_ir::DebruijnIndex,
         var: rustc_type_ir::BoundVar,
     ) -> Self {
@@ -492,28 +495,28 @@ impl inherent::Const<RustcInterner> for RustcConst {
     }
 
     fn new_unevaluated(
-        interner: RustcInterner,
-        uv: rustc_type_ir::UnevaluatedConst<RustcInterner>,
+        interner: RustcInterner<'cx>,
+        uv: rustc_type_ir::UnevaluatedConst<RustcInterner<'cx>>,
     ) -> Self {
         todo!()
     }
 
     fn new_expr(
-        interner: RustcInterner,
-        expr: <RustcInterner as rustc_type_ir::Interner>::ExprConst,
+        interner: RustcInterner<'cx>,
+        expr: <RustcInterner<'cx> as rustc_type_ir::Interner>::ExprConst,
     ) -> Self {
         todo!()
     }
 
     fn new_error(
-        interner: RustcInterner,
-        guar: <RustcInterner as rustc_type_ir::Interner>::ErrorGuaranteed,
+        interner: RustcInterner<'cx>,
+        guar: <RustcInterner<'cx> as rustc_type_ir::Interner>::ErrorGuaranteed,
     ) -> Self {
         todo!()
     }
 }
 
-impl visit::Flags for RustcConst {
+impl<'cx> visit::Flags for RustcConst<'cx> {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
         todo!()
     }
@@ -523,8 +526,8 @@ impl visit::Flags for RustcConst {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcConst {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcConst<'cx> {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -532,14 +535,17 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcConst {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcConst {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcConst<'cx> {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
 
-impl inherent::IntoKind for RustcConst {
-    type Kind = ConstKind<RustcInterner>;
+impl<'cx> inherent::IntoKind for RustcConst<'cx> {
+    type Kind = ConstKind<RustcInterner<'cx>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
@@ -547,17 +553,17 @@ impl inherent::IntoKind for RustcConst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RustcTerm {
-    Ty(RustcTy),
-    Const(RustcConst),
+pub enum RustcTerm<'cx> {
+    Ty(RustcTy<'cx>),
+    Const(RustcConst<'cx>),
 }
 
-impl inherent::Term<RustcInterner> for RustcTerm {}
+impl<'cx> inherent::Term<RustcInterner<'cx>> for RustcTerm<'cx> {}
 
-todo_structural!(RustcTerm);
+todo_structural!(RustcTerm<'cx>);
 
-impl inherent::IntoKind for RustcTerm {
-    type Kind = TermKind<RustcInterner>;
+impl<'cx> inherent::IntoKind for RustcTerm<'cx> {
+    type Kind = TermKind<RustcInterner<'cx>>;
 
     fn kind(self) -> Self::Kind {
         match self {
@@ -567,19 +573,19 @@ impl inherent::IntoKind for RustcTerm {
     }
 }
 
-impl From<RustcTy> for RustcTerm {
-    fn from(value: RustcTy) -> Self {
+impl<'cx> From<RustcTy<'cx>> for RustcTerm<'cx> {
+    fn from(value: RustcTy<'cx>) -> Self {
         todo!()
     }
 }
 
-impl From<RustcConst> for RustcTerm {
-    fn from(value: RustcConst) -> Self {
+impl<'cx> From<RustcConst<'cx>> for RustcTerm<'cx> {
+    fn from(value: RustcConst<'cx>) -> Self {
         todo!()
     }
 }
 
-impl<T> ir_print::IrPrint<T> for RustcInterner {
+impl<T> ir_print::IrPrint<T> for RustcInterner<'_> {
     fn print(t: &T, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
@@ -628,12 +634,12 @@ pub struct RustcBoundVarKind;
 todo_structural!(RustcBoundVarKind);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcPredefinedOpaques;
+pub struct RustcPredefinedOpaques<'cx>(&'cx ());
 
-todo_structural!(RustcPredefinedOpaques);
+todo_structural!(RustcPredefinedOpaques<'cx>);
 
-impl std::ops::Deref for RustcPredefinedOpaques {
-    type Target = PredefinedOpaquesData<RustcInterner>;
+impl<'cx> std::ops::Deref for RustcPredefinedOpaques<'cx> {
+    type Target = PredefinedOpaquesData<RustcInterner<'cx>>;
 
     fn deref(&self) -> &Self::Target {
         todo!()
@@ -674,28 +680,28 @@ impl inherent::SliceLike for RustcDefiningOpaqueTypes {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcCanonicalVars;
+pub struct RustcCanonicalVars<'cx>(&'cx ());
 
-todo_structural!(RustcCanonicalVars);
+todo_structural!(RustcCanonicalVars<'cx>);
 
-impl Default for RustcCanonicalVars {
+impl<'cx> Default for RustcCanonicalVars<'cx> {
     fn default() -> Self {
         todo!()
     }
 }
 
-pub struct RustcCanonicalVarsIter;
-impl Iterator for RustcCanonicalVarsIter {
-    type Item = CanonicalVarInfo<RustcInterner>;
+pub struct RustcCanonicalVarsIter<'cx>(&'cx ());
+impl<'cx> Iterator for RustcCanonicalVarsIter<'cx> {
+    type Item = CanonicalVarInfo<RustcInterner<'cx>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }
 
-impl inherent::SliceLike for RustcCanonicalVars {
-    type Item = CanonicalVarInfo<RustcInterner>;
-    type IntoIter = RustcCanonicalVarsIter;
+impl<'cx> inherent::SliceLike for RustcCanonicalVars<'cx> {
+    type Item = CanonicalVarInfo<RustcInterner<'cx>>;
+    type IntoIter = RustcCanonicalVarsIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -707,12 +713,12 @@ impl inherent::SliceLike for RustcCanonicalVars {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcExternalConstraints;
+pub struct RustcExternalConstraints<'cx>(&'cx ());
 
-todo_structural!(RustcExternalConstraints);
+todo_structural!(RustcExternalConstraints<'cx>);
 
-impl std::ops::Deref for RustcExternalConstraints {
-    type Target = ExternalConstraintsData<RustcInterner>;
+impl<'cx> std::ops::Deref for RustcExternalConstraints<'cx> {
+    type Target = ExternalConstraintsData<RustcInterner<'cx>>;
 
     fn deref(&self) -> &Self::Target {
         todo!()
@@ -725,28 +731,28 @@ pub struct RustcDepNodeIndex;
 pub struct RustcTracked<T: fmt::Debug + Clone>(T);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcTys;
+pub struct RustcTys<'cx>(&'cx ());
 
-todo_structural!(RustcTys);
+todo_structural!(RustcTys<'cx>);
 
-impl Default for RustcTys {
+impl<'cx> Default for RustcTys<'cx> {
     fn default() -> Self {
         todo!()
     }
 }
 
-pub struct RustcTysIter;
-impl Iterator for RustcTysIter {
-    type Item = RustcTy;
+pub struct RustcTysIter<'cx>(&'cx ());
+impl<'cx> Iterator for RustcTysIter<'cx> {
+    type Item = RustcTy<'cx>;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }
 
-impl inherent::SliceLike for RustcTys {
-    type Item = RustcTy;
-    type IntoIter = RustcTysIter;
+impl<'cx> inherent::SliceLike for RustcTys<'cx> {
+    type Item = RustcTy<'cx>;
+    type IntoIter = RustcTysIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -757,39 +763,39 @@ impl inherent::SliceLike for RustcTys {
     }
 }
 
-impl inherent::Tys<RustcInterner> for RustcTys {
-    fn inputs(self) -> <RustcInterner as rustc_type_ir::Interner>::FnInputTys {
+impl<'cx> inherent::Tys<RustcInterner<'cx>> for RustcTys<'cx> {
+    fn inputs(self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::FnInputTys {
         todo!()
     }
 
-    fn output(self) -> <RustcInterner as rustc_type_ir::Interner>::Ty {
+    fn output(self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty {
         todo!()
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcFnInputTys;
+pub struct RustcFnInputTys<'cx>(&'cx ());
 
-todo_structural!(RustcFnInputTys);
+todo_structural!(RustcFnInputTys<'cx>);
 
-impl Default for RustcFnInputTys {
+impl<'cx> Default for RustcFnInputTys<'cx> {
     fn default() -> Self {
         todo!()
     }
 }
 
-pub struct RustcFnInputTysIter;
-impl Iterator for RustcFnInputTysIter {
-    type Item = RustcTy;
+pub struct RustcFnInputTysIter<'cx>(&'cx ());
+impl<'cx> Iterator for RustcFnInputTysIter<'cx> {
+    type Item = RustcTy<'cx>;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }
 
-impl inherent::SliceLike for RustcFnInputTys {
-    type Item = RustcTy;
-    type IntoIter = RustcFnInputTysIter;
+impl<'cx> inherent::SliceLike for RustcFnInputTys<'cx> {
+    type Item = RustcTy<'cx>;
+    type IntoIter = RustcFnInputTysIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -816,12 +822,12 @@ pub struct RustcBoundTy;
 
 todo_structural!(RustcBoundTy);
 
-impl inherent::BoundVarLike<RustcInterner> for RustcBoundTy {
+impl inherent::BoundVarLike<RustcInterner<'_>> for RustcBoundTy {
     fn var(self) -> rustc_type_ir::BoundVar {
         todo!()
     }
 
-    fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
+    fn assert_eq(self, var: <RustcInterner<'_> as rustc_type_ir::Interner>::BoundVarKind) {
         todo!()
     }
 }
@@ -853,24 +859,28 @@ impl inherent::PlaceholderLike for RustcPlaceholderTy {
 pub struct RustcErrorGuaranteed;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcBoundExistentialPredicates;
+pub struct RustcBoundExistentialPredicates<'cx>(&'cx ());
 
-todo_structural!(RustcBoundExistentialPredicates);
+todo_structural!(RustcBoundExistentialPredicates<'cx>);
 
-pub struct RustcBoundExistentialPredicatesIter;
-impl Iterator for RustcBoundExistentialPredicatesIter {
-    type Item =
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ExistentialPredicate<RustcInterner>>;
+pub struct RustcBoundExistentialPredicatesIter<'cx>(&'cx ());
+impl<'cx> Iterator for RustcBoundExistentialPredicatesIter<'cx> {
+    type Item = rustc_type_ir::Binder<
+        RustcInterner<'cx>,
+        rustc_type_ir::ExistentialPredicate<RustcInterner<'cx>>,
+    >;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }
 
-impl inherent::SliceLike for RustcBoundExistentialPredicates {
-    type Item =
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ExistentialPredicate<RustcInterner>>;
-    type IntoIter = RustcBoundExistentialPredicatesIter;
+impl<'cx> inherent::SliceLike for RustcBoundExistentialPredicates<'cx> {
+    type Item = rustc_type_ir::Binder<
+        RustcInterner<'cx>,
+        rustc_type_ir::ExistentialPredicate<RustcInterner<'cx>>,
+    >;
+    type IntoIter = RustcBoundExistentialPredicatesIter<'cx>;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -881,22 +891,27 @@ impl inherent::SliceLike for RustcBoundExistentialPredicates {
     }
 }
 
-impl inherent::BoundExistentialPredicates<RustcInterner> for RustcBoundExistentialPredicates {
-    fn principal_def_id(&self) -> Option<<RustcInterner as rustc_type_ir::Interner>::DefId> {
+impl<'cx> inherent::BoundExistentialPredicates<RustcInterner<'cx>>
+    for RustcBoundExistentialPredicates<'cx>
+{
+    fn principal_def_id(&self) -> Option<<RustcInterner<'_> as rustc_type_ir::Interner>::DefId> {
         todo!()
     }
 
     fn principal(
         self,
     ) -> Option<
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ExistentialTraitRef<RustcInterner>>,
+        rustc_type_ir::Binder<
+            RustcInterner<'cx>,
+            rustc_type_ir::ExistentialTraitRef<RustcInterner<'cx>>,
+        >,
     > {
         todo!()
     }
 
     fn auto_traits(
         self,
-    ) -> impl IntoIterator<Item = <RustcInterner as rustc_type_ir::Interner>::DefId> {
+    ) -> impl IntoIterator<Item = <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId> {
         todo!();
         None
     }
@@ -905,8 +920,8 @@ impl inherent::BoundExistentialPredicates<RustcInterner> for RustcBoundExistenti
         self,
     ) -> impl IntoIterator<
         Item = rustc_type_ir::Binder<
-            RustcInterner,
-            rustc_type_ir::ExistentialProjection<RustcInterner>,
+            RustcInterner<'cx>,
+            rustc_type_ir::ExistentialProjection<RustcInterner<'cx>>,
         >,
     > {
         todo!();
@@ -927,7 +942,7 @@ pub struct RustcSafety;
 
 todo_structural!(RustcSafety);
 
-impl inherent::Safety<RustcInterner> for RustcSafety {
+impl inherent::Safety<RustcInterner<'_>> for RustcSafety {
     fn safe() -> Self {
         todo!()
     }
@@ -946,7 +961,7 @@ pub struct RustcAbi;
 
 todo_structural!(RustcAbi);
 
-impl inherent::Abi<RustcInterner> for RustcAbi {
+impl inherent::Abi<RustcInterner<'_>> for RustcAbi {
     fn rust() -> Self {
         todo!()
     }
@@ -995,12 +1010,12 @@ pub struct RustcBoundConst;
 
 todo_structural!(RustcBoundConst);
 
-impl inherent::BoundVarLike<RustcInterner> for RustcBoundConst {
+impl inherent::BoundVarLike<RustcInterner<'_>> for RustcBoundConst {
     fn var(self) -> rustc_type_ir::BoundVar {
         todo!()
     }
 
-    fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
+    fn assert_eq(self, var: <RustcInterner<'_> as rustc_type_ir::Interner>::BoundVarKind) {
         todo!()
     }
 }
@@ -1013,40 +1028,40 @@ pub struct RustcExprConst;
 
 todo_structural!(RustcExprConst);
 
-impl inherent::ExprConst<RustcInterner> for RustcExprConst {
-    fn args(self) -> <RustcInterner as rustc_type_ir::Interner>::GenericArgs {
+impl<'cx> inherent::ExprConst<RustcInterner<'cx>> for RustcExprConst {
+    fn args(self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::GenericArgs {
         todo!()
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcRegion;
+pub struct RustcRegion<'cx>(&'cx ());
 
-todo_structural!(RustcRegion);
+todo_structural!(RustcRegion<'cx>);
 
-impl inherent::Region<RustcInterner> for RustcRegion {
+impl<'cx> inherent::Region<RustcInterner<'cx>> for RustcRegion<'cx> {
     fn new_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'_>,
         debruijn: rustc_type_ir::DebruijnIndex,
-        var: <RustcInterner as rustc_type_ir::Interner>::BoundRegion,
+        var: <RustcInterner<'_> as rustc_type_ir::Interner>::BoundRegion,
     ) -> Self {
         todo!()
     }
 
     fn new_anon_bound(
-        interner: RustcInterner,
+        interner: RustcInterner<'_>,
         debruijn: rustc_type_ir::DebruijnIndex,
         var: rustc_type_ir::BoundVar,
     ) -> Self {
         todo!()
     }
 
-    fn new_static(interner: RustcInterner) -> Self {
+    fn new_static(interner: RustcInterner<'_>) -> Self {
         todo!()
     }
 }
 
-impl visit::Flags for RustcRegion {
+impl<'cx> visit::Flags for RustcRegion<'cx> {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
         todo!()
     }
@@ -1056,8 +1071,8 @@ impl visit::Flags for RustcRegion {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcRegion {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcRegion<'cx> {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -1065,14 +1080,17 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcRegion {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcRegion {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcRegion<'cx> {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
 
-impl inherent::IntoKind for RustcRegion {
-    type Kind = rustc_type_ir::RegionKind<RustcInterner>;
+impl<'cx> inherent::IntoKind for RustcRegion<'cx> {
+    type Kind = rustc_type_ir::RegionKind<RustcInterner<'cx>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
@@ -1096,12 +1114,12 @@ pub struct RustcBoundRegion;
 
 todo_structural!(RustcBoundRegion);
 
-impl inherent::BoundVarLike<RustcInterner> for RustcBoundRegion {
+impl inherent::BoundVarLike<RustcInterner<'_>> for RustcBoundRegion {
     fn var(self) -> rustc_type_ir::BoundVar {
         todo!()
     }
 
-    fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
+    fn assert_eq(self, var: <RustcInterner<'_> as rustc_type_ir::Interner>::BoundVarKind) {
         todo!()
     }
 }
@@ -1134,30 +1152,30 @@ pub struct RustcParamEnv;
 
 todo_structural!(RustcParamEnv);
 
-impl inherent::ParamEnv<RustcInterner> for RustcParamEnv {
+impl<'cx> inherent::ParamEnv<RustcInterner<'cx>> for RustcParamEnv {
     fn reveal(&self) -> rustc_type_ir::solve::Reveal {
         todo!()
     }
 
     fn caller_bounds(
         self,
-    ) -> impl IntoIterator<Item = <RustcInterner as rustc_type_ir::Interner>::Clause> {
+    ) -> impl IntoIterator<Item = <RustcInterner<'cx> as rustc_type_ir::Interner>::Clause> {
         todo!();
         None
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcPredicate;
+pub struct RustcPredicate<'cx>(&'cx ());
 
-todo_structural!(RustcPredicate);
+todo_structural!(RustcPredicate<'cx>);
 
-impl inherent::Predicate<RustcInterner> for RustcPredicate {
-    fn as_clause(self) -> Option<<RustcInterner as rustc_type_ir::Interner>::Clause> {
+impl<'cx> inherent::Predicate<RustcInterner<'cx>> for RustcPredicate<'cx> {
+    fn as_clause(self) -> Option<<RustcInterner<'cx> as rustc_type_ir::Interner>::Clause> {
         todo!()
     }
 
-    fn is_coinductive(&self, interner: RustcInterner) -> bool {
+    fn is_coinductive(&self, interner: RustcInterner<'cx>) -> bool {
         todo!()
     }
 
@@ -1166,28 +1184,29 @@ impl inherent::Predicate<RustcInterner> for RustcPredicate {
     }
 }
 
-impl elaborate::Elaboratable<RustcInterner> for RustcPredicate {
+impl<'cx> elaborate::Elaboratable<RustcInterner<'cx>> for RustcPredicate<'cx> {
     fn predicate_kind(
         self,
-    ) -> rustc_type_ir::Binder<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>> {
+    ) -> rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::PredicateKind<RustcInterner<'cx>>>
+    {
         todo!()
     }
 
-    fn as_clause(self) -> Option<<RustcInterner as rustc_type_ir::Interner>::Clause> {
+    fn as_clause(self) -> Option<<RustcInterner<'cx> as rustc_type_ir::Interner>::Clause> {
         todo!()
     }
 
-    fn child(&self, clause: <RustcInterner as rustc_type_ir::Interner>::Clause) -> Self {
+    fn child(&self, clause: <RustcInterner<'_> as rustc_type_ir::Interner>::Clause) -> Self {
         todo!()
     }
 
     fn child_with_derived_cause(
         &self,
-        clause: <RustcInterner as rustc_type_ir::Interner>::Clause,
-        span: <RustcInterner as rustc_type_ir::Interner>::Span,
+        clause: <RustcInterner<'cx> as rustc_type_ir::Interner>::Clause,
+        span: <RustcInterner<'cx> as rustc_type_ir::Interner>::Span,
         parent_trait_pred: rustc_type_ir::Binder<
-            RustcInterner,
-            rustc_type_ir::TraitPredicate<RustcInterner>,
+            RustcInterner<'cx>,
+            rustc_type_ir::TraitPredicate<RustcInterner<'cx>>,
         >,
         index: usize,
     ) -> Self {
@@ -1195,15 +1214,16 @@ impl elaborate::Elaboratable<RustcInterner> for RustcPredicate {
     }
 }
 
-impl inherent::IntoKind for RustcPredicate {
-    type Kind = rustc_type_ir::Binder<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>>;
+impl<'cx> inherent::IntoKind for RustcPredicate<'cx> {
+    type Kind =
+        rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::PredicateKind<RustcInterner<'cx>>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
     }
 }
 
-impl visit::Flags for RustcPredicate {
+impl<'cx> visit::Flags for RustcPredicate<'cx> {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
         todo!()
     }
@@ -1213,8 +1233,8 @@ impl visit::Flags for RustcPredicate {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcPredicate {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcPredicate<'cx> {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -1222,181 +1242,204 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcPredicate {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcPredicate {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcPredicate<'cx> {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>>
-    for RustcPredicate
+impl<'cx>
+    rustc_type_ir::UpcastFrom<RustcInterner<'cx>, rustc_type_ir::PredicateKind<RustcInterner<'cx>>>
+    for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::PredicateKind<RustcInterner>,
-        interner: RustcInterner,
+        from: rustc_type_ir::PredicateKind<RustcInterner<'_>>,
+        interner: RustcInterner<'_>,
     ) -> Self {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>>,
-    > for RustcPredicate
+        RustcInterner<'cx>,
+        rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::PredicateKind<RustcInterner<'cx>>>,
+    > for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>>,
-        interner: RustcInterner,
+        from: rustc_type_ir::Binder<
+            RustcInterner<'_>,
+            rustc_type_ir::PredicateKind<RustcInterner<'_>>,
+        >,
+        interner: RustcInterner<'_>,
     ) -> Self {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>
-    for RustcPredicate
+impl<'cx>
+    rustc_type_ir::UpcastFrom<RustcInterner<'cx>, rustc_type_ir::ClauseKind<RustcInterner<'cx>>>
+    for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::ClauseKind<RustcInterner>,
-        interner: RustcInterner,
+        from: rustc_type_ir::ClauseKind<RustcInterner<'cx>>,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>,
-    > for RustcPredicate
+        RustcInterner<'cx>,
+        rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::ClauseKind<RustcInterner<'cx>>>,
+    > for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>,
-        interner: RustcInterner,
+        from: rustc_type_ir::Binder<
+            RustcInterner<'cx>,
+            rustc_type_ir::ClauseKind<RustcInterner<'cx>>,
+        >,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, RustcClause> for RustcPredicate {
-    fn upcast_from(from: RustcClause, interner: RustcInterner) -> Self {
+impl<'cx> rustc_type_ir::UpcastFrom<RustcInterner<'cx>, RustcClause<'cx>> for RustcPredicate<'cx> {
+    fn upcast_from(from: RustcClause<'cx>, interner: RustcInterner<'cx>) -> Self {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::NormalizesTo<RustcInterner>>
-    for RustcPredicate
+impl<'cx>
+    rustc_type_ir::UpcastFrom<RustcInterner<'cx>, rustc_type_ir::NormalizesTo<RustcInterner<'cx>>>
+    for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::NormalizesTo<RustcInterner>,
-        interner: RustcInterner,
+        from: rustc_type_ir::NormalizesTo<RustcInterner<'cx>>,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>
-    for RustcPredicate
+impl<'cx> rustc_type_ir::UpcastFrom<RustcInterner<'cx>, rustc_type_ir::TraitRef<RustcInterner<'cx>>>
+    for RustcPredicate<'cx>
 {
-    fn upcast_from(from: rustc_type_ir::TraitRef<RustcInterner>, interner: RustcInterner) -> Self {
+    fn upcast_from(
+        from: rustc_type_ir::TraitRef<RustcInterner<'cx>>,
+        interner: RustcInterner<'cx>,
+    ) -> Self {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>,
-    > for RustcPredicate
+        RustcInterner<'cx>,
+        rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::TraitRef<RustcInterner<'cx>>>,
+    > for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>,
-        interner: RustcInterner,
+        from: rustc_type_ir::Binder<
+            RustcInterner<'cx>,
+            rustc_type_ir::TraitRef<RustcInterner<'cx>>,
+        >,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::TraitPredicate<RustcInterner>>
-    for RustcPredicate
+impl<'cx>
+    rustc_type_ir::UpcastFrom<RustcInterner<'cx>, rustc_type_ir::TraitPredicate<RustcInterner<'cx>>>
+    for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::TraitPredicate<RustcInterner>,
-        interner: RustcInterner,
+        from: rustc_type_ir::TraitPredicate<RustcInterner<'cx>>,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::OutlivesPredicate<RustcInterner, RustcTy>,
-    > for RustcPredicate
+        RustcInterner<'cx>,
+        rustc_type_ir::OutlivesPredicate<RustcInterner<'cx>, RustcTy<'cx>>,
+    > for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::OutlivesPredicate<RustcInterner, RustcTy>,
-        interner: RustcInterner,
+        from: rustc_type_ir::OutlivesPredicate<RustcInterner<'cx>, RustcTy<'cx>>,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::OutlivesPredicate<RustcInterner, RustcRegion>,
-    > for RustcPredicate
+        RustcInterner<'cx>,
+        rustc_type_ir::OutlivesPredicate<RustcInterner<'cx>, RustcRegion<'cx>>,
+    > for RustcPredicate<'cx>
 {
     fn upcast_from(
-        from: rustc_type_ir::OutlivesPredicate<RustcInterner, RustcRegion>,
-        interner: RustcInterner,
+        from: rustc_type_ir::OutlivesPredicate<RustcInterner<'cx>, RustcRegion<'cx>>,
+        interner: RustcInterner<'cx>,
     ) -> Self {
         todo!()
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcClause;
+pub struct RustcClause<'cx>(&'cx ());
 
-todo_structural!(RustcClause);
+todo_structural!(RustcClause<'cx>);
 
-impl inherent::Clause<RustcInterner> for RustcClause {
-    fn as_predicate(self) -> <RustcInterner as rustc_type_ir::Interner>::Predicate {
+impl<'cx> inherent::Clause<RustcInterner<'cx>> for RustcClause<'cx> {
+    fn as_predicate(self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::Predicate {
         todo!()
     }
 
     fn instantiate_supertrait(
         self,
-        cx: RustcInterner,
-        trait_ref: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>,
+        cx: RustcInterner<'cx>,
+        trait_ref: rustc_type_ir::Binder<
+            RustcInterner<'cx>,
+            rustc_type_ir::TraitRef<RustcInterner<'cx>>,
+        >,
     ) -> Self {
         todo!()
     }
 }
 
-impl elaborate::Elaboratable<RustcInterner> for RustcClause {
+impl<'cx> elaborate::Elaboratable<RustcInterner<'cx>> for RustcClause<'cx> {
     fn predicate_kind(
         self,
-    ) -> rustc_type_ir::Binder<RustcInterner, rustc_type_ir::PredicateKind<RustcInterner>> {
+    ) -> rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::PredicateKind<RustcInterner<'cx>>>
+    {
         todo!()
     }
 
-    fn as_clause(self) -> Option<<RustcInterner as rustc_type_ir::Interner>::Clause> {
+    fn as_clause(self) -> Option<<RustcInterner<'cx> as rustc_type_ir::Interner>::Clause> {
         todo!()
     }
 
-    fn child(&self, clause: <RustcInterner as rustc_type_ir::Interner>::Clause) -> Self {
+    fn child(&self, clause: <RustcInterner<'cx> as rustc_type_ir::Interner>::Clause) -> Self {
         todo!()
     }
 
     fn child_with_derived_cause(
         &self,
-        clause: <RustcInterner as rustc_type_ir::Interner>::Clause,
-        span: <RustcInterner as rustc_type_ir::Interner>::Span,
+        clause: <RustcInterner<'_> as rustc_type_ir::Interner>::Clause,
+        span: <RustcInterner<'_> as rustc_type_ir::Interner>::Span,
         parent_trait_pred: rustc_type_ir::Binder<
-            RustcInterner,
-            rustc_type_ir::TraitPredicate<RustcInterner>,
+            RustcInterner<'_>,
+            rustc_type_ir::TraitPredicate<RustcInterner<'_>>,
         >,
         index: usize,
     ) -> Self {
@@ -1404,15 +1447,16 @@ impl elaborate::Elaboratable<RustcInterner> for RustcClause {
     }
 }
 
-impl inherent::IntoKind for RustcClause {
-    type Kind = rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>;
+impl<'cx> inherent::IntoKind for RustcClause<'cx> {
+    type Kind =
+        rustc_type_ir::Binder<RustcInterner<'cx>, rustc_type_ir::ClauseKind<RustcInterner<'cx>>>;
 
     fn kind(self) -> Self::Kind {
         todo!()
     }
 }
 
-impl visit::Flags for RustcClause {
+impl<'cx> visit::Flags for RustcClause<'cx> {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
         todo!()
     }
@@ -1422,8 +1466,8 @@ impl visit::Flags for RustcClause {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcClause {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcClause<'cx> {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -1431,96 +1475,115 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcClause {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcClause {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcClause<'cx> {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
 
-impl
+impl<'cx>
     rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>,
-    > for RustcClause
-{
-    fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ClauseKind<RustcInterner>>,
-        interner: RustcInterner,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>
-    for RustcClause
-{
-    fn upcast_from(from: rustc_type_ir::TraitRef<RustcInterner>, interner: RustcInterner) -> Self {
-        todo!()
-    }
-}
-
-impl
-    rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>,
-    > for RustcClause
-{
-    fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitRef<RustcInterner>>,
-        interner: RustcInterner,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::TraitPredicate<RustcInterner>>
-    for RustcClause
-{
-    fn upcast_from(
-        from: rustc_type_ir::TraitPredicate<RustcInterner>,
-        interner: RustcInterner,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl
-    rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitPredicate<RustcInterner>>,
-    > for RustcClause
-{
-    fn upcast_from(
-        from: rustc_type_ir::Binder<RustcInterner, rustc_type_ir::TraitPredicate<RustcInterner>>,
-        interner: RustcInterner,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::UpcastFrom<RustcInterner, rustc_type_ir::ProjectionPredicate<RustcInterner>>
-    for RustcClause
-{
-    fn upcast_from(
-        from: rustc_type_ir::ProjectionPredicate<RustcInterner>,
-        interner: RustcInterner,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl
-    rustc_type_ir::UpcastFrom<
-        RustcInterner,
-        rustc_type_ir::Binder<RustcInterner, rustc_type_ir::ProjectionPredicate<RustcInterner>>,
-    > for RustcClause
+        RustcInterner<'cx>,
+        rustc_type_ir::Binder<RustcInterner<'_>, rustc_type_ir::ClauseKind<RustcInterner<'_>>>,
+    > for RustcClause<'cx>
 {
     fn upcast_from(
         from: rustc_type_ir::Binder<
-            RustcInterner,
-            rustc_type_ir::ProjectionPredicate<RustcInterner>,
+            RustcInterner<'_>,
+            rustc_type_ir::ClauseKind<RustcInterner<'_>>,
         >,
-        interner: RustcInterner,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx> rustc_type_ir::UpcastFrom<RustcInterner<'_>, rustc_type_ir::TraitRef<RustcInterner<'_>>>
+    for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::TraitRef<RustcInterner<'_>>,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx>
+    rustc_type_ir::UpcastFrom<
+        RustcInterner<'_>,
+        rustc_type_ir::Binder<RustcInterner<'_>, rustc_type_ir::TraitRef<RustcInterner<'_>>>,
+    > for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::Binder<RustcInterner<'_>, rustc_type_ir::TraitRef<RustcInterner<'_>>>,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx>
+    rustc_type_ir::UpcastFrom<RustcInterner<'_>, rustc_type_ir::TraitPredicate<RustcInterner<'_>>>
+    for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::TraitPredicate<RustcInterner<'_>>,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx>
+    rustc_type_ir::UpcastFrom<
+        RustcInterner<'_>,
+        rustc_type_ir::Binder<RustcInterner<'_>, rustc_type_ir::TraitPredicate<RustcInterner<'_>>>,
+    > for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::Binder<
+            RustcInterner<'_>,
+            rustc_type_ir::TraitPredicate<RustcInterner<'_>>,
+        >,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx>
+    rustc_type_ir::UpcastFrom<
+        RustcInterner<'_>,
+        rustc_type_ir::ProjectionPredicate<RustcInterner<'_>>,
+    > for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::ProjectionPredicate<RustcInterner<'_>>,
+        interner: RustcInterner<'_>,
+    ) -> Self {
+        todo!()
+    }
+}
+
+impl<'cx>
+    rustc_type_ir::UpcastFrom<
+        RustcInterner<'_>,
+        rustc_type_ir::Binder<
+            RustcInterner<'_>,
+            rustc_type_ir::ProjectionPredicate<RustcInterner<'_>>,
+        >,
+    > for RustcClause<'cx>
+{
+    fn upcast_from(
+        from: rustc_type_ir::Binder<
+            RustcInterner<'_>,
+            rustc_type_ir::ProjectionPredicate<RustcInterner<'_>>,
+        >,
+        interner: RustcInterner<'_>,
     ) -> Self {
         todo!()
     }
@@ -1563,8 +1626,8 @@ impl visit::Flags for RustcClauses {
     }
 }
 
-impl fold::TypeSuperFoldable<RustcInterner> for RustcClauses {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner>>(
+impl<'cx> fold::TypeSuperFoldable<RustcInterner<'cx>> for RustcClauses {
+    fn try_super_fold_with<F: fold::FallibleTypeFolder<RustcInterner<'cx>>>(
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
@@ -1572,8 +1635,11 @@ impl fold::TypeSuperFoldable<RustcInterner> for RustcClauses {
     }
 }
 
-impl visit::TypeSuperVisitable<RustcInterner> for RustcClauses {
-    fn super_visit_with<V: visit::TypeVisitor<RustcInterner>>(&self, visitor: &mut V) -> V::Result {
+impl<'cx> visit::TypeSuperVisitable<RustcInterner<'cx>> for RustcClauses {
+    fn super_visit_with<V: visit::TypeVisitor<RustcInterner<'cx>>>(
+        &self,
+        visitor: &mut V,
+    ) -> V::Result {
         todo!()
     }
 }
@@ -1583,7 +1649,7 @@ pub struct RustcGenericsOf;
 
 todo_structural!(RustcGenericsOf);
 
-impl inherent::GenericsOf<RustcInterner> for RustcGenericsOf {
+impl inherent::GenericsOf<RustcInterner<'_>> for RustcGenericsOf {
     fn count(&self) -> usize {
         todo!()
     }
@@ -1621,8 +1687,8 @@ pub struct RustcAdtDef;
 
 todo_structural!(RustcAdtDef);
 
-impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
-    fn def_id(&self) -> <RustcInterner as rustc_type_ir::Interner>::DefId {
+impl<'cx> inherent::AdtDef<RustcInterner<'cx>> for RustcAdtDef {
+    fn def_id(&self) -> <RustcInterner<'cx> as rustc_type_ir::Interner>::DefId {
         todo!()
     }
 
@@ -1632,9 +1698,12 @@ impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
 
     fn struct_tail_ty(
         self,
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
     ) -> Option<
-        rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
+        rustc_type_ir::EarlyBinder<
+            RustcInterner<'cx>,
+            <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty,
+        >,
     > {
         todo!()
     }
@@ -1645,10 +1714,10 @@ impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
 
     fn all_field_tys(
         self,
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
     ) -> rustc_type_ir::EarlyBinder<
-        RustcInterner,
-        impl IntoIterator<Item = <RustcInterner as rustc_type_ir::Interner>::Ty>,
+        RustcInterner<'cx>,
+        impl IntoIterator<Item = <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty>,
     > {
         todo!();
         rustc_type_ir::EarlyBinder::bind(None)
@@ -1656,9 +1725,12 @@ impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
 
     fn sized_constraint(
         self,
-        interner: RustcInterner,
+        interner: RustcInterner<'cx>,
     ) -> Option<
-        rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
+        rustc_type_ir::EarlyBinder<
+            RustcInterner<'cx>,
+            <RustcInterner<'cx> as rustc_type_ir::Interner>::Ty,
+        >,
     > {
         todo!()
     }
@@ -1671,7 +1743,7 @@ impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct RustcFeatures;
 
-impl inherent::Features<RustcInterner> for RustcFeatures {
+impl inherent::Features<RustcInterner<'_>> for RustcFeatures {
     fn generic_const_exprs(self) -> bool {
         todo!()
     }
@@ -1696,21 +1768,21 @@ impl std::ops::Deref for RustcUnsizingParams {
     }
 }
 
-impl rustc_type_ir::Interner for RustcInterner {
+impl<'cx> rustc_type_ir::Interner for RustcInterner<'cx> {
     type DefId = InternId;
     type LocalDefId = InternId;
     type Span = RustcSpan;
 
-    type GenericArgs = GenericArgs;
-    type GenericArgsSlice = GenericArgs;
-    type GenericArg = RustcGenericArg;
+    type GenericArgs = GenericArgs<'cx>;
+    type GenericArgsSlice = GenericArgs<'cx>;
+    type GenericArg = RustcGenericArg<'cx>;
 
-    type Term = RustcTerm;
+    type Term = RustcTerm<'cx>;
 
     type BoundVarKinds = RustcBoundVarKinds;
     type BoundVarKind = RustcBoundVarKind;
 
-    type PredefinedOpaques = RustcPredefinedOpaques;
+    type PredefinedOpaques = RustcPredefinedOpaques<'cx>;
 
     fn mk_predefined_opaques_in_body(
         self,
@@ -1721,7 +1793,7 @@ impl rustc_type_ir::Interner for RustcInterner {
 
     type DefiningOpaqueTypes = RustcDefiningOpaqueTypes;
 
-    type CanonicalVars = RustcCanonicalVars;
+    type CanonicalVars = RustcCanonicalVars<'cx>;
 
     fn mk_canonical_var_infos(
         self,
@@ -1730,7 +1802,7 @@ impl rustc_type_ir::Interner for RustcInterner {
         todo!()
     }
 
-    type ExternalConstraints = RustcExternalConstraints;
+    type ExternalConstraints = RustcExternalConstraints<'cx>;
 
     fn mk_external_constraints(
         self,
@@ -1759,36 +1831,36 @@ impl rustc_type_ir::Interner for RustcInterner {
         todo!()
     }
 
-    type Ty = RustcTy;
-    type Tys = RustcTys;
-    type FnInputTys = RustcFnInputTys;
+    type Ty = RustcTy<'cx>;
+    type Tys = RustcTys<'cx>;
+    type FnInputTys = RustcFnInputTys<'cx>;
     type ParamTy = RustcParamTy;
     type BoundTy = RustcBoundTy;
     type PlaceholderTy = RustcPlaceholderTy;
 
     type ErrorGuaranteed = RustcErrorGuaranteed;
-    type BoundExistentialPredicates = RustcBoundExistentialPredicates;
+    type BoundExistentialPredicates = RustcBoundExistentialPredicates<'cx>;
     type AllocId = RustcAllocId;
     type Pat = RustcPat;
     type Safety = RustcSafety;
     type Abi = RustcAbi;
 
-    type Const = RustcConst;
+    type Const = RustcConst<'cx>;
     type PlaceholderConst = RustcPlaceholderConst;
     type ParamConst = RustcParamConst;
     type BoundConst = RustcBoundConst;
     type ValueConst = RustcValueConst;
     type ExprConst = RustcExprConst;
 
-    type Region = RustcRegion;
+    type Region = RustcRegion<'cx>;
     type EarlyParamRegion = RustcEarlyParamRegion;
     type LateParamRegion = RustcLateParamRegion;
     type BoundRegion = RustcBoundRegion;
     type PlaceholderRegion = RustcPlaceholderRegion;
 
     type ParamEnv = RustcParamEnv;
-    type Predicate = RustcPredicate;
-    type Clause = RustcClause;
+    type Predicate = RustcPredicate<'cx>;
+    type Clause = RustcClause<'cx>;
     type Clauses = RustcClauses;
 
     fn with_global_cache<R>(
