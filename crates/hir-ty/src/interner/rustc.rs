@@ -81,11 +81,11 @@ impl inherent::Span<RustcInterner> for RustcSpan {
 type InternedGenericArgs = Interned<InternedWrapper<SmallVec<[RustcGenericArg; 2]>>>;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArgs(InternedGenericArgs);
+pub struct RustcGenericArgs(InternedGenericArgs);
 
-impl inherent::GenericArgs<RustcInterner> for GenericArgs {
+impl inherent::GenericArgs<RustcInterner> for RustcGenericArgs {
     fn dummy() -> Self {
-        GenericArgs(Interned::new(InternedWrapper(smallvec![])))
+        RustcGenericArgs(Interned::new(InternedWrapper(smallvec![])))
     }
 
     fn rebase_onto(
@@ -139,10 +139,10 @@ impl inherent::GenericArgs<RustcInterner> for GenericArgs {
     }
 }
 
-todo_structural!(GenericArgs);
+todo_structural!(RustcGenericArgs);
 
-pub struct GenericArgsIter;
-impl Iterator for GenericArgsIter {
+pub struct RustcGenericArgsIter;
+impl Iterator for RustcGenericArgsIter {
     type Item = RustcGenericArg;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -150,9 +150,9 @@ impl Iterator for GenericArgsIter {
     }
 }
 
-impl inherent::SliceLike for GenericArgs {
+impl inherent::SliceLike for RustcGenericArgs {
     type Item = RustcGenericArg;
-    type IntoIter = GenericArgsIter;
+    type IntoIter = RustcGenericArgsIter;
 
     fn iter(self) -> Self::IntoIter {
         todo!()
@@ -1701,8 +1701,8 @@ impl rustc_type_ir::Interner for RustcInterner {
     type LocalDefId = InternId;
     type Span = RustcSpan;
 
-    type GenericArgs = GenericArgs;
-    type GenericArgsSlice = GenericArgs;
+    type GenericArgs = RustcGenericArgs;
+    type GenericArgsSlice = RustcGenericArgs;
     type GenericArg = RustcGenericArg;
 
     type Term = RustcTerm;
