@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 use std::fmt;
 use triomphe::Arc;
 
-mod rustc;
+pub mod rustc;
 
 type TyData = chalk_ir::TyData<Interner>;
 type VariableKinds = chalk_ir::VariableKinds<Interner>;
@@ -28,7 +28,7 @@ type ProgramClauses = chalk_ir::ProgramClauses<Interner>;
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Interner;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternedWrapper<T>(T);
 
 impl<T: fmt::Debug> fmt::Debug for InternedWrapper<T> {

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
-use base_db::ra_salsa::InternId;
+use base_db::CrateId;
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
-use hir_def::TypeAliasId;
+use hir_def::{AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use smallvec::{smallvec, SmallVec};
 use span::Span;
@@ -14,12 +14,20 @@ use rustc_index_in_tree::bit_set::BitSet;
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
     solve::{ExternalConstraintsData, PredefinedOpaquesData},
-    visit, CanonicalVarInfo, ConstKind, GenericArgKind, TermKind,
+    visit, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
 };
+
+use crate::{db::HirDatabase, generics::generics};
 
 use super::InternedWrapper;
 
-impl_internable!(InternedWrapper<SmallVec<[RustcGenericArg; 2]>>,);
+impl_internable!(
+    InternedWrapper<rustc_type_ir::ConstKind<RustcInterner>>,
+    InternedWrapper<rustc_type_ir::RegionKind<RustcInterner>>,
+    InternedWrapper<rustc_type_ir::TyKind<RustcInterner>>,
+    InternedWrapper<SmallVec<[RustcGenericArg; 2]>>,
+    InternedWrapper<SmallVec<[RustcTy; 2]>>,
+);
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct RustcInterner;
@@ -27,7 +35,7 @@ pub struct RustcInterner;
 macro_rules! todo_structural {
     ($t:ty) => {
         impl relate::Relate<RustcInterner> for $t {
-            fn relate<R: relate::TypeRelation<RustcInterner>>(
+            fn relate<R: relate::TypeRelation>(
                 _relation: &mut R,
                 _a: Self,
                 _b: Self,
@@ -56,8 +64,8 @@ macro_rules! todo_structural {
     };
 }
 
-impl inherent::DefId<RustcInterner> for InternId {
-    fn as_local(self) -> Option<InternId> {
+impl inherent::DefId<RustcInterner> for GenericDefId {
+    fn as_local(self) -> Option<GenericDefId> {
         Some(self)
     }
     fn is_local(self) -> bool {
@@ -65,7 +73,7 @@ impl inherent::DefId<RustcInterner> for InternId {
     }
 }
 
-todo_structural!(InternId);
+todo_structural!(GenericDefId);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct RustcSpan(Option<Span>);
@@ -82,6 +90,14 @@ type InternedGenericArgs = Interned<InternedWrapper<SmallVec<[RustcGenericArg; 2
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct RustcGenericArgs(InternedGenericArgs);
+
+todo_structural!(RustcGenericArgs);
+
+impl RustcGenericArgs {
+    pub fn new(data: impl IntoIterator<Item = RustcGenericArg>) -> Self {
+        RustcGenericArgs(Interned::new(InternedWrapper(data.into_iter().collect())))
+    }
+}
 
 impl inherent::GenericArgs<RustcInterner> for RustcGenericArgs {
     fn dummy() -> Self {
@@ -139,8 +155,6 @@ impl inherent::GenericArgs<RustcInterner> for RustcGenericArgs {
     }
 }
 
-todo_structural!(RustcGenericArgs);
-
 pub struct RustcGenericArgsIter;
 impl Iterator for RustcGenericArgsIter {
     type Item = RustcGenericArg;
@@ -196,8 +210,30 @@ impl From<RustcRegion> for RustcGenericArg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RustcTy;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RustcTy(Interned<InternedWrapper<rustc_type_ir::TyKind<RustcInterner>>>);
+
+impl RustcTy {
+    pub fn new(kind: rustc_type_ir::TyKind<RustcInterner>) -> Self {
+        RustcTy(Interned::new(InternedWrapper(kind)))
+    }
+
+    pub fn from_chalk(kind: chalk_ir::TyKind<super::Interner>) -> Self {
+        todo!()
+    }
+}
+
+impl PartialOrd for RustcTy {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        todo!()
+    }
+}
+
+impl Ord for RustcTy {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        todo!()
+    }
+}
 
 todo_structural!(RustcTy);
 
@@ -230,7 +266,8 @@ impl inherent::Ty<RustcInterner> for RustcTy {
         interner: RustcInterner,
         param: <RustcInterner as rustc_type_ir::Interner>::ParamTy,
     ) -> Self {
-        todo!()
+        let kind = rustc_type_ir::TyKind::Param(param);
+        RustcTy(Interned::new(InternedWrapper(kind)))
     }
 
     fn new_placeholder(
@@ -457,8 +494,26 @@ impl inherent::IntoKind for RustcTy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RustcConst;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RustcConst(Interned<InternedWrapper<rustc_type_ir::ConstKind<RustcInterner>>>);
+
+impl RustcConst {
+    pub fn new(kind: rustc_type_ir::ConstKind<RustcInterner>) -> Self {
+        RustcConst(Interned::new(InternedWrapper(kind)))
+    }
+}
+
+impl PartialOrd for RustcConst {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        todo!()
+    }
+}
+
+impl Ord for RustcConst {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        todo!()
+    }
+}
 
 todo_structural!(RustcConst);
 
@@ -653,7 +708,7 @@ impl Default for RustcDefiningOpaqueTypes {
 
 pub struct RustcDefiningOpaqueTypesIter;
 impl Iterator for RustcDefiningOpaqueTypesIter {
-    type Item = InternId;
+    type Item = GenericDefId;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
@@ -661,7 +716,7 @@ impl Iterator for RustcDefiningOpaqueTypesIter {
 }
 
 impl inherent::SliceLike for RustcDefiningOpaqueTypes {
-    type Item = InternId;
+    type Item = GenericDefId;
     type IntoIter = RustcDefiningOpaqueTypesIter;
 
     fn iter(self) -> Self::IntoIter {
@@ -724,10 +779,18 @@ pub struct RustcDepNodeIndex;
 #[derive(Debug)]
 pub struct RustcTracked<T: fmt::Debug + Clone>(T);
 
+type InternedTys = Interned<InternedWrapper<SmallVec<[RustcTy; 2]>>>;
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcTys;
+pub struct RustcTys(InternedTys);
 
 todo_structural!(RustcTys);
+
+impl RustcTys {
+    pub fn new(data: impl IntoIterator<Item = RustcTy>) -> Self {
+        RustcTys(Interned::new(InternedWrapper(data.into_iter().collect())))
+    }
+}
 
 impl Default for RustcTys {
     fn default() -> Self {
@@ -801,13 +864,15 @@ impl inherent::SliceLike for RustcFnInputTys {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcParamTy;
+pub struct RustcParamTy {
+    pub(crate) index: u32,
+}
 
 todo_structural!(RustcParamTy);
 
 impl inherent::ParamLike for RustcParamTy {
     fn index(&self) -> u32 {
-        todo!()
+        self.index
     }
 }
 
@@ -980,13 +1045,15 @@ impl inherent::PlaceholderLike for RustcPlaceholderConst {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcParamConst;
+pub struct RustcParamConst {
+    pub index: u32,
+}
 
 todo_structural!(RustcParamConst);
 
 impl inherent::ParamLike for RustcParamConst {
     fn index(&self) -> u32 {
-        todo!()
+        self.index
     }
 }
 
@@ -1020,7 +1087,25 @@ impl inherent::ExprConst<RustcInterner> for RustcExprConst {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcRegion;
+pub struct RustcRegion(Interned<InternedWrapper<rustc_type_ir::RegionKind<RustcInterner>>>);
+
+impl RustcRegion {
+    pub fn new(kind: rustc_type_ir::RegionKind<RustcInterner>) -> Self {
+        RustcRegion(Interned::new(InternedWrapper(kind)))
+    }
+}
+
+impl PartialOrd for RustcRegion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        todo!()
+    }
+}
+
+impl Ord for RustcRegion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        todo!()
+    }
+}
 
 todo_structural!(RustcRegion);
 
@@ -1080,11 +1165,13 @@ impl inherent::IntoKind for RustcRegion {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcEarlyParamRegion;
+pub struct RustcEarlyParamRegion {
+    pub index: u32,
+}
 
 impl inherent::ParamLike for RustcEarlyParamRegion {
     fn index(&self) -> u32 {
-        todo!()
+        self.index
     }
 }
 
@@ -1092,7 +1179,13 @@ impl inherent::ParamLike for RustcEarlyParamRegion {
 pub struct RustcLateParamRegion;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcBoundRegion;
+pub struct RustcBoundRegion(rustc_type_ir::BoundVar);
+
+impl RustcBoundRegion {
+    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
+        RustcBoundRegion(var)
+    }
+}
 
 todo_structural!(RustcBoundRegion);
 
@@ -1107,7 +1200,10 @@ impl inherent::BoundVarLike<RustcInterner> for RustcBoundRegion {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcPlaceholderRegion;
+pub struct RustcPlaceholderRegion {
+    universe: rustc_type_ir::UniverseIndex,
+    var: rustc_type_ir::BoundVar,
+}
 
 todo_structural!(RustcPlaceholderRegion);
 
@@ -1617,35 +1713,62 @@ impl inherent::SliceLike for RustcVariancesOf {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcAdtDef;
+pub struct RustcAdtDef(AdtId);
+
+impl RustcAdtDef {
+    pub fn new(def_id: AdtId) -> Self {
+        RustcAdtDef(def_id)
+    }
+}
 
 todo_structural!(RustcAdtDef);
 
 impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
     fn def_id(&self) -> <RustcInterner as rustc_type_ir::Interner>::DefId {
-        todo!()
+        self.0.into()
     }
 
     fn is_struct(&self) -> bool {
-        todo!()
-    }
-
-    fn struct_tail_ty(
-        self,
-        interner: RustcInterner,
-    ) -> Option<
-        rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
-    > {
-        todo!()
+        matches!(self.0, AdtId::StructId(..))
     }
 
     fn is_phantom_data(&self) -> bool {
         todo!()
     }
 
+    fn is_fundamental(&self) -> bool {
+        todo!()
+    }
+}
+
+impl<'cx> inherent::IrAdtDef<RustcInterner, RustcIr<'cx>> for RustcAdtDef {
+    fn struct_tail_ty(
+        self,
+        ir: RustcIr<'cx>,
+    ) -> Option<
+        rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
+    > {
+        let db = ir.db;
+        let hir_def::AdtId::StructId(struct_id) = self.0 else {
+            return None;
+        };
+        let id: VariantId = struct_id.into();
+        let variant_data = &id.variant_data(db.upcast());
+        let Some((last_idx, _)) = variant_data.fields().iter().last() else { return None };
+        let field_types = db.field_types(id);
+
+        let generic_params = generics(db.upcast(), struct_id.into());
+        let subst = generic_params.rustc_param_subst(db);
+        let last_ty = RustcTy::from_chalk(
+            field_types[last_idx].skip_binders().clone().kind(super::Interner).clone(),
+        );
+        todo!("Must map BoundVar -> Param");
+        Some(rustc_type_ir::EarlyBinder::bind(last_ty))
+    }
+
     fn all_field_tys(
         self,
-        interner: RustcInterner,
+        interner: RustcIr<'cx>,
     ) -> rustc_type_ir::EarlyBinder<
         RustcInterner,
         impl IntoIterator<Item = <RustcInterner as rustc_type_ir::Interner>::Ty>,
@@ -1656,14 +1779,10 @@ impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
 
     fn sized_constraint(
         self,
-        interner: RustcInterner,
+        interner: RustcIr<'cx>,
     ) -> Option<
         rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
     > {
-        todo!()
-    }
-
-    fn is_fundamental(&self) -> bool {
         todo!()
     }
 }
@@ -1697,8 +1816,8 @@ impl std::ops::Deref for RustcUnsizingParams {
 }
 
 impl rustc_type_ir::Interner for RustcInterner {
-    type DefId = InternId;
-    type LocalDefId = InternId;
+    type DefId = GenericDefId;
+    type LocalDefId = GenericDefId;
     type Span = RustcSpan;
 
     type GenericArgs = RustcGenericArgs;
@@ -2127,5 +2246,23 @@ impl rustc_type_ir::Interner for RustcInterner {
         defining_anchor: Self::LocalDefId,
     ) -> Self::DefiningOpaqueTypes {
         todo!()
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RustcIr<'a> {
+    pub(crate) db: &'a dyn HirDatabase,
+}
+
+impl<'a> RustcIr<'a> {
+    pub fn new(db: &'a dyn HirDatabase) -> Self {
+        RustcIr { db }
+    }
+}
+impl<'cx> RustIr for RustcIr<'cx> {
+    type Interner = RustcInterner;
+
+    fn interner(self) -> Self::Interner {
+        RustcInterner
     }
 }
