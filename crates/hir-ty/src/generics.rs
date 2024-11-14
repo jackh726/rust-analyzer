@@ -26,9 +26,7 @@ use triomphe::Arc;
 
 use crate::{
     db::HirDatabase,
-    interner::rustc::{
-        RustcConst, RustcGenericArgs, RustcRegion, RustcTy,
-    },
+    interner::rustc::{RustcConst, RustcGenericArgs, RustcRegion, RustcTy},
     lt_to_placeholder_idx,
     mapping::{const_to_rustc_param_idx, lt_to_rustc_param_idx, ty_to_rustc_param_idx},
     to_placeholder_idx, Interner, Substitution,

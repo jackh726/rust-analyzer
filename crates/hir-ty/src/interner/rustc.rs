@@ -17,7 +17,7 @@ use rustc_type_ir::{
     visit, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
 };
 
-use crate::{db::HirDatabase, generics::generics};
+use crate::{db::HirDatabase, generics::generics, ConstScalar, FnAbi};
 
 use super::InternedWrapper;
 
@@ -877,9 +877,15 @@ impl inherent::ParamLike for RustcParamTy {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcBoundTy;
+pub struct RustcBoundTy(rustc_type_ir::BoundVar);
 
 todo_structural!(RustcBoundTy);
+
+impl RustcBoundTy {
+    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
+        RustcBoundTy(var)
+    }
+}
 
 impl inherent::BoundVarLike<RustcInterner> for RustcBoundTy {
     fn var(self) -> rustc_type_ir::BoundVar {
@@ -892,7 +898,10 @@ impl inherent::BoundVarLike<RustcInterner> for RustcBoundTy {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcPlaceholderTy;
+pub struct RustcPlaceholderTy {
+    universe: rustc_type_ir::UniverseIndex,
+    var: rustc_type_ir::BoundVar,
+}
 
 todo_structural!(RustcPlaceholderTy);
 
@@ -988,7 +997,13 @@ pub struct RustcPat;
 todo_structural!(RustcPat);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcSafety;
+pub struct RustcSafety(chalk_ir::Safety);
+
+impl RustcSafety {
+    pub fn new(safety: chalk_ir::Safety) -> Self {
+        RustcSafety(safety)
+    }
+}
 
 todo_structural!(RustcSafety);
 
@@ -1007,9 +1022,15 @@ impl inherent::Safety<RustcInterner> for RustcSafety {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcAbi;
+pub struct RustcAbi(FnAbi);
 
 todo_structural!(RustcAbi);
+
+impl RustcAbi {
+    pub fn new(abi: FnAbi) -> Self {
+        RustcAbi(abi)
+    }
+}
 
 impl inherent::Abi<RustcInterner> for RustcAbi {
     fn rust() -> Self {
@@ -1058,13 +1079,19 @@ impl inherent::ParamLike for RustcParamConst {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcBoundConst;
+pub struct RustcBoundConst(rustc_type_ir::BoundVar);
+
+impl RustcBoundConst {
+    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
+        RustcBoundConst(var)
+    }
+}
 
 todo_structural!(RustcBoundConst);
 
 impl inherent::BoundVarLike<RustcInterner> for RustcBoundConst {
     fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
+        self.0
     }
 
     fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
@@ -1072,8 +1099,14 @@ impl inherent::BoundVarLike<RustcInterner> for RustcBoundConst {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct RustcValueConst;
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct RustcValueConst(ConstScalar);
+
+impl RustcValueConst {
+    pub fn new(scalar: ConstScalar) -> Self {
+        RustcValueConst(scalar)
+    }
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct RustcExprConst;
