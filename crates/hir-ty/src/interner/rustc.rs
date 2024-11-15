@@ -10,14 +10,14 @@ use std::fmt;
 use triomphe::Arc;
 
 use rustc_ast_ir::visit::VisitorResult;
-use rustc_index_in_tree::bit_set::BitSet;
+use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
     solve::{ExternalConstraintsData, PredefinedOpaquesData},
     visit, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
 };
 
-use crate::{db::HirDatabase, generics::generics, ConstScalar, FnAbi};
+use crate::{db::HirDatabase, generics::generics, mapping::{convert_binder_to_early_binder, ChalkToRustc}, ConstScalar, FnAbi};
 
 use super::InternedWrapper;
 
@@ -645,9 +645,15 @@ impl<T> ir_print::IrPrint<T> for RustcInterner {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcBoundVarKinds;
+pub struct RustcBoundVarKinds(Vec<RustcBoundVarKind>);
 
 todo_structural!(RustcBoundVarKinds);
+
+impl RustcBoundVarKinds {
+    pub fn new(data: impl IntoIterator<Item = RustcBoundVarKind>) -> Self {
+        RustcBoundVarKinds(data.into_iter().collect())
+    }
+}
 
 impl Default for RustcBoundVarKinds {
     fn default() -> Self {
@@ -678,7 +684,24 @@ impl inherent::SliceLike for RustcBoundVarKinds {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcBoundVarKind;
+pub enum BoundTyKind {
+    Anon,
+    Param(GenericDefId),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum BoundRegionKind {
+    Anon,
+    Named(GenericDefId),
+    ClosureEnv,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum RustcBoundVarKind {
+    Ty(BoundTyKind),
+    Region(BoundRegionKind),
+    Const,
+}
 
 todo_structural!(RustcBoundVarKind);
 
@@ -889,7 +912,7 @@ impl RustcBoundTy {
 
 impl inherent::BoundVarLike<RustcInterner> for RustcBoundTy {
     fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
+        self.0
     }
 
     fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
@@ -1224,7 +1247,7 @@ todo_structural!(RustcBoundRegion);
 
 impl inherent::BoundVarLike<RustcInterner> for RustcBoundRegion {
     fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
+        self.0
     }
 
     fn assert_eq(self, var: <RustcInterner as rustc_type_ir::Interner>::BoundVarKind) {
@@ -1746,11 +1769,44 @@ impl inherent::SliceLike for RustcVariancesOf {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct RustcAdtDef(AdtId);
+pub struct VariantIdx(VariantId);
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct VariantDef;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct AdtFlags {
+    is_enum: bool,
+    is_union: bool,
+    is_struct: bool,
+    has_ctor: bool,
+    is_phantom_data: bool,
+    is_fundamental: bool,
+    is_box: bool,
+    is_manually_drop: bool,
+    is_variant_list_non_exhaustive: bool,
+    is_unsafe_cell: bool,
+    is_anonymous: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ReprOptions;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct AdtDefData {
+    pub did: GenericDefId,
+    pub id: AdtId,
+    pub variants: Vec<(VariantIdx, VariantDef)>,
+    pub flags: AdtFlags,
+    pub repr: ReprOptions,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct RustcAdtDef(AdtDefData);
 
 impl RustcAdtDef {
     pub fn new(def_id: AdtId) -> Self {
-        RustcAdtDef(def_id)
+        todo!()
     }
 }
 
@@ -1758,19 +1814,19 @@ todo_structural!(RustcAdtDef);
 
 impl inherent::AdtDef<RustcInterner> for RustcAdtDef {
     fn def_id(&self) -> <RustcInterner as rustc_type_ir::Interner>::DefId {
-        self.0.into()
+        self.0.did
     }
 
     fn is_struct(&self) -> bool {
-        matches!(self.0, AdtId::StructId(..))
+        self.0.flags.is_struct
     }
 
     fn is_phantom_data(&self) -> bool {
-        todo!()
+        self.0.flags.is_phantom_data
     }
 
     fn is_fundamental(&self) -> bool {
-        todo!()
+        self.0.flags.is_fundamental
     }
 }
 
@@ -1782,7 +1838,7 @@ impl<'cx> inherent::IrAdtDef<RustcInterner, RustcIr<'cx>> for RustcAdtDef {
         rustc_type_ir::EarlyBinder<RustcInterner, <RustcInterner as rustc_type_ir::Interner>::Ty>,
     > {
         let db = ir.db;
-        let hir_def::AdtId::StructId(struct_id) = self.0 else {
+        let hir_def::AdtId::StructId(struct_id) = self.0.id else {
             return None;
         };
         let id: VariantId = struct_id.into();
@@ -1792,11 +1848,8 @@ impl<'cx> inherent::IrAdtDef<RustcInterner, RustcIr<'cx>> for RustcAdtDef {
 
         let generic_params = generics(db.upcast(), struct_id.into());
         let subst = generic_params.rustc_param_subst(db);
-        let last_ty = RustcTy::from_chalk(
-            field_types[last_idx].skip_binders().clone().kind(super::Interner).clone(),
-        );
-        todo!("Must map BoundVar -> Param");
-        Some(rustc_type_ir::EarlyBinder::bind(last_ty))
+        let last_ty: rustc_type_ir::Binder<RustcInterner, RustcTy> = field_types[last_idx].clone().to_rustc();
+        Some(convert_binder_to_early_binder(last_ty))
     }
 
     fn all_field_tys(

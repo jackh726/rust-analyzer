@@ -11,17 +11,21 @@ use hir_def::{
     ConstParamId, FunctionId, LifetimeParamId, TraitId, TypeAliasId, TypeOrConstParamId,
     TypeParamId,
 };
-use rustc_type_ir::inherent::{PlaceholderLike, SliceLike};
+use rustc_type_ir::{
+    fold::{TypeFoldable, TypeSuperFoldable},
+    inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike},
+    visit::TypeVisitable,
+};
 
 use crate::{
     chalk_db,
     db::HirDatabase,
     interner::rustc::{
         RustcAbi, RustcAdtDef, RustcBoundConst, RustcBoundExistentialPredicates, RustcBoundRegion,
-        RustcBoundTy, RustcConst, RustcEarlyParamRegion, RustcErrorGuaranteed, RustcGenericArg,
-        RustcGenericArgs, RustcInterner, RustcParamConst, RustcParamTy, RustcPlaceholderConst,
-        RustcPlaceholderRegion, RustcPlaceholderTy, RustcRegion, RustcSafety, RustcTy, RustcTys,
-        RustcValueConst,
+        RustcBoundTy, RustcBoundVarKind, RustcBoundVarKinds, RustcConst, RustcEarlyParamRegion,
+        RustcErrorGuaranteed, RustcGenericArg, RustcGenericArgs, RustcInterner, RustcParamConst,
+        RustcParamTy, RustcPlaceholderConst, RustcPlaceholderRegion, RustcPlaceholderTy,
+        RustcRegion, RustcSafety, RustcTy, RustcTys, RustcValueConst,
     },
     AssocTypeId, CallableDefId, ChalkTraitId, FnDefId, ForeignDefId, Interner, OpaqueTyId,
     PlaceholderIndex,
@@ -196,13 +200,70 @@ pub fn from_chalk_trait_id(id: ChalkTraitId) -> TraitId {
     ra_salsa::InternKey::from_intern_id(id.0)
 }
 
-pub fn to_rustc_early_binder<T: HasInterner>(
-    t: chalk_ir::Binders<T>,
-) -> rustc_type_ir::EarlyBinder<RustcInterner, RustcTy> {
+pub fn convert_binder_to_early_binder<T>(
+    binder: rustc_type_ir::Binder<RustcInterner, T>,
+) -> rustc_type_ir::EarlyBinder<RustcInterner, T> {
     todo!()
 }
 
-trait ChalkToRustc<Rustc> {
+struct BinderToEarlyBinder {
+    debruijn: rustc_type_ir::DebruijnIndex,
+}
+
+impl rustc_type_ir::fold::TypeFolder<RustcInterner> for BinderToEarlyBinder {
+    fn cx(&self) -> RustcInterner {
+        RustcInterner
+    }
+
+    fn fold_binder<T>(
+        &mut self,
+        t: rustc_type_ir::Binder<RustcInterner, T>,
+    ) -> rustc_type_ir::Binder<RustcInterner, T>
+    where
+        T: TypeFoldable<RustcInterner>,
+    {
+        self.debruijn.shift_in(1);
+        let result = t.super_fold_with(self);
+        self.debruijn.shift_out(1);
+        result
+    }
+
+    fn fold_ty(&mut self, t: RustcTy) -> RustcTy {
+        match t.clone().kind() {
+            rustc_type_ir::TyKind::Bound(debruijn, bound_ty) if self.debruijn == debruijn => {
+                let var: rustc_type_ir::BoundVar = bound_ty.var();
+                RustcTy::new(rustc_type_ir::TyKind::Param(RustcParamTy { index: var.as_u32() }))
+            }
+            _ => t,
+        }
+    }
+
+    fn fold_region(&mut self, r: RustcRegion) -> RustcRegion {
+        match r.clone().kind() {
+            rustc_type_ir::ReBound(debruijn, bound_region) if self.debruijn == debruijn => {
+                let var: rustc_type_ir::BoundVar = bound_region.var();
+                RustcRegion::new(rustc_type_ir::RegionKind::ReEarlyParam(RustcEarlyParamRegion {
+                    index: var.as_u32(),
+                }))
+            }
+            _ => r,
+        }
+    }
+
+    fn fold_const(&mut self, c: RustcConst) -> RustcConst {
+        match c.clone().kind() {
+            rustc_type_ir::ConstKind::Bound(debruijn, bound_const) if self.debruijn == debruijn => {
+                let var: rustc_type_ir::BoundVar = bound_const.var();
+                RustcConst::new(rustc_type_ir::ConstKind::Param(RustcParamConst {
+                    index: var.as_u32(),
+                }))
+            }
+            _ => c,
+        }
+    }
+}
+
+pub trait ChalkToRustc<Rustc> {
     fn to_rustc(&self) -> Rustc;
 }
 
@@ -357,12 +418,13 @@ impl ChalkToRustc<RustcTy> for chalk_ir::Ty<Interner> {
                 }
             }
             chalk_ir::TyKind::Function(fn_pointer) => {
-                let sig_tys = fn_pointer.into_binders(Interner).to_rustc();
+                let sig_tys = fn_pointer.clone().into_binders(Interner).to_rustc();
                 let header = rustc_type_ir::FnHeader {
                     abi: RustcAbi::new(fn_pointer.sig.abi),
                     c_variadic: fn_pointer.sig.variadic,
                     safety: RustcSafety::new(fn_pointer.sig.safety),
                 };
+
                 rustc_type_ir::TyKind::FnPtr(sig_tys, header)
             }
             chalk_ir::TyKind::BoundVar(bound_var) => rustc_type_ir::TyKind::Bound(
@@ -449,11 +511,36 @@ impl ChalkToRustc<rustc_type_ir::FnSigTys<RustcInterner>> for chalk_ir::FnSubst<
     }
 }
 
-impl<U, T: ChalkToRustc<U> + HasInterner> ChalkToRustc<rustc_type_ir::Binder<RustcInterner, U>>
-    for chalk_ir::Binders<T>
+impl<
+        U: TypeVisitable<RustcInterner>,
+        T: Clone + ChalkToRustc<U> + HasInterner<Interner = Interner>,
+    > ChalkToRustc<rustc_type_ir::Binder<RustcInterner, U>> for chalk_ir::Binders<T>
 {
     fn to_rustc(&self) -> rustc_type_ir::Binder<RustcInterner, U> {
-        todo!()
+        let (val, binders) = self.clone().into_value_and_skipped_binders();
+        rustc_type_ir::Binder::bind_with_vars(val.to_rustc(), binders.to_rustc())
+    }
+}
+
+impl ChalkToRustc<RustcBoundVarKinds> for chalk_ir::VariableKinds<Interner> {
+    fn to_rustc(&self) -> RustcBoundVarKinds {
+        RustcBoundVarKinds::new(self.iter(Interner).map(|v| v.to_rustc()))
+    }
+}
+
+impl ChalkToRustc<RustcBoundVarKind> for chalk_ir::VariableKind<Interner> {
+    fn to_rustc(&self) -> RustcBoundVarKind {
+        match self {
+            chalk_ir::VariableKind::Ty(_ty_variable_kind) => {
+                RustcBoundVarKind::Ty(crate::interner::rustc::BoundTyKind::Anon)
+            }
+            chalk_ir::VariableKind::Lifetime => {
+                RustcBoundVarKind::Region(crate::interner::rustc::BoundRegionKind::Anon)
+            }
+            chalk_ir::VariableKind::Const(_ty) => {
+                RustcBoundVarKind::Ty(crate::interner::rustc::BoundTyKind::Anon)
+            }
+        }
     }
 }
 
