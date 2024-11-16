@@ -200,10 +200,11 @@ pub fn from_chalk_trait_id(id: ChalkTraitId) -> TraitId {
     ra_salsa::InternKey::from_intern_id(id.0)
 }
 
-pub fn convert_binder_to_early_binder<T>(
+pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<RustcInterner>>(
     binder: rustc_type_ir::Binder<RustcInterner, T>,
 ) -> rustc_type_ir::EarlyBinder<RustcInterner, T> {
-    todo!()
+    let mut folder = BinderToEarlyBinder { debruijn: rustc_type_ir::DebruijnIndex::ZERO };
+    rustc_type_ir::EarlyBinder::bind(binder.skip_binder().fold_with(&mut folder))
 }
 
 struct BinderToEarlyBinder {

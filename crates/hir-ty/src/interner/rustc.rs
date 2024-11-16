@@ -17,7 +17,12 @@ use rustc_type_ir::{
     visit, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
 };
 
-use crate::{db::HirDatabase, generics::generics, mapping::{convert_binder_to_early_binder, ChalkToRustc}, ConstScalar, FnAbi};
+use crate::{
+    db::HirDatabase,
+    generics::generics,
+    mapping::{convert_binder_to_early_binder, ChalkToRustc},
+    ConstScalar, FnAbi,
+};
 
 use super::InternedWrapper;
 
@@ -1846,21 +1851,34 @@ impl<'cx> inherent::IrAdtDef<RustcInterner, RustcIr<'cx>> for RustcAdtDef {
         let Some((last_idx, _)) = variant_data.fields().iter().last() else { return None };
         let field_types = db.field_types(id);
 
-        let generic_params = generics(db.upcast(), struct_id.into());
-        let subst = generic_params.rustc_param_subst(db);
-        let last_ty: rustc_type_ir::Binder<RustcInterner, RustcTy> = field_types[last_idx].clone().to_rustc();
+        let last_ty: rustc_type_ir::Binder<RustcInterner, RustcTy> =
+            field_types[last_idx].clone().to_rustc();
         Some(convert_binder_to_early_binder(last_ty))
     }
 
     fn all_field_tys(
         self,
-        interner: RustcIr<'cx>,
+        ir: RustcIr<'cx>,
     ) -> rustc_type_ir::EarlyBinder<
         RustcInterner,
         impl IntoIterator<Item = <RustcInterner as rustc_type_ir::Interner>::Ty>,
     > {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        let db = ir.db;
+        let id = match self.0.id {
+            AdtId::StructId(struct_id) => VariantId::StructId(struct_id),
+            AdtId::UnionId(union_id) => VariantId::UnionId(union_id),
+            AdtId::EnumId(enum_id) => todo!(),
+        };
+        let variant_data = id.variant_data(db.upcast());
+        let field_types = db.field_types(id);
+        let fields: Vec<_> = variant_data.fields().iter().map(|(idx, _)| idx).collect();
+        let tys = fields.into_iter().map(move |idx| {
+            let ty: rustc_type_ir::Binder<RustcInterner, RustcTy> =
+                field_types[idx].clone().to_rustc();
+            let ty = convert_binder_to_early_binder(ty);
+            ty.skip_binder()
+        });
+        rustc_type_ir::EarlyBinder::bind(tys)
     }
 
     fn sized_constraint(
