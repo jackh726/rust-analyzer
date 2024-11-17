@@ -33,6 +33,7 @@ mod inhabitedness;
 mod interner;
 mod lower;
 mod mapping;
+mod next_solver;
 mod tls;
 mod utils;
 

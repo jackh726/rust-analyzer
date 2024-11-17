@@ -18,13 +18,10 @@ use rustc_type_ir::{
 };
 
 use crate::{
-    db::HirDatabase,
-    generics::generics,
-    mapping::{convert_binder_to_early_binder, ChalkToRustc},
-    ConstScalar, FnAbi,
+    db::HirDatabase, generics::generics, interner::InternedWrapper, ConstScalar, FnAbi, Interner,
 };
 
-use super::InternedWrapper;
+use super::mapping::{convert_binder_to_early_binder, ChalkToRustc};
 
 impl_internable!(
     InternedWrapper<rustc_type_ir::ConstKind<RustcInterner>>,
@@ -223,7 +220,7 @@ impl RustcTy {
         RustcTy(Interned::new(InternedWrapper(kind)))
     }
 
-    pub fn from_chalk(kind: chalk_ir::TyKind<super::Interner>) -> Self {
+    pub fn from_chalk(kind: chalk_ir::TyKind<Interner>) -> Self {
         todo!()
     }
 }
