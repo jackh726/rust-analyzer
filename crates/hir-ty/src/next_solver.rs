@@ -8,6 +8,7 @@ mod infer;
 pub mod interner;
 mod ir_print;
 mod mapping;
+mod predicate;
 mod region;
 mod solver;
 
@@ -15,5 +16,6 @@ pub use consts::*;
 pub use generic_arg::*;
 pub use infer::*;
 pub use interner::*;
+pub use predicate::*;
 pub use region::*;
 pub use solver::*;

@@ -10,15 +10,16 @@ use rustc_type_ir::{
 use crate::{
     db::HirDatabase,
     next_solver::interner::{
-        AdtDef, BoundExistentialPredicates, BoundTy, BoundVarKind, BoundVarKinds, DbInterner,
-        ErrorGuaranteed, ParamTy, PlaceholderTy, Ty, Tys,
+        AdtDef, BoundTy, BoundVarKind, BoundVarKinds, DbInterner, ErrorGuaranteed, ParamTy,
+        PlaceholderTy, Ty, Tys,
     },
     Interner,
 };
 
 use super::{
-    BoundConst, BoundRegion, BoundRegionKind, BoundTyKind, Const, EarlyParamRegion, GenericArg,
-    GenericArgs, ParamConst, PlaceholderConst, PlaceholderRegion, Region, ValueConst,
+    BoundConst, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTyKind, Const,
+    EarlyParamRegion, GenericArg, GenericArgs, ParamConst, PlaceholderConst, PlaceholderRegion,
+    Region, ValueConst,
 };
 
 pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {

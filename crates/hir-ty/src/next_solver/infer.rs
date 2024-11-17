@@ -5,9 +5,7 @@ use rustc_type_ir::{
 
 use crate::db::HirDatabase;
 
-use super::{
-    Const, DbInterner, DbIr, DefiningOpaqueTypes, GenericArgs, ParamEnv, Predicate, Region, Ty,
-};
+use super::{Const, DbInterner, DbIr, DefiningOpaqueTypes, GenericArgs, Predicate, Region, Ty};
 
 pub type Binder<T> = rustc_type_ir::Binder<DbInterner, T>;
 pub type Canonical<T> = rustc_type_ir::Canonical<DbInterner, T>;
