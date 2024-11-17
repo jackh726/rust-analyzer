@@ -2,7 +2,7 @@
 
 use base_db::CrateId;
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
-use hir_def::{AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
+use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
@@ -13,14 +13,18 @@ use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
     solve::{ExternalConstraintsData, PredefinedOpaquesData},
-    visit, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
+    visit, BoundVar, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind,
+    TyKind, UniverseIndex,
 };
 
 use crate::{
     db::HirDatabase, generics::generics, interner::InternedWrapper, ConstScalar, FnAbi, Interner,
 };
 
-use super::mapping::{convert_binder_to_early_binder, ChalkToNextSolver};
+use super::{
+    abi::Safety,
+    mapping::{convert_binder_to_early_binder, ChalkToNextSolver},
+};
 
 impl_internable!(
     InternedWrapper<rustc_type_ir::ConstKind<DbInterner>>,
@@ -71,12 +75,8 @@ impl inherent::DefId<DbInterner> for GenericDefId {
     }
 }
 
-todo_structural!(GenericDefId);
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Span(Option<span::Span>);
-
-todo_structural!(Span);
 
 impl inherent::Span<DbInterner> for Span {
     fn dummy() -> Self {
@@ -670,7 +670,7 @@ impl inherent::SliceLike for BoundVarKinds {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum BoundTyKind {
     Anon,
     Param(GenericDefId),
@@ -878,28 +878,23 @@ pub struct ParamTy {
     pub(crate) index: u32,
 }
 
-todo_structural!(ParamTy);
-
 impl inherent::ParamLike for ParamTy {
     fn index(&self) -> u32 {
         self.index
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct BoundTy(rustc_type_ir::BoundVar);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
+pub struct BoundTy {
+    pub var: BoundVar,
+    pub kind: BoundTyKind,
+}
 
 todo_structural!(BoundTy);
 
-impl BoundTy {
-    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
-        BoundTy(var)
-    }
-}
-
 impl inherent::BoundVarLike<DbInterner> for BoundTy {
     fn var(self) -> rustc_type_ir::BoundVar {
-        self.0
+        self.var
     }
 
     fn assert_eq(self, var: <DbInterner as rustc_type_ir::Interner>::BoundVarKind) {
@@ -907,13 +902,13 @@ impl inherent::BoundVarLike<DbInterner> for BoundTy {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct PlaceholderTy {
-    universe: rustc_type_ir::UniverseIndex,
-    var: rustc_type_ir::BoundVar,
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)] // FIXME implement Debug by hand
+pub struct Placeholder<T> {
+    pub universe: UniverseIndex,
+    pub bound: T,
 }
 
-todo_structural!(PlaceholderTy);
+pub type PlaceholderTy = Placeholder<BoundTy>;
 
 impl inherent::PlaceholderLike for PlaceholderTy {
     fn universe(self) -> rustc_type_ir::UniverseIndex {
@@ -995,53 +990,12 @@ impl inherent::BoundExistentialPredicates<DbInterner> for BoundExistentialPredic
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct AllocId;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct Pat;
-
-todo_structural!(Pat);
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct Safety(chalk_ir::Safety);
-
-impl Safety {
-    pub fn new(safety: chalk_ir::Safety) -> Self {
-        Safety(safety)
-    }
-}
-
-todo_structural!(Safety);
-
-impl inherent::Safety<DbInterner> for Safety {
-    fn safe() -> Self {
-        todo!()
-    }
-
-    fn is_safe(self) -> bool {
-        todo!()
-    }
-
-    fn prefix_str(self) -> &'static str {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct Abi(FnAbi);
-
-todo_structural!(Abi);
-
-impl Abi {
-    pub fn new(abi: FnAbi) -> Self {
-        Abi(abi)
-    }
-}
-
-impl inherent::Abi<DbInterner> for Abi {
-    fn rust() -> Self {
-        todo!()
-    }
-
-    fn is_rust(self) -> bool {
+impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
+    fn relate<R: rustc_type_ir::relate::TypeRelation>(
+        relation: &mut R,
+        a: Self,
+        b: Self,
+    ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
         todo!()
     }
 }
@@ -1074,8 +1028,6 @@ pub struct ParamConst {
     pub index: u32,
 }
 
-todo_structural!(ParamConst);
-
 impl inherent::ParamLike for ParamConst {
     fn index(&self) -> u32 {
         self.index
@@ -1090,8 +1042,6 @@ impl BoundConst {
         BoundConst(var)
     }
 }
-
-todo_structural!(BoundConst);
 
 impl inherent::BoundVarLike<DbInterner> for BoundConst {
     fn var(self) -> rustc_type_ir::BoundVar {
@@ -1223,8 +1173,6 @@ impl BoundRegion {
         BoundRegion(var)
     }
 }
-
-todo_structural!(BoundRegion);
 
 impl inherent::BoundVarLike<DbInterner> for BoundRegion {
     fn var(self) -> rustc_type_ir::BoundVar {
@@ -1930,9 +1878,9 @@ impl rustc_type_ir::Interner for DbInterner {
     type ErrorGuaranteed = ErrorGuaranteed;
     type BoundExistentialPredicates = BoundExistentialPredicates;
     type AllocId = AllocId;
-    type Pat = Pat;
+    type Pat = PatId;
     type Safety = Safety;
-    type Abi = Abi;
+    type Abi = FnAbi;
 
     type Const = Const;
     type PlaceholderConst = PlaceholderConst;
@@ -2307,4 +2255,54 @@ impl<'cx> RustIr for DbIr<'cx> {
     fn interner(self) -> Self::Interner {
         DbInterner
     }
+}
+
+macro_rules! TrivialTypeTraversalImpls {
+    ($($ty:ty,)+) => {
+        $(
+            impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $ty {
+                fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
+                    self,
+                    _: &mut F,
+                ) -> ::std::result::Result<Self, F::Error> {
+                    Ok(self)
+                }
+
+                #[inline]
+                fn fold_with<F: rustc_type_ir::fold::TypeFolder<DbInterner>>(
+                    self,
+                    _: &mut F,
+                ) -> Self {
+                    self
+                }
+            }
+
+            impl rustc_type_ir::visit::TypeVisitable<DbInterner> for $ty {
+                #[inline]
+                fn visit_with<F: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
+                    &self,
+                    _: &mut F)
+                    -> F::Result
+                {
+                    <F::Result as rustc_ast_ir::visit::VisitorResult>::output()
+                }
+            }
+        )+
+    };
+}
+
+TrivialTypeTraversalImpls! {
+    GenericDefId,
+    PatId,
+    Safety,
+    FnAbi,
+    Span,
+    ParamConst,
+    ParamTy,
+    BoundRegion,
+    BoundConst,
+    Placeholder<BoundRegion>,
+    Placeholder<BoundTy>,
+    Placeholder<BoundConst>,
+    ValueConst,
 }

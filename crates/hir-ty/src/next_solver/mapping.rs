@@ -10,10 +10,10 @@ use rustc_type_ir::{
 use crate::{
     db::HirDatabase,
     next_solver::interner::{
-        Abi, AdtDef, BoundConst, BoundExistentialPredicates, BoundRegion, BoundTy, BoundVarKind,
+        AdtDef, BoundConst, BoundExistentialPredicates, BoundRegion, BoundTy, BoundVarKind,
         BoundVarKinds, Const, DbInterner, EarlyParamRegion, ErrorGuaranteed, GenericArg,
         GenericArgs, ParamConst, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy,
-        Region, Safety, Ty, Tys, ValueConst,
+        Region, Ty, Tys, ValueConst,
     },
     Interner,
 };
@@ -254,16 +254,22 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
             chalk_ir::TyKind::Function(fn_pointer) => {
                 let sig_tys = fn_pointer.clone().into_binders(Interner).to_nextsolver();
                 let header = rustc_type_ir::FnHeader {
-                    abi: Abi::new(fn_pointer.sig.abi),
+                    abi: fn_pointer.sig.abi,
                     c_variadic: fn_pointer.sig.variadic,
-                    safety: Safety::new(fn_pointer.sig.safety),
+                    safety: match fn_pointer.sig.safety {
+                        chalk_ir::Safety::Safe => super::abi::Safety::Safe,
+                        chalk_ir::Safety::Unsafe => super::abi::Safety::Unsafe,
+                    },
                 };
 
                 rustc_type_ir::TyKind::FnPtr(sig_tys, header)
             }
             chalk_ir::TyKind::BoundVar(bound_var) => rustc_type_ir::TyKind::Bound(
                 bound_var.debruijn.to_nextsolver(),
-                BoundTy::new(rustc_type_ir::BoundVar::from_usize(bound_var.index)),
+                BoundTy {
+                    var: rustc_type_ir::BoundVar::from_usize(bound_var.index),
+                    kind: BoundTyKind::Anon,
+                },
             ),
             chalk_ir::TyKind::InferenceVar(inference_var, ty_variable_kind) => {
                 rustc_type_ir::TyKind::Infer(
