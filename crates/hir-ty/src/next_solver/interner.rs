@@ -621,16 +621,6 @@ impl From<Const> for Term {
     }
 }
 
-impl<T> ir_print::IrPrint<T> for DbInterner {
-    fn print(t: &T, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-
-    fn print_debug(t: &T, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct BoundVarKinds(Vec<BoundVarKind>);
 
