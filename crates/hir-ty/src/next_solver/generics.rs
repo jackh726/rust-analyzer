@@ -3,8 +3,9 @@ use hir_def::GenericParamId;
 use crate::{db::HirDatabase, generics::Generics};
 
 use super::{
-    interner::{Const, GenericArgs, Region, Ty},
+    interner::{Const, GenericArgs, Ty},
     mapping::{const_to_param_idx, lt_to_param_idx, ty_to_param_idx},
+    region::Region,
 };
 
 impl Generics {

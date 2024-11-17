@@ -24,6 +24,9 @@ use crate::{
 use super::{
     abi::Safety,
     mapping::{convert_binder_to_early_binder, ChalkToNextSolver},
+    region::{
+        BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
+    },
 };
 
 impl_internable!(
@@ -33,6 +36,9 @@ impl_internable!(
     InternedWrapper<SmallVec<[GenericArg; 2]>>,
     InternedWrapper<SmallVec<[Ty; 2]>>,
 );
+
+#[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
+pub struct Symbol;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct DbInterner;
@@ -667,13 +673,6 @@ pub enum BoundTyKind {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum BoundRegionKind {
-    Anon,
-    Named(GenericDefId),
-    ClosureEnv,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BoundVarKind {
     Ty(BoundTyKind),
     Region(BoundRegionKind),
@@ -681,6 +680,29 @@ pub enum BoundVarKind {
 }
 
 todo_structural!(BoundVarKind);
+
+impl BoundVarKind {
+    pub fn expect_region(self) -> BoundRegionKind {
+        match self {
+            BoundVarKind::Region(lt) => lt,
+            _ => panic!("expected a region, but found another kind"),
+        }
+    }
+
+    pub fn expect_ty(self) -> BoundTyKind {
+        match self {
+            BoundVarKind::Ty(ty) => ty,
+            _ => panic!("expected a type, but found another kind"),
+        }
+    }
+
+    pub fn expect_const(self) {
+        match self {
+            BoundVarKind::Const => (),
+            _ => panic!("expected a const, but found another kind"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct PredefinedOpaques;
@@ -1059,143 +1081,6 @@ todo_structural!(ExprConst);
 
 impl inherent::ExprConst<DbInterner> for ExprConst {
     fn args(self) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Region(Interned<InternedWrapper<rustc_type_ir::RegionKind<DbInterner>>>);
-
-impl Region {
-    pub fn new(kind: rustc_type_ir::RegionKind<DbInterner>) -> Self {
-        Region(Interned::new(InternedWrapper(kind)))
-    }
-}
-
-impl PartialOrd for Region {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        todo!()
-    }
-}
-
-impl Ord for Region {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        todo!()
-    }
-}
-
-todo_structural!(Region);
-
-impl inherent::Region<DbInterner> for Region {
-    fn new_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: <DbInterner as rustc_type_ir::Interner>::BoundRegion,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_anon_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: rustc_type_ir::BoundVar,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_static(interner: DbInterner) -> Self {
-        todo!()
-    }
-}
-
-impl visit::Flags for Region {
-    fn flags(&self) -> rustc_type_ir::TypeFlags {
-        todo!()
-    }
-
-    fn outer_exclusive_binder(&self) -> rustc_type_ir::DebruijnIndex {
-        todo!()
-    }
-}
-
-impl fold::TypeSuperFoldable<DbInterner> for Region {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-
-impl visit::TypeSuperVisitable<DbInterner> for Region {
-    fn super_visit_with<V: visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
-        todo!()
-    }
-}
-
-impl inherent::IntoKind for Region {
-    type Kind = rustc_type_ir::RegionKind<DbInterner>;
-
-    fn kind(self) -> Self::Kind {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct EarlyParamRegion {
-    pub index: u32,
-}
-
-impl inherent::ParamLike for EarlyParamRegion {
-    fn index(&self) -> u32 {
-        self.index
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct LateParamRegion;
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct BoundRegion(rustc_type_ir::BoundVar);
-
-impl BoundRegion {
-    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
-        BoundRegion(var)
-    }
-}
-
-impl inherent::BoundVarLike<DbInterner> for BoundRegion {
-    fn var(self) -> rustc_type_ir::BoundVar {
-        self.0
-    }
-
-    fn assert_eq(self, var: <DbInterner as rustc_type_ir::Interner>::BoundVarKind) {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct PlaceholderRegion {
-    universe: rustc_type_ir::UniverseIndex,
-    var: rustc_type_ir::BoundVar,
-}
-
-todo_structural!(PlaceholderRegion);
-
-impl inherent::PlaceholderLike for PlaceholderRegion {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
-        todo!()
-    }
-
-    fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
-    }
-
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        todo!()
-    }
-
-    fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
         todo!()
     }
 }

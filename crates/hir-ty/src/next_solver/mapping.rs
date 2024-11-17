@@ -10,15 +10,16 @@ use rustc_type_ir::{
 use crate::{
     db::HirDatabase,
     next_solver::interner::{
-        AdtDef, BoundConst, BoundExistentialPredicates, BoundRegion, BoundTy, BoundVarKind,
-        BoundVarKinds, Const, DbInterner, EarlyParamRegion, ErrorGuaranteed, GenericArg,
-        GenericArgs, ParamConst, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy,
-        Region, Ty, Tys, ValueConst,
+        AdtDef, BoundConst, BoundExistentialPredicates, BoundTy, BoundVarKind, BoundVarKinds,
+        Const, DbInterner, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
+        PlaceholderConst, PlaceholderTy, Ty, Tys, ValueConst,
     },
     Interner,
 };
 
-use super::interner::{BoundRegionKind, BoundTyKind};
+use super::{
+    BoundRegion, BoundRegionKind, BoundTyKind, EarlyParamRegion, PlaceholderRegion, Region,
+};
 
 pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
     let interned_id = db.intern_type_or_const_param_id(id.into());
@@ -32,7 +33,10 @@ pub fn const_to_param_idx(db: &dyn HirDatabase, id: ConstParamId) -> ParamConst 
 
 pub fn lt_to_param_idx(db: &dyn HirDatabase, id: LifetimeParamId) -> EarlyParamRegion {
     let interned_id = db.intern_lifetime_param_id(id);
-    EarlyParamRegion { index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32() }
+    EarlyParamRegion {
+        index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(),
+        name: super::Symbol,
+    }
 }
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
@@ -80,6 +84,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
                 let var: rustc_type_ir::BoundVar = bound_region.var();
                 Region::new(rustc_type_ir::RegionKind::ReEarlyParam(EarlyParamRegion {
                     index: var.as_u32(),
+                    name: super::Symbol,
                 }))
             }
             _ => r,
@@ -285,7 +290,10 @@ impl ChalkToNextSolver<Region> for chalk_ir::Lifetime<Interner> {
         Region::new(match self.data(Interner) {
             chalk_ir::LifetimeData::BoundVar(bound_var) => rustc_type_ir::RegionKind::ReBound(
                 bound_var.debruijn.to_nextsolver(),
-                BoundRegion::new(rustc_type_ir::BoundVar::from_u32(bound_var.index as u32)),
+                BoundRegion {
+                    var: rustc_type_ir::BoundVar::from_u32(bound_var.index as u32),
+                    kind: BoundRegionKind::Anon,
+                },
             ),
             chalk_ir::LifetimeData::InferenceVar(inference_var) => {
                 rustc_type_ir::RegionKind::ReVar(rustc_type_ir::RegionVid::from_u32(
