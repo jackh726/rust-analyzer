@@ -3,7 +3,6 @@ use hir_def::{GenericDefId, GenericParamId};
 use crate::db::HirDatabase;
 
 use super::{
-    interner::Ty,
     mapping::{const_to_param_idx, lt_to_param_idx, ty_to_param_idx},
     Const, Region,
 };

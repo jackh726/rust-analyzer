@@ -10,7 +10,10 @@ use rustc_type_ir::{
 
 use crate::interner::InternedWrapper;
 
-use super::interner::{BoundVarKind, DbInterner, ErrorGuaranteed, Placeholder, Symbol};
+use super::{
+    interner::{BoundVarKind, DbInterner, Placeholder, Symbol},
+    ErrorGuaranteed,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Region(Interned<InternedWrapper<RegionKind<DbInterner>>>);

@@ -9,22 +9,19 @@ use rustc_type_ir::{
 
 use crate::{
     db::HirDatabase,
-    next_solver::interner::{
-        AdtDef, BoundTy, BoundVarKind, BoundVarKinds, DbInterner, ErrorGuaranteed, ParamTy,
-        PlaceholderTy, Ty, Tys,
-    },
+    next_solver::interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
     Interner,
 };
 
 use super::{
-    BoundConst, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTyKind, Const,
-    EarlyParamRegion, GenericArg, GenericArgs, ParamConst, PlaceholderConst, PlaceholderRegion,
-    Region, ValueConst,
+    BoundConst, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind,
+    Const, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
+    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst,
 };
 
 pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
     let interned_id = db.intern_type_or_const_param_id(id.into());
-    ParamTy { index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32() }
+    ParamTy { index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(), name: super::Symbol }
 }
 
 pub fn const_to_param_idx(db: &dyn HirDatabase, id: ConstParamId) -> ParamConst {
@@ -76,7 +73,10 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
         match t.clone().kind() {
             rustc_type_ir::TyKind::Bound(debruijn, bound_ty) if self.debruijn == debruijn => {
                 let var: rustc_type_ir::BoundVar = bound_ty.var();
-                Ty::new(rustc_type_ir::TyKind::Param(ParamTy { index: var.as_u32() }))
+                Ty::new(rustc_type_ir::TyKind::Param(ParamTy {
+                    index: var.as_u32(),
+                    name: super::Symbol,
+                }))
             }
             _ => t,
         }

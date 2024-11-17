@@ -28,9 +28,10 @@ use super::{
     region::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
-    Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, Clause, Clauses,
-    Const, ExprConst, GenericArg, GenericArgs, ParamConst, ParamEnv, PlaceholderConst, Predicate,
-    Term, ValueConst,
+    Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
+    BoundTyKind, Clause, Clauses, Const, ErrorGuaranteed, ExprConst, GenericArg, GenericArgs,
+    ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy, Predicate, Term, Ty, Tys,
+    ValueConst,
 };
 
 impl_internable!(
@@ -99,281 +100,6 @@ impl inherent::Span<DbInterner> for Span {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ty(Interned<InternedWrapper<rustc_type_ir::TyKind<DbInterner>>>);
-
-impl Ty {
-    pub fn new(kind: rustc_type_ir::TyKind<DbInterner>) -> Self {
-        Ty(Interned::new(InternedWrapper(kind)))
-    }
-
-    pub fn from_chalk(kind: chalk_ir::TyKind<Interner>) -> Self {
-        todo!()
-    }
-}
-
-impl PartialOrd for Ty {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        todo!()
-    }
-}
-
-impl Ord for Ty {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        todo!()
-    }
-}
-
-todo_structural!(Ty);
-
-impl inherent::Ty<DbInterner> for Ty {
-    fn new_unit(interner: DbInterner) -> Self {
-        todo!()
-    }
-
-    fn new_bool(interner: DbInterner) -> Self {
-        todo!()
-    }
-
-    fn new_u8(interner: DbInterner) -> Self {
-        todo!()
-    }
-
-    fn new_usize(interner: DbInterner) -> Self {
-        todo!()
-    }
-
-    fn new_infer(interner: DbInterner, var: rustc_type_ir::InferTy) -> Self {
-        todo!()
-    }
-
-    fn new_var(interner: DbInterner, var: rustc_type_ir::TyVid) -> Self {
-        todo!()
-    }
-
-    fn new_param(
-        interner: DbInterner,
-        param: <DbInterner as rustc_type_ir::Interner>::ParamTy,
-    ) -> Self {
-        let kind = rustc_type_ir::TyKind::Param(param);
-        Ty(Interned::new(InternedWrapper(kind)))
-    }
-
-    fn new_placeholder(
-        interner: DbInterner,
-        param: <DbInterner as rustc_type_ir::Interner>::PlaceholderTy,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: <DbInterner as rustc_type_ir::Interner>::BoundTy,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_anon_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: rustc_type_ir::BoundVar,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_alias(
-        interner: DbInterner,
-        kind: rustc_type_ir::AliasTyKind,
-        alias_ty: rustc_type_ir::AliasTy<DbInterner>,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_error(
-        interner: DbInterner,
-        guar: <DbInterner as rustc_type_ir::Interner>::ErrorGuaranteed,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_adt(
-        interner: DbInterner,
-        adt_def: <DbInterner as rustc_type_ir::Interner>::AdtDef,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_foreign(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_dynamic(
-        interner: DbInterner,
-        preds: <DbInterner as rustc_type_ir::Interner>::BoundExistentialPredicates,
-        region: <DbInterner as rustc_type_ir::Interner>::Region,
-        kind: rustc_type_ir::DynKind,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_coroutine(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_coroutine_closure(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_closure(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_coroutine_witness(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_ptr(interner: DbInterner, ty: Self, mutbl: rustc_ast_ir::Mutability) -> Self {
-        todo!()
-    }
-
-    fn new_ref(
-        interner: DbInterner,
-        region: <DbInterner as rustc_type_ir::Interner>::Region,
-        ty: Self,
-        mutbl: rustc_ast_ir::Mutability,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_array_with_const_len(
-        interner: DbInterner,
-        ty: Self,
-        len: <DbInterner as rustc_type_ir::Interner>::Const,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_slice(interner: DbInterner, ty: Self) -> Self {
-        todo!()
-    }
-
-    fn new_tup(interner: DbInterner, tys: &[<DbInterner as rustc_type_ir::Interner>::Ty]) -> Self {
-        todo!()
-    }
-
-    fn new_tup_from_iter<It, T>(interner: DbInterner, iter: It) -> T::Output
-    where
-        It: Iterator<Item = T>,
-        T: rustc_type_ir::CollectAndApply<Self, Self>,
-    {
-        todo!()
-    }
-
-    fn new_fn_def(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        args: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_fn_ptr(
-        interner: DbInterner,
-        sig: rustc_type_ir::Binder<DbInterner, rustc_type_ir::FnSig<DbInterner>>,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_pat(
-        interner: DbInterner,
-        ty: Self,
-        pat: <DbInterner as rustc_type_ir::Interner>::Pat,
-    ) -> Self {
-        todo!()
-    }
-
-    fn tuple_fields(self) -> <DbInterner as rustc_type_ir::Interner>::Tys {
-        todo!()
-    }
-
-    fn to_opt_closure_kind(self) -> Option<rustc_type_ir::ClosureKind> {
-        todo!()
-    }
-
-    fn from_closure_kind(interner: DbInterner, kind: rustc_type_ir::ClosureKind) -> Self {
-        todo!()
-    }
-
-    fn from_coroutine_closure_kind(interner: DbInterner, kind: rustc_type_ir::ClosureKind) -> Self {
-        todo!()
-    }
-
-    fn discriminant_ty(self, interner: DbInterner) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
-    }
-
-    fn async_destructor_ty(
-        self,
-        interner: DbInterner,
-    ) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
-    }
-}
-
-impl visit::Flags for Ty {
-    fn flags(&self) -> rustc_type_ir::TypeFlags {
-        todo!()
-    }
-
-    fn outer_exclusive_binder(&self) -> rustc_type_ir::DebruijnIndex {
-        todo!()
-    }
-}
-
-impl fold::TypeSuperFoldable<DbInterner> for Ty {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-
-impl visit::TypeSuperVisitable<DbInterner> for Ty {
-    fn super_visit_with<V: visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
-        todo!()
-    }
-}
-
-impl inherent::IntoKind for Ty {
-    type Kind = rustc_type_ir::TyKind<DbInterner>;
-
-    fn kind(self) -> Self::Kind {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct BoundVarKinds(Vec<BoundVarKind>);
 
@@ -411,12 +137,6 @@ impl inherent::SliceLike for BoundVarKinds {
     fn as_slice(&self) -> &[Self::Item] {
         todo!()
     }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum BoundTyKind {
-    Anon,
-    Param(GenericDefId),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -548,57 +268,6 @@ pub struct DepNodeIndex;
 #[derive(Debug)]
 pub struct Tracked<T: fmt::Debug + Clone>(T);
 
-type InternedTys = Interned<InternedWrapper<SmallVec<[Ty; 2]>>>;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Tys(InternedTys);
-
-todo_structural!(Tys);
-
-impl Tys {
-    pub fn new(data: impl IntoIterator<Item = Ty>) -> Self {
-        Tys(Interned::new(InternedWrapper(data.into_iter().collect())))
-    }
-}
-
-impl Default for Tys {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub struct TysIter;
-impl Iterator for TysIter {
-    type Item = Ty;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for Tys {
-    type Item = Ty;
-    type IntoIter = TysIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
-
-impl inherent::Tys<DbInterner> for Tys {
-    fn inputs(self) -> <DbInterner as rustc_type_ir::Interner>::FnInputTys {
-        todo!()
-    }
-
-    fn output(self) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FnInputTys;
 
@@ -632,63 +301,11 @@ impl inherent::SliceLike for FnInputTys {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ParamTy {
-    pub(crate) index: u32,
-}
-
-impl inherent::ParamLike for ParamTy {
-    fn index(&self) -> u32 {
-        self.index
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
-pub struct BoundTy {
-    pub var: BoundVar,
-    pub kind: BoundTyKind,
-}
-
-todo_structural!(BoundTy);
-
-impl inherent::BoundVarLike<DbInterner> for BoundTy {
-    fn var(self) -> rustc_type_ir::BoundVar {
-        self.var
-    }
-
-    fn assert_eq(self, var: <DbInterner as rustc_type_ir::Interner>::BoundVarKind) {
-        todo!()
-    }
-}
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)] // FIXME implement Debug by hand
 pub struct Placeholder<T> {
     pub universe: UniverseIndex,
     pub bound: T,
 }
-
-pub type PlaceholderTy = Placeholder<BoundTy>;
-
-impl inherent::PlaceholderLike for PlaceholderTy {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
-        todo!()
-    }
-
-    fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
-    }
-
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        todo!()
-    }
-
-    fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ErrorGuaranteed;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct AllocId;
