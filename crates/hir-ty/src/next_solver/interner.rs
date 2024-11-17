@@ -23,11 +23,13 @@ use crate::{
 
 use super::{
     abi::Safety,
+    generics::Generics,
     mapping::{convert_binder_to_early_binder, ChalkToNextSolver},
     region::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
-    BoundConst, Const, ExprConst, ParamConst, PlaceholderConst, ValueConst,
+    BoundConst, Const, ExprConst, GenericArg, GenericArgs, ParamConst, PlaceholderConst, Term,
+    ValueConst,
 };
 
 impl_internable!(
@@ -88,128 +90,6 @@ pub struct Span(Option<span::Span>);
 impl inherent::Span<DbInterner> for Span {
     fn dummy() -> Self {
         Span(None)
-    }
-}
-
-type InternedGenericArgs = Interned<InternedWrapper<SmallVec<[GenericArg; 2]>>>;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArgs(InternedGenericArgs);
-
-todo_structural!(GenericArgs);
-
-impl GenericArgs {
-    pub fn new(data: impl IntoIterator<Item = GenericArg>) -> Self {
-        GenericArgs(Interned::new(InternedWrapper(data.into_iter().collect())))
-    }
-}
-
-impl inherent::GenericArgs<DbInterner> for GenericArgs {
-    fn dummy() -> Self {
-        GenericArgs(Interned::new(InternedWrapper(smallvec![])))
-    }
-
-    fn rebase_onto(
-        self,
-        interner: DbInterner,
-        source_def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        target: <DbInterner as rustc_type_ir::Interner>::GenericArgs,
-    ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        todo!()
-    }
-
-    fn type_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
-    }
-
-    fn region_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Region {
-        todo!()
-    }
-
-    fn const_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Const {
-        todo!()
-    }
-
-    fn identity_for_item(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-    ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        todo!()
-    }
-
-    fn extend_with_error(
-        interner: DbInterner,
-        def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
-        original_args: &[GenericArg],
-    ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        todo!()
-    }
-
-    fn split_closure_args(self) -> rustc_type_ir::ClosureArgsParts<DbInterner> {
-        todo!()
-    }
-
-    fn split_coroutine_closure_args(self) -> rustc_type_ir::CoroutineClosureArgsParts<DbInterner> {
-        todo!()
-    }
-
-    fn split_coroutine_args(self) -> rustc_type_ir::CoroutineArgsParts<DbInterner> {
-        todo!()
-    }
-}
-
-pub struct GenericArgsIter;
-impl Iterator for GenericArgsIter {
-    type Item = GenericArg;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for GenericArgs {
-    type Item = GenericArg;
-    type IntoIter = GenericArgsIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArg;
-
-todo_structural!(GenericArg);
-
-impl inherent::GenericArg<DbInterner> for GenericArg {}
-
-impl inherent::IntoKind for GenericArg {
-    type Kind = GenericArgKind<DbInterner>;
-
-    fn kind(self) -> Self::Kind {
-        todo!()
-    }
-}
-
-impl From<Ty> for GenericArg {
-    fn from(value: Ty) -> Self {
-        todo!()
-    }
-}
-
-impl From<Const> for GenericArg {
-    fn from(value: Const) -> Self {
-        todo!()
-    }
-}
-
-impl From<Region> for GenericArg {
-    fn from(value: Region) -> Self {
-        todo!()
     }
 }
 
@@ -484,39 +364,6 @@ impl inherent::IntoKind for Ty {
     type Kind = rustc_type_ir::TyKind<DbInterner>;
 
     fn kind(self) -> Self::Kind {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Term {
-    Ty(Ty),
-    Const(Const),
-}
-
-impl inherent::Term<DbInterner> for Term {}
-
-todo_structural!(Term);
-
-impl inherent::IntoKind for Term {
-    type Kind = TermKind<DbInterner>;
-
-    fn kind(self) -> Self::Kind {
-        match self {
-            Self::Ty(ty) => TermKind::Ty(ty),
-            Self::Const(ct) => TermKind::Const(ct),
-        }
-    }
-}
-
-impl From<Ty> for Term {
-    fn from(value: Ty) -> Self {
-        todo!()
-    }
-}
-
-impl From<Const> for Term {
-    fn from(value: Const) -> Self {
         todo!()
     }
 }
@@ -1320,17 +1167,6 @@ impl visit::TypeSuperVisitable<DbInterner> for Clauses {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericsOf;
-
-todo_structural!(GenericsOf);
-
-impl inherent::GenericsOf<DbInterner> for GenericsOf {
-    fn count(&self) -> usize {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariancesOf;
 
 todo_structural!(VariancesOf);
@@ -1611,7 +1447,7 @@ impl rustc_type_ir::Interner for DbInterner {
         todo!()
     }
 
-    type GenericsOf = GenericsOf;
+    type GenericsOf = Generics;
 
     fn generics_of(self, def_id: Self::DefId) -> Self::GenericsOf {
         todo!()

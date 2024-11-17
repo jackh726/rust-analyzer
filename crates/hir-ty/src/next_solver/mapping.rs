@@ -11,14 +11,14 @@ use crate::{
     db::HirDatabase,
     next_solver::interner::{
         AdtDef, BoundExistentialPredicates, BoundTy, BoundVarKind, BoundVarKinds, DbInterner,
-        ErrorGuaranteed, GenericArg, GenericArgs, ParamTy, PlaceholderTy, Ty, Tys,
+        ErrorGuaranteed, ParamTy, PlaceholderTy, Ty, Tys,
     },
     Interner,
 };
 
 use super::{
-    BoundConst, BoundRegion, BoundRegionKind, BoundTyKind, Const, EarlyParamRegion, ParamConst,
-    PlaceholderConst, PlaceholderRegion, Region, ValueConst,
+    BoundConst, BoundRegion, BoundRegionKind, BoundTyKind, Const, EarlyParamRegion, GenericArg,
+    GenericArgs, ParamConst, PlaceholderConst, PlaceholderRegion, Region, ValueConst,
 };
 
 pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
