@@ -377,7 +377,7 @@ impl<
 
 impl ChalkToNextSolver<BoundVarKinds> for chalk_ir::VariableKinds<Interner> {
     fn to_nextsolver(&self) -> BoundVarKinds {
-        BoundVarKinds::new(self.iter(Interner).map(|v| v.to_nextsolver()))
+        BoundVarKinds::new_from_iter(self.iter(Interner).map(|v| v.to_nextsolver()))
     }
 }
 
@@ -405,7 +405,7 @@ impl ChalkToNextSolver<GenericArgs> for chalk_ir::Substitution<Interner> {
 
 impl ChalkToNextSolver<Tys> for chalk_ir::Substitution<Interner> {
     fn to_nextsolver(&self) -> Tys {
-        Tys::new(self.iter(Interner).map(|arg| -> Ty {
+        Tys::new_from_iter(self.iter(Interner).map(|arg| -> Ty {
             match arg.data(Interner) {
                 chalk_ir::GenericArgData::Ty(ty) => ty.to_nextsolver(),
                 chalk_ir::GenericArgData::Lifetime(_) => unreachable!(),

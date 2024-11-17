@@ -13,7 +13,7 @@ use crate::interner::InternedWrapper;
 
 use super::{
     generics::{GenericParamDef, Generics},
-    Const, DbInterner, Region, Ty,
+    interned_vec, Const, DbInterner, Region, Ty,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -114,60 +114,9 @@ impl Relate<DbInterner> for GenericArg {
     }
 }
 
+interned_vec!(GenericArgs, GenericArg);
+
 impl rustc_type_ir::inherent::GenericArg<DbInterner> for GenericArg {}
-
-type InternedGenericArgs = Interned<InternedWrapper<SmallVec<[GenericArg; 2]>>>;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GenericArgs(InternedGenericArgs);
-
-impl rustc_type_ir::fold::TypeFoldable<DbInterner> for GenericArgs {
-    fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        _folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-impl rustc_type_ir::visit::TypeVisitable<DbInterner> for GenericArgs {
-    fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
-        &self,
-        _visitor: &mut V,
-    ) -> V::Result {
-        todo!()
-    }
-}
-impl rustc_type_ir::relate::Relate<DbInterner> for GenericArgs {
-    fn relate<R: rustc_type_ir::relate::TypeRelation>(
-        _relation: &mut R,
-        _a: Self,
-        _b: Self,
-    ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
-    }
-}
-
-pub struct GenericArgsIter;
-impl Iterator for GenericArgsIter {
-    type Item = GenericArg;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::inherent::SliceLike for GenericArgs {
-    type Item = GenericArg;
-    type IntoIter = GenericArgsIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
 
 impl GenericArgs {
     pub fn new(data: impl IntoIterator<Item = GenericArg>) -> Self {

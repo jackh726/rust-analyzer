@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 
 use crate::interner::InternedWrapper;
 
-use super::{BoundVarKind, DbInterner, GenericArgs, Placeholder, Symbol};
+use super::{interned_vec, BoundVarKind, DbInterner, GenericArgs, Placeholder, Symbol};
 
 pub type FnHeader = rustc_type_ir::FnHeader<DbInterner>;
 
@@ -25,62 +25,7 @@ impl Ty {
     }
 }
 
-type InternedTys = Interned<InternedWrapper<SmallVec<[Ty; 2]>>>;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Tys(InternedTys);
-
-impl Tys {
-    pub fn new(data: impl IntoIterator<Item = Ty>) -> Self {
-        Tys(Interned::new(InternedWrapper(data.into_iter().collect())))
-    }
-}
-
-impl Default for Tys {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::fold::TypeFoldable<DbInterner> for Tys {
-    fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        _folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::visit::TypeVisitable<DbInterner> for Tys {
-    fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
-        &self,
-        _visitor: &mut V,
-    ) -> V::Result {
-        todo!()
-    }
-}
-
-pub struct TysIter;
-impl Iterator for TysIter {
-    type Item = Ty;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::inherent::SliceLike for Tys {
-    type Item = Ty;
-    type IntoIter = TysIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(Tys, Ty);
 
 impl rustc_type_ir::inherent::Tys<DbInterner> for Tys {
     fn inputs(self) -> <DbInterner as rustc_type_ir::Interner>::FnInputTys {
@@ -437,7 +382,7 @@ impl rustc_type_ir::inherent::Ty<DbInterner> for Ty {
     }
 
     fn new_tup(interner: DbInterner, tys: &[<DbInterner as rustc_type_ir::Interner>::Ty]) -> Self {
-        Ty::new(TyKind::Tuple(Tys::new(tys.iter().cloned())))
+        Ty::new(TyKind::Tuple(Tys::new_from_iter(tys.iter().cloned())))
     }
 
     fn new_tup_from_iter<It, T>(interner: DbInterner, iter: It) -> T::Output

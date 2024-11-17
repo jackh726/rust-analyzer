@@ -627,6 +627,7 @@ dependencies = [
  "limit",
  "nohash-hasher",
  "oorandom",
+ "paste",
  "project-model",
  "ra-ap-rustc_abi",
  "ra-ap-rustc_index",

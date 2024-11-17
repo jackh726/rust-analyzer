@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use base_db::CrateId;
-use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef, Variance};
+use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use smallvec::{smallvec, SmallVec};
@@ -13,8 +13,8 @@ use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
     solve::{ExternalConstraintsData, PredefinedOpaquesData},
-    visit, BoundVar, CanonicalVarInfo, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind,
-    TyKind, UniverseIndex,
+    visit, BoundVar, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
+    UniverseIndex, Variance,
 };
 
 use crate::{
@@ -29,20 +29,95 @@ use super::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
     Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
-    BoundTyKind, Clause, Clauses, Const, ErrorGuaranteed, ExprConst, GenericArg, GenericArgs,
-    ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy, Predicate, Term, Ty, Tys,
-    ValueConst,
+    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ErrorGuaranteed, ExprConst, GenericArg,
+    GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy, Predicate, Term,
+    Ty, Tys, ValueConst,
 };
 
 impl_internable!(
     InternedWrapper<rustc_type_ir::ConstKind<DbInterner>>,
     InternedWrapper<rustc_type_ir::RegionKind<DbInterner>>,
     InternedWrapper<rustc_type_ir::TyKind<DbInterner>>,
+    InternedWrapper<SmallVec<[BoundExistentialPredicate; 2]>>,
+    InternedWrapper<SmallVec<[BoundVarKind; 2]>>,
+    InternedWrapper<SmallVec<[Clause; 2]>>,
     InternedWrapper<SmallVec<[GenericArg; 2]>>,
     InternedWrapper<SmallVec<[Ty; 2]>>,
-    InternedWrapper<SmallVec<[BoundExistentialPredicate; 2]>>,
+    InternedWrapper<SmallVec<[CanonicalVarInfo; 2]>>,
+    InternedWrapper<SmallVec<[GenericDefId; 2]>>,
+    InternedWrapper<SmallVec<[Variance; 2]>>,
     InternedWrapper<Binder<rustc_type_ir::PredicateKind<DbInterner>>>,
 );
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! _interned_vec {
+    ($name:ident, $ty:ty) => {
+        paste::paste! {
+            type [<Interned $name>] = Interned<InternedWrapper<SmallVec<[$ty; 2]>>>;
+
+            #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+            pub struct $name([<Interned $name>]);
+
+            impl $name {
+                pub fn new_from_iter(data: impl IntoIterator<Item = $ty>) -> Self {
+                    $name(Interned::new(InternedWrapper(data.into_iter().collect())))
+                }
+            }
+
+            impl rustc_type_ir::inherent::SliceLike for $name {
+                type Item = $ty;
+
+                type IntoIter = <SmallVec<[$ty; 2]> as IntoIterator>::IntoIter;
+
+                fn iter(self) -> Self::IntoIter {
+                    self.0.0.clone().into_iter()
+                }
+
+                fn as_slice(&self) -> &[Self::Item] {
+                    self.0.0.as_slice()
+                }
+            }
+
+            impl IntoIterator for $name {
+                type Item = $ty;
+                type IntoIter = <Self as rustc_type_ir::inherent::SliceLike>::IntoIter;
+
+                fn into_iter(self) -> Self::IntoIter { rustc_type_ir::inherent::SliceLike::iter(self) }
+            }
+
+            impl Default for $name {
+                fn default() -> Self {
+                    $name(Interned::new(InternedWrapper(Default::default())))
+                }
+            }
+
+            impl rustc_type_ir::relate::Relate<DbInterner> for $name {
+                fn relate<R: rustc_type_ir::relate::TypeRelation<I = DbInterner>>(relation: &mut R, a: Self, b: Self) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
+                    todo!()
+                }
+            }
+
+            impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $name {
+                fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(self, folder: &mut F) -> Result<Self, F::Error> {
+                    use rustc_type_ir::inherent::{SliceLike as _};
+                    Ok($name(Interned::new(InternedWrapper(self.iter().map(|v| v.try_fold_with(folder)).collect::<Result<_, _>>()?))))
+                }
+            }
+
+            impl rustc_type_ir::visit::TypeVisitable<DbInterner> for $name {
+                fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
+                    use rustc_type_ir::inherent::{SliceLike as _};
+                    use rustc_ast_ir::visit::VisitorResult;
+                    rustc_ast_ir::walk_visitable_list!(visitor, self.as_slice().iter());
+                    V::Result::output()
+                }
+            }
+        }
+    };
+}
+
+pub use crate::_interned_vec as interned_vec;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Symbol;
@@ -100,44 +175,7 @@ impl inherent::Span<DbInterner> for Span {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct BoundVarKinds(Vec<BoundVarKind>);
-
-todo_structural!(BoundVarKinds);
-
-impl BoundVarKinds {
-    pub fn new(data: impl IntoIterator<Item = BoundVarKind>) -> Self {
-        BoundVarKinds(data.into_iter().collect())
-    }
-}
-
-impl Default for BoundVarKinds {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub struct BoundVarKindsIter;
-impl Iterator for BoundVarKindsIter {
-    type Item = BoundVarKind;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for BoundVarKinds {
-    type Item = BoundVarKind;
-    type IntoIter = BoundVarKindsIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(BoundVarKinds, BoundVarKind);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BoundVarKind {
@@ -184,71 +222,9 @@ impl std::ops::Deref for PredefinedOpaques {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct DefiningOpaqueTypes;
+interned_vec!(DefiningOpaqueTypes, GenericDefId);
 
-todo_structural!(DefiningOpaqueTypes);
-
-impl Default for DefiningOpaqueTypes {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub struct DefiningOpaqueTypesIter;
-impl Iterator for DefiningOpaqueTypesIter {
-    type Item = GenericDefId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for DefiningOpaqueTypes {
-    type Item = GenericDefId;
-    type IntoIter = DefiningOpaqueTypesIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct CanonicalVars;
-
-todo_structural!(CanonicalVars);
-
-impl Default for CanonicalVars {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub struct CanonicalVarsIter;
-impl Iterator for CanonicalVarsIter {
-    type Item = CanonicalVarInfo<DbInterner>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for CanonicalVars {
-    type Item = CanonicalVarInfo<DbInterner>;
-    type IntoIter = CanonicalVarsIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(CanonicalVars, CanonicalVarInfo);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ExternalConstraints;
@@ -268,38 +244,7 @@ pub struct DepNodeIndex;
 #[derive(Debug)]
 pub struct Tracked<T: fmt::Debug + Clone>(T);
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct FnInputTys;
-
-todo_structural!(FnInputTys);
-
-impl Default for FnInputTys {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub struct FnInputTysIter;
-impl Iterator for FnInputTysIter {
-    type Item = Ty;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for FnInputTys {
-    type Item = Ty;
-    type IntoIter = FnInputTysIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(FnInputTys, Ty);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)] // FIXME implement Debug by hand
 pub struct Placeholder<T> {
@@ -320,32 +265,7 @@ impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct VariancesOf;
-
-todo_structural!(VariancesOf);
-
-pub struct VariancesOfIter;
-impl Iterator for VariancesOfIter {
-    type Item = rustc_type_ir::Variance;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl inherent::SliceLike for VariancesOf {
-    type Item = rustc_type_ir::Variance;
-    type IntoIter = VariancesOfIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(VariancesOf, Variance);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantIdx(VariantId);

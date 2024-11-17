@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 
 use crate::interner::InternedWrapper;
 
-use super::{Binder, BoundVarKinds, DbInterner, Region, Ty};
+use super::{interned_vec, Binder, BoundVarKinds, DbInterner, Region, Ty};
 
 pub type BoundExistentialPredicate = Binder<ExistentialPredicate>;
 
@@ -39,97 +39,12 @@ pub type PolySubtypePredicate = Binder<SubtypePredicate>;
 pub type PolyCoercePredicate = Binder<CoercePredicate>;
 pub type PolyProjectionPredicate = Binder<ProjectionPredicate>;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct BoundExistentialPredicates(
-    Interned<InternedWrapper<SmallVec<[BoundExistentialPredicate; 2]>>>,
-);
-
-impl rustc_type_ir::relate::Relate<DbInterner> for BoundExistentialPredicates {
-    fn relate<R: rustc_type_ir::relate::TypeRelation>(
-        _relation: &mut R,
-        _a: Self,
-        _b: Self,
-    ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::fold::TypeFoldable<DbInterner> for BoundExistentialPredicates {
-    fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        _folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::visit::TypeVisitable<DbInterner> for BoundExistentialPredicates {
-    fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
-        &self,
-        _visitor: &mut V,
-    ) -> V::Result {
-        todo!()
-    }
-}
-
-pub struct BoundExistentialPredicatesIter;
-impl Iterator for BoundExistentialPredicatesIter {
-    type Item = BoundExistentialPredicate;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::inherent::SliceLike for BoundExistentialPredicates {
-    type Item = BoundExistentialPredicate;
-    type IntoIter = BoundExistentialPredicatesIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(BoundExistentialPredicates, BoundExistentialPredicate);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Predicate(Interned<InternedWrapper<Binder<rustc_type_ir::PredicateKind<DbInterner>>>>);
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Clauses(Vec<Clause>);
-
-impl rustc_type_ir::visit::TypeVisitable<DbInterner> for Clauses {
-    fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
-        &self,
-        _visitor: &mut V,
-    ) -> V::Result {
-        todo!()
-    }
-}
-
-pub struct ClausesIter;
-impl Iterator for ClausesIter {
-    type Item = Clause;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-impl rustc_type_ir::inherent::SliceLike for Clauses {
-    type Item = Clause;
-    type IntoIter = ClausesIter;
-
-    fn iter(self) -> Self::IntoIter {
-        todo!()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        todo!()
-    }
-}
+interned_vec!(Clauses, Clause);
 
 impl rustc_type_ir::visit::Flags for Clauses {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
@@ -573,7 +488,8 @@ impl rustc_type_ir::inherent::Clause<DbInterner> for Clause {
         // 2) Self: Bar1<'a, '^0.1> -> T: Bar1<'^0.0, '^0.1>
         let new = EarlyBinder::bind(shifted_pred).instantiate(cx, trait_ref.skip_binder().args);
         // 3) ['x] + ['b] -> ['x, 'b]
-        let bound_vars = BoundVarKinds::new(trait_bound_vars.iter().chain(pred_bound_vars.iter()));
+        let bound_vars =
+            BoundVarKinds::new_from_iter(trait_bound_vars.iter().chain(pred_bound_vars.iter()));
 
         // FIXME: Is it really perf sensitive to use reuse_or_mk_predicate here?
         let predicate: Predicate =
