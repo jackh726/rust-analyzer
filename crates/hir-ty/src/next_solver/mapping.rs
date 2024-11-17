@@ -10,15 +10,15 @@ use rustc_type_ir::{
 use crate::{
     db::HirDatabase,
     next_solver::interner::{
-        AdtDef, BoundConst, BoundExistentialPredicates, BoundTy, BoundVarKind, BoundVarKinds,
-        Const, DbInterner, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
-        PlaceholderConst, PlaceholderTy, Ty, Tys, ValueConst,
+        AdtDef, BoundExistentialPredicates, BoundTy, BoundVarKind, BoundVarKinds, DbInterner,
+        ErrorGuaranteed, GenericArg, GenericArgs, ParamTy, PlaceholderTy, Ty, Tys,
     },
     Interner,
 };
 
 use super::{
-    BoundRegion, BoundRegionKind, BoundTyKind, EarlyParamRegion, PlaceholderRegion, Region,
+    BoundConst, BoundRegion, BoundRegionKind, BoundTyKind, Const, EarlyParamRegion, ParamConst,
+    PlaceholderConst, PlaceholderRegion, Region, ValueConst,
 };
 
 pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
@@ -28,7 +28,10 @@ pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
 
 pub fn const_to_param_idx(db: &dyn HirDatabase, id: ConstParamId) -> ParamConst {
     let interned_id = db.intern_type_or_const_param_id(id.into());
-    ParamConst { index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32() }
+    ParamConst {
+        index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(),
+        name: super::Symbol,
+    }
 }
 
 pub fn lt_to_param_idx(db: &dyn HirDatabase, id: LifetimeParamId) -> EarlyParamRegion {
@@ -95,7 +98,10 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
         match c.clone().kind() {
             rustc_type_ir::ConstKind::Bound(debruijn, bound_const) if self.debruijn == debruijn => {
                 let var: rustc_type_ir::BoundVar = bound_const.var();
-                Const::new(rustc_type_ir::ConstKind::Param(ParamConst { index: var.as_u32() }))
+                Const::new(rustc_type_ir::ConstKind::Param(ParamConst {
+                    index: var.as_u32(),
+                    name: super::Symbol,
+                }))
             }
             _ => c,
         }
@@ -322,7 +328,7 @@ impl ChalkToNextSolver<Const> for chalk_ir::Const<Interner> {
         Const::new(match &data.value {
             chalk_ir::ConstValue::BoundVar(bound_var) => rustc_type_ir::ConstKind::Bound(
                 bound_var.debruijn.to_nextsolver(),
-                BoundConst::new(rustc_type_ir::BoundVar::from_usize(bound_var.index)),
+                BoundConst { var: rustc_type_ir::BoundVar::from_usize(bound_var.index) },
             ),
             chalk_ir::ConstValue::InferenceVar(inference_var) => {
                 rustc_type_ir::ConstKind::Infer(rustc_type_ir::InferConst::Var(

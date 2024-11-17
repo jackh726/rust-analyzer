@@ -27,6 +27,7 @@ use super::{
     region::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
+    BoundConst, Const, ExprConst, ParamConst, PlaceholderConst, ValueConst,
 };
 
 impl_internable!(
@@ -488,113 +489,6 @@ impl inherent::IntoKind for Ty {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Const(Interned<InternedWrapper<rustc_type_ir::ConstKind<DbInterner>>>);
-
-impl Const {
-    pub fn new(kind: rustc_type_ir::ConstKind<DbInterner>) -> Self {
-        Const(Interned::new(InternedWrapper(kind)))
-    }
-}
-
-impl PartialOrd for Const {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        todo!()
-    }
-}
-
-impl Ord for Const {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        todo!()
-    }
-}
-
-todo_structural!(Const);
-
-impl inherent::Const<DbInterner> for Const {
-    fn try_to_target_usize(self, interner: DbInterner) -> Option<u64> {
-        todo!()
-    }
-
-    fn new_infer(interner: DbInterner, var: rustc_type_ir::InferConst) -> Self {
-        todo!()
-    }
-
-    fn new_var(interner: DbInterner, var: rustc_type_ir::ConstVid) -> Self {
-        todo!()
-    }
-
-    fn new_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: <DbInterner as rustc_type_ir::Interner>::BoundConst,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_anon_bound(
-        interner: DbInterner,
-        debruijn: rustc_type_ir::DebruijnIndex,
-        var: rustc_type_ir::BoundVar,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_unevaluated(
-        interner: DbInterner,
-        uv: rustc_type_ir::UnevaluatedConst<DbInterner>,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_expr(
-        interner: DbInterner,
-        expr: <DbInterner as rustc_type_ir::Interner>::ExprConst,
-    ) -> Self {
-        todo!()
-    }
-
-    fn new_error(
-        interner: DbInterner,
-        guar: <DbInterner as rustc_type_ir::Interner>::ErrorGuaranteed,
-    ) -> Self {
-        todo!()
-    }
-}
-
-impl visit::Flags for Const {
-    fn flags(&self) -> rustc_type_ir::TypeFlags {
-        todo!()
-    }
-
-    fn outer_exclusive_binder(&self) -> rustc_type_ir::DebruijnIndex {
-        todo!()
-    }
-}
-
-impl fold::TypeSuperFoldable<DbInterner> for Const {
-    fn try_super_fold_with<F: fold::FallibleTypeFolder<DbInterner>>(
-        self,
-        folder: &mut F,
-    ) -> Result<Self, F::Error> {
-        todo!()
-    }
-}
-
-impl visit::TypeSuperVisitable<DbInterner> for Const {
-    fn super_visit_with<V: visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
-        todo!()
-    }
-}
-
-impl inherent::IntoKind for Const {
-    type Kind = ConstKind<DbInterner>;
-
-    fn kind(self) -> Self::Kind {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Term {
     Ty(Ty),
     Const(Const),
@@ -1008,79 +902,6 @@ impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
         a: Self,
         b: Self,
     ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct PlaceholderConst;
-
-todo_structural!(PlaceholderConst);
-
-impl inherent::PlaceholderLike for PlaceholderConst {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
-        todo!()
-    }
-
-    fn var(self) -> rustc_type_ir::BoundVar {
-        todo!()
-    }
-
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        todo!()
-    }
-
-    fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ParamConst {
-    pub index: u32,
-}
-
-impl inherent::ParamLike for ParamConst {
-    fn index(&self) -> u32 {
-        self.index
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct BoundConst(rustc_type_ir::BoundVar);
-
-impl BoundConst {
-    pub fn new(var: rustc_type_ir::BoundVar) -> Self {
-        BoundConst(var)
-    }
-}
-
-impl inherent::BoundVarLike<DbInterner> for BoundConst {
-    fn var(self) -> rustc_type_ir::BoundVar {
-        self.0
-    }
-
-    fn assert_eq(self, var: <DbInterner as rustc_type_ir::Interner>::BoundVarKind) {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ValueConst(ConstScalar);
-
-impl ValueConst {
-    pub fn new(scalar: ConstScalar) -> Self {
-        ValueConst(scalar)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ExprConst;
-
-todo_structural!(ExprConst);
-
-impl inherent::ExprConst<DbInterner> for ExprConst {
-    fn args(self) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
         todo!()
     }
 }
