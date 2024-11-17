@@ -3,9 +3,9 @@ use intern::Interned;
 use rustc_type_ir::{
     fold::TypeFoldable,
     inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike},
-    relate::Relate,
+    relate::{Relate, VarianceDiagInfo},
     visit::TypeVisitable,
-    GenericArgKind, Interner, TermKind, TyKind,
+    CollectAndApply, GenericArgKind, Interner, TermKind, TyKind, Variance,
 };
 use smallvec::SmallVec;
 
@@ -164,6 +164,26 @@ impl GenericArgs {
             assert_eq!(param.index as usize, args.len(), "{args:#?}, {defs:#?}");
             args.push(kind);
         }
+    }
+}
+
+impl rustc_type_ir::relate::Relate<DbInterner> for GenericArgs {
+    fn relate<R: rustc_type_ir::relate::TypeRelation<I = DbInterner>>(
+        relation: &mut R,
+        a: Self,
+        b: Self,
+    ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
+        CollectAndApply::collect_and_apply(
+            std::iter::zip(a.iter(), b.iter()).map(|(a, b)| {
+                relation.relate_with_variance(
+                    Variance::Invariant,
+                    VarianceDiagInfo::default(),
+                    a,
+                    b,
+                )
+            }),
+            |g| GenericArgs::new_from_iter(g.iter().cloned()),
+        )
     }
 }
 

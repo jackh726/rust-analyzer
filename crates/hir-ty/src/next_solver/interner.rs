@@ -92,12 +92,6 @@ macro_rules! _interned_vec {
                 }
             }
 
-            impl rustc_type_ir::relate::Relate<DbInterner> for $name {
-                fn relate<R: rustc_type_ir::relate::TypeRelation<I = DbInterner>>(relation: &mut R, a: Self, b: Self) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-                    todo!()
-                }
-            }
-
             impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $name {
                 fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(self, folder: &mut F) -> Result<Self, F::Error> {
                     use rustc_type_ir::inherent::{SliceLike as _};

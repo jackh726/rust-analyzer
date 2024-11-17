@@ -1,13 +1,16 @@
+use std::cmp::Ordering;
+
 use intern::Interned;
 use rustc_type_ir::{
     self as ty,
     elaborate::Elaboratable,
+    error::{ExpectedFound, TypeError},
     fold::{TypeFoldable, TypeSuperFoldable},
     inherent::{IntoKind, SliceLike},
     relate::Relate,
     solve::Reveal,
     visit::{Flags, TypeSuperVisitable, TypeVisitable},
-    EarlyBinder, Upcast, UpcastFrom,
+    CollectAndApply, EarlyBinder, Upcast, UpcastFrom,
 };
 use smallvec::SmallVec;
 
@@ -39,7 +42,83 @@ pub type PolySubtypePredicate = Binder<SubtypePredicate>;
 pub type PolyCoercePredicate = Binder<CoercePredicate>;
 pub type PolyProjectionPredicate = Binder<ProjectionPredicate>;
 
+/// Compares via an ordering that will not change if modules are reordered or other changes are
+/// made to the tree. In particular, this ordering is preserved across incremental compilations.
+fn stable_cmp_existential_predicate(
+    a: &ExistentialPredicate,
+    b: &ExistentialPredicate,
+) -> Ordering {
+    // FIXME: this is actual unstable - see impl in predicate.rs in `rustc_middle`
+    match (a, b) {
+        (ExistentialPredicate::Trait(_), ExistentialPredicate::Trait(_)) => Ordering::Equal,
+        (ExistentialPredicate::Projection(ref a), ExistentialPredicate::Projection(ref b)) => {
+            // Should sort by def path hash
+            Ordering::Equal
+        }
+        (ExistentialPredicate::AutoTrait(ref a), ExistentialPredicate::AutoTrait(ref b)) => {
+            // Should sort by def path hash
+            Ordering::Equal
+        }
+        (ExistentialPredicate::Trait(_), _) => Ordering::Less,
+        (ExistentialPredicate::Projection(_), ExistentialPredicate::Trait(_)) => Ordering::Greater,
+        (ExistentialPredicate::Projection(_), _) => Ordering::Less,
+        (ExistentialPredicate::AutoTrait(_), _) => Ordering::Greater,
+    }
+}
 interned_vec!(BoundExistentialPredicates, BoundExistentialPredicate);
+
+impl rustc_type_ir::relate::Relate<DbInterner> for BoundExistentialPredicates {
+    fn relate<R: rustc_type_ir::relate::TypeRelation<I = DbInterner>>(
+        relation: &mut R,
+        a: Self,
+        b: Self,
+    ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
+        // We need to perform this deduplication as we sometimes generate duplicate projections in `a`.
+        let mut a_v: Vec<_> = a.clone().into_iter().collect();
+        let mut b_v: Vec<_> = b.clone().into_iter().collect();
+        // `skip_binder` here is okay because `stable_cmp` doesn't look at binders
+        a_v.sort_by(|a, b| {
+            stable_cmp_existential_predicate(a.as_ref().skip_binder(), b.as_ref().skip_binder())
+        });
+        a_v.dedup();
+        b_v.sort_by(|a, b| {
+            stable_cmp_existential_predicate(a.as_ref().skip_binder(), b.as_ref().skip_binder())
+        });
+        b_v.dedup();
+        if a_v.len() != b_v.len() {
+            return Err(TypeError::ExistentialMismatch(ExpectedFound::new(true, a, b)));
+        }
+
+        let v = std::iter::zip(a_v, b_v).map(|(ep_a, ep_b)| {
+            match (ep_a.clone().skip_binder(), ep_b.clone().skip_binder()) {
+                (ty::ExistentialPredicate::Trait(a), ty::ExistentialPredicate::Trait(b)) => {
+                    Ok(ep_a.rebind(ty::ExistentialPredicate::Trait(
+                        relation.relate(ep_a.rebind(a), ep_b.rebind(b))?.skip_binder(),
+                    )))
+                }
+                (
+                    ty::ExistentialPredicate::Projection(a),
+                    ty::ExistentialPredicate::Projection(b),
+                ) => Ok(ep_a.rebind(ty::ExistentialPredicate::Projection(
+                    relation.relate(ep_a.rebind(a), ep_b.rebind(b))?.skip_binder(),
+                ))),
+                (
+                    ty::ExistentialPredicate::AutoTrait(a),
+                    ty::ExistentialPredicate::AutoTrait(b),
+                ) if a == b => Ok(ep_a.rebind(ty::ExistentialPredicate::AutoTrait(a))),
+                _ => Err(TypeError::ExistentialMismatch(ExpectedFound::new(
+                    true,
+                    a.clone(),
+                    b.clone(),
+                ))),
+            }
+        });
+
+        CollectAndApply::collect_and_apply(v, |g| {
+            BoundExistentialPredicates::new_from_iter(g.iter().cloned())
+        })
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Predicate(Interned<InternedWrapper<Binder<rustc_type_ir::PredicateKind<DbInterner>>>>);

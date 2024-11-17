@@ -65,19 +65,11 @@ impl rustc_type_ir::inherent::BoundVarLike<DbInterner> for BoundConst {
     }
 }
 
-impl Const {
-    pub fn error() -> Self {
-        //db.intern_rustc_const(InternedConst(ConstKind::Error(ErrorGuaranteed)))
-        todo!()
-    }
-}
-
 impl IntoKind for Const {
     type Kind = ConstKind;
 
     fn kind(self) -> Self::Kind {
-        //db.lookup_intern_rustc_const(self).0
-        todo!()
+        self.0 .0.clone()
     }
 }
 
@@ -155,12 +147,12 @@ impl TypeSuperFoldable<DbInterner> for Const {
 }
 
 impl Relate<DbInterner> for Const {
-    fn relate<R: rustc_type_ir::relate::TypeRelation>(
+    fn relate<R: rustc_type_ir::relate::TypeRelation<I = DbInterner>>(
         relation: &mut R,
         a: Self,
         b: Self,
     ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
+        relation.consts(a, b)
     }
 }
 
@@ -268,7 +260,9 @@ impl Relate<DbInterner> for ExprConst {
         a: Self,
         b: Self,
     ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
+        // Ensure we get back to this when we fill in the fields
+        let ExprConst = b;
+        Ok(a)
     }
 }
 
