@@ -13,7 +13,7 @@ use rustc_ast_ir::visit::VisitorResult;
 use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
-    solve::{ExternalConstraintsData, PredefinedOpaquesData},
+    solve::{ExternalConstraintsData, PredefinedOpaquesData, Reveal},
     visit, BoundVar, GenericArgKind, RegionKind, RustIr, TermKind, UniverseIndex, Variance,
     WithCachedTypeInfo,
 };
@@ -31,18 +31,18 @@ use super::{
     },
     Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
     BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ConstKind, ErrorGuaranteed, ExprConst,
-    GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy,
-    Predicate, PredicateKind, Term, Ty, TyKind, Tys, ValueConst,
+    GenericArg, GenericArgs, InternedClausesWrapper, ParamConst, ParamEnv, ParamTy,
+    PlaceholderConst, PlaceholderTy, Predicate, PredicateKind, Term, Ty, TyKind, Tys, ValueConst,
 };
 
 impl_internable!(
     InternedWrapper<WithCachedTypeInfo<ConstKind>>,
     InternedWrapper<RegionKind<DbInterner>>,
     InternedWrapper<WithCachedTypeInfo<TyKind>>,
-    InternedWrapper<Binder<PredicateKind>>,
+    InternedWrapper<WithCachedTypeInfo<Binder<PredicateKind>>>,
     InternedWrapper<SmallVec<[BoundExistentialPredicate; 2]>>,
     InternedWrapper<SmallVec<[BoundVarKind; 2]>>,
-    InternedWrapper<SmallVec<[Clause; 2]>>,
+    InternedClausesWrapper,
     InternedWrapper<SmallVec<[GenericArg; 2]>>,
     InternedWrapper<SmallVec<[Ty; 2]>>,
     InternedWrapper<SmallVec<[CanonicalVarInfo; 2]>>,
@@ -950,4 +950,5 @@ TrivialTypeTraversalImpls! {
     Placeholder<BoundTy>,
     Placeholder<BoundConst>,
     ValueConst,
+    Reveal,
 }
