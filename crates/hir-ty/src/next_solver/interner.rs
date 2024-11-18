@@ -12,10 +12,8 @@ use triomphe::Arc;
 use rustc_ast_ir::visit::VisitorResult;
 use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
-    elaborate, fold, inherent, ir_print, relate,
-    solve::{ExternalConstraintsData, PredefinedOpaquesData, Reveal},
-    visit, BoundVar, GenericArgKind, RegionKind, RustIr, TermKind, UniverseIndex, Variance,
-    WithCachedTypeInfo,
+    elaborate, fold, inherent, ir_print, relate, solve::Reveal, visit, BoundVar, GenericArgKind,
+    RegionKind, RustIr, TermKind, UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
 use crate::{
@@ -30,9 +28,11 @@ use super::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
     Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
-    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ConstKind, ErrorGuaranteed, ExprConst,
-    GenericArg, GenericArgs, InternedClausesWrapper, ParamConst, ParamEnv, ParamTy,
-    PlaceholderConst, PlaceholderTy, Predicate, PredicateKind, Term, Ty, TyKind, Tys, ValueConst,
+    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ConstKind, DefiningOpaqueTypes,
+    ErrorGuaranteed, ExprConst, ExternalConstraints, ExternalConstraintsData, GenericArg,
+    GenericArgs, InternedClausesWrapper, ParamConst, ParamEnv, ParamTy, PlaceholderConst,
+    PlaceholderTy, PredefinedOpaques, PredefinedOpaquesData, Predicate, PredicateKind, Term, Ty,
+    TyKind, Tys, ValueConst,
 };
 
 impl_internable!(
@@ -48,6 +48,8 @@ impl_internable!(
     InternedWrapper<SmallVec<[CanonicalVarInfo; 2]>>,
     InternedWrapper<SmallVec<[GenericDefId; 2]>>,
     InternedWrapper<SmallVec<[Variance; 2]>>,
+    InternedWrapper<PredefinedOpaquesData>,
+    InternedWrapper<ExternalConstraintsData>,
 );
 
 #[macro_export]
@@ -60,7 +62,7 @@ macro_rules! _interned_vec {
             impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $name {
                 fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(self, folder: &mut F) -> Result<Self, F::Error> {
                     use rustc_type_ir::inherent::{SliceLike as _};
-                    Ok($name(Interned::new(InternedWrapper(self.iter().map(|v| v.try_fold_with(folder)).collect::<Result<_, _>>()?))))
+                    Ok($name(intern::Interned::new(InternedWrapper(self.iter().map(|v| v.try_fold_with(folder)).collect::<Result<_, _>>()?))))
                 }
             }
 
@@ -76,21 +78,21 @@ macro_rules! _interned_vec {
     };
     ($name:ident, $ty:ty, nofold) => {
         paste::paste! {
-            type [<Interned $name>] = Interned<InternedWrapper<SmallVec<[$ty; 2]>>>;
+            type [<Interned $name>] = intern::Interned<InternedWrapper<smallvec::SmallVec<[$ty; 2]>>>;
 
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             pub struct $name([<Interned $name>]);
 
             impl $name {
                 pub fn new_from_iter(data: impl IntoIterator<Item = $ty>) -> Self {
-                    $name(Interned::new(InternedWrapper(data.into_iter().collect())))
+                    $name(intern::Interned::new(InternedWrapper(data.into_iter().collect())))
                 }
             }
 
             impl rustc_type_ir::inherent::SliceLike for $name {
                 type Item = $ty;
 
-                type IntoIter = <SmallVec<[$ty; 2]> as IntoIterator>::IntoIter;
+                type IntoIter = <smallvec::SmallVec<[$ty; 2]> as IntoIterator>::IntoIter;
 
                 fn iter(self) -> Self::IntoIter {
                     self.0.0.clone().into_iter()
@@ -110,7 +112,7 @@ macro_rules! _interned_vec {
 
             impl Default for $name {
                 fn default() -> Self {
-                    $name(Interned::new(InternedWrapper(Default::default())))
+                    $name(intern::Interned::new(InternedWrapper(Default::default())))
                 }
             }
         }
@@ -197,35 +199,7 @@ impl BoundVarKind {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct PredefinedOpaques;
-
-todo_structural!(PredefinedOpaques);
-
-impl std::ops::Deref for PredefinedOpaques {
-    type Target = PredefinedOpaquesData<DbInterner>;
-
-    fn deref(&self) -> &Self::Target {
-        todo!()
-    }
-}
-
-interned_vec!(DefiningOpaqueTypes, GenericDefId);
-
 interned_vec!(CanonicalVars, CanonicalVarInfo, nofold);
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ExternalConstraints;
-
-todo_structural!(ExternalConstraints);
-
-impl std::ops::Deref for ExternalConstraints {
-    type Target = ExternalConstraintsData<DbInterner>;
-
-    fn deref(&self) -> &Self::Target {
-        todo!()
-    }
-}
 
 pub struct DepNodeIndex;
 
