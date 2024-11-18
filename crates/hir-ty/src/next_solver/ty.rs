@@ -1,20 +1,26 @@
 use hir_def::GenericDefId;
 use intern::Interned;
+use rustc_abi::{Float, Integer, Size};
 use rustc_ast_ir::{try_visit, visit::VisitorResult};
 use rustc_type_ir::{
     fold::{TypeFoldable, TypeSuperFoldable},
-    inherent::{BoundVarLike, IntoKind, ParamLike, PlaceholderLike},
+    inherent::{BoundVarLike, GenericArgs as _, IntoKind, ParamLike, PlaceholderLike, SliceLike},
     relate::Relate,
     visit::{Flags, TypeSuperVisitable, TypeVisitable},
-    BoundVar, WithCachedTypeInfo,
+    BoundVar, ClosureKind, InferTy, IntTy, UintTy, WithCachedTypeInfo,
 };
 use smallvec::SmallVec;
 
-use crate::interner::InternedWrapper;
+use crate::{
+    interner::InternedWrapper,
+    next_solver::util::{CoroutineArgsExt, IntegerTypeExt},
+};
 
 use super::{
-    flags::FlagComputation, interned_vec, BoundVarKind, DbInterner, GenericArgs, Placeholder,
-    Symbol,
+    flags::FlagComputation,
+    interned_vec,
+    util::{FloatExt, IntegerExt},
+    BoundVarKind, DbInterner, GenericArgs, Placeholder, Symbol,
 };
 
 pub type TyKind = rustc_type_ir::TyKind<DbInterner>;
@@ -45,11 +51,11 @@ interned_vec!(Tys, Ty);
 
 impl rustc_type_ir::inherent::Tys<DbInterner> for Tys {
     fn inputs(self) -> <DbInterner as rustc_type_ir::Interner>::FnInputTys {
-        todo!()
+        Tys::new_from_iter(self.as_slice().split_last().unwrap().1.into_iter().cloned())
     }
 
     fn output(self) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
+        self.as_slice().split_last().unwrap().0.clone()
     }
 }
 
@@ -441,26 +447,122 @@ impl rustc_type_ir::inherent::Ty<DbInterner> for Ty {
     }
 
     fn to_opt_closure_kind(self) -> Option<rustc_type_ir::ClosureKind> {
-        todo!()
+        match self.clone().kind() {
+            TyKind::Int(int_ty) => match int_ty {
+                IntTy::I8 => Some(ClosureKind::Fn),
+                IntTy::I16 => Some(ClosureKind::FnMut),
+                IntTy::I32 => Some(ClosureKind::FnOnce),
+                _ => unreachable!("cannot convert type `{:?}` to a closure kind", self),
+            },
+
+            // "Bound" types appear in canonical queries when the
+            // closure type is not yet known, and `Placeholder` and `Param`
+            // may be encountered in generic `AsyncFnKindHelper` goals.
+            TyKind::Bound(..) | TyKind::Placeholder(_) | TyKind::Param(_) | TyKind::Infer(_) => {
+                None
+            }
+
+            TyKind::Error(_) => Some(ClosureKind::Fn),
+
+            _ => unreachable!("cannot convert type `{:?}` to a closure kind", self),
+        }
     }
 
     fn from_closure_kind(interner: DbInterner, kind: rustc_type_ir::ClosureKind) -> Self {
-        todo!()
+        match kind {
+            ClosureKind::Fn => Ty::new(TyKind::Int(IntTy::I8)),
+            ClosureKind::FnMut => Ty::new(TyKind::Int(IntTy::I16)),
+            ClosureKind::FnOnce => Ty::new(TyKind::Int(IntTy::I32)),
+        }
     }
 
     fn from_coroutine_closure_kind(interner: DbInterner, kind: rustc_type_ir::ClosureKind) -> Self {
-        todo!()
+        match kind {
+            ClosureKind::Fn | ClosureKind::FnMut => Ty::new(TyKind::Int(IntTy::I16)),
+            ClosureKind::FnOnce => Ty::new(TyKind::Int(IntTy::I32)),
+        }
     }
 
     fn discriminant_ty(self, interner: DbInterner) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
+        match self.clone().kind() {
+            TyKind::Adt(adt, _) if adt.is_enum() => adt.repr().discr_type().to_ty(interner),
+            TyKind::Coroutine(_, args) => args.as_coroutine().discr_ty(interner),
+
+            TyKind::Param(_) | TyKind::Alias(..) | TyKind::Infer(InferTy::TyVar(_)) => {
+                /*
+                let assoc_items = tcx.associated_item_def_ids(
+                    tcx.require_lang_item(hir::LangItem::DiscriminantKind, None),
+                );
+                TyKind::new_projection_from_args(tcx, assoc_items[0], tcx.mk_args(&[self.into()]))
+                */
+                todo!()
+            }
+
+            TyKind::Pat(ty, _) => ty.discriminant_ty(interner),
+
+            TyKind::Bool
+            | TyKind::Char
+            | TyKind::Int(_)
+            | TyKind::Uint(_)
+            | TyKind::Float(_)
+            | TyKind::Adt(..)
+            | TyKind::Foreign(_)
+            | TyKind::Str
+            | TyKind::Array(..)
+            | TyKind::Slice(_)
+            | TyKind::RawPtr(_, _)
+            | TyKind::Ref(..)
+            | TyKind::FnDef(..)
+            | TyKind::FnPtr(..)
+            | TyKind::Dynamic(..)
+            | TyKind::Closure(..)
+            | TyKind::CoroutineClosure(..)
+            | TyKind::CoroutineWitness(..)
+            | TyKind::Never
+            | TyKind::Tuple(_)
+            | TyKind::Error(_)
+            | TyKind::Infer(InferTy::IntVar(_) | InferTy::FloatVar(_)) => {
+                Ty::new(TyKind::Uint(UintTy::U8))
+            }
+
+            TyKind::Bound(..)
+            | TyKind::Placeholder(_)
+            | TyKind::Infer(
+                InferTy::FreshTy(_) | InferTy::FreshIntTy(_) | InferTy::FreshFloatTy(_),
+            ) => {
+                panic!("`discriminant_ty` applied to unexpected type: {:?}", self)
+            }
+        }
     }
 
     fn async_destructor_ty(
         self,
         interner: DbInterner,
     ) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        todo!()
+        // Very complicated
+        Ty::new_unit(interner)
+    }
+}
+
+impl Ty {
+    /// Returns the `Size` for primitive types (bool, uint, int, char, float).
+    pub fn primitive_size(self, interner: DbInterner) -> Size {
+        match self.kind() {
+            TyKind::Bool => Size::from_bytes(1),
+            TyKind::Char => Size::from_bytes(4),
+            TyKind::Int(ity) => Integer::from_int_ty(&interner, ity).size(),
+            TyKind::Uint(uty) => Integer::from_uint_ty(&interner, uty).size(),
+            TyKind::Float(fty) => Float::from_float_ty(fty).size(),
+            _ => panic!("non primitive type"),
+        }
+    }
+
+    pub fn int_size_and_signed(self, interner: DbInterner) -> (Size, bool) {
+        match self.kind() {
+            TyKind::Int(ity) => (Integer::from_int_ty(&interner, ity).size(), true),
+            TyKind::Uint(uty) => (Integer::from_uint_ty(&interner, uty).size(), false),
+            _ => panic!("non integer discriminant"),
+        }
     }
 }
 

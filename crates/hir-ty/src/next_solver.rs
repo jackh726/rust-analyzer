@@ -13,6 +13,7 @@ mod predicate;
 mod region;
 mod solver;
 mod ty;
+mod util;
 
 pub use consts::*;
 pub use generic_arg::*;

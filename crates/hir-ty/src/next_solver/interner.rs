@@ -4,6 +4,7 @@ use base_db::CrateId;
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
+use rustc_abi::ReprOptions;
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use triomphe::Arc;
@@ -231,8 +232,6 @@ pub struct DepNodeIndex;
 #[derive(Debug)]
 pub struct Tracked<T: fmt::Debug + Clone>(T);
 
-interned_vec!(FnInputTys, Ty);
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)] // FIXME implement Debug by hand
 pub struct Placeholder<T> {
     pub universe: UniverseIndex,
@@ -275,10 +274,7 @@ pub struct AdtFlags {
     is_anonymous: bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ReprOptions;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone)]
 pub struct AdtDefData {
     pub did: GenericDefId,
     pub id: AdtId,
@@ -287,12 +283,59 @@ pub struct AdtDefData {
     pub repr: ReprOptions,
 }
 
+impl PartialEq for AdtDefData {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        // There should be only one `AdtDefData` for each `def_id`, therefore
+        // it is fine to implement `PartialEq` only based on `def_id`.
+        //
+        // Below, we exhaustively destructure `self` and `other` so that if the
+        // definition of `AdtDefData` changes, a compile-error will be produced,
+        // reminding us to revisit this assumption.
+
+        let Self { did: self_def_id, id: _, variants: _, flags: _, repr: _ } = self;
+        let Self { did: other_def_id, id: _, variants: _, flags: _, repr: _ } = other;
+
+        let res = self_def_id == other_def_id;
+
+        // Double check that implicit assumption detailed above.
+        if cfg!(debug_assertions) && res {
+            let deep = self.flags == other.flags
+                && self.repr == other.repr
+                && self.variants == other.variants;
+            assert!(deep, "AdtDefData for the same def-id has differing data");
+        }
+
+        res
+    }
+}
+
+impl Eq for AdtDefData {}
+
+/// There should be only one AdtDef for each `did`, therefore
+/// it is fine to implement `Hash` only based on `did`.
+impl std::hash::Hash for AdtDefData {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
+        self.did.hash(s)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct AdtDef(AdtDefData);
 
 impl AdtDef {
     pub fn new(def_id: AdtId) -> Self {
         todo!()
+    }
+
+    pub fn is_enum(&self) -> bool {
+        self.0.flags.is_enum
+    }
+
+    #[inline]
+    pub fn repr(self) -> ReprOptions {
+        self.0.repr
     }
 }
 
@@ -463,7 +506,7 @@ impl rustc_type_ir::Interner for DbInterner {
 
     type Ty = Ty;
     type Tys = Tys;
-    type FnInputTys = FnInputTys;
+    type FnInputTys = Tys;
     type ParamTy = ParamTy;
     type BoundTy = BoundTy;
     type PlaceholderTy = PlaceholderTy;
