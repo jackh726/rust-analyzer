@@ -127,28 +127,6 @@ pub struct Symbol;
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct DbInterner;
 
-macro_rules! todo_structural {
-    ($t:ty) => {
-        impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $t {
-            fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
-                self,
-                _folder: &mut F,
-            ) -> Result<Self, F::Error> {
-                todo!()
-            }
-        }
-
-        impl rustc_type_ir::visit::TypeVisitable<DbInterner> for $t {
-            fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
-                &self,
-                _visitor: &mut V,
-            ) -> V::Result {
-                todo!()
-            }
-        }
-    };
-}
-
 impl inherent::DefId<DbInterner> for GenericDefId {
     fn as_local(self) -> Option<GenericDefId> {
         Some(self)
@@ -312,8 +290,6 @@ impl AdtDef {
         self.0.repr
     }
 }
-
-todo_structural!(AdtDef);
 
 impl inherent::AdtDef<DbInterner> for AdtDef {
     fn def_id(&self) -> <DbInterner as rustc_type_ir::Interner>::DefId {
