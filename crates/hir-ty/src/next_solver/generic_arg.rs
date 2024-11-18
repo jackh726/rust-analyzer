@@ -189,19 +189,7 @@ impl rustc_type_ir::relate::Relate<DbInterner> for GenericArgs {
 
 impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
     fn dummy() -> Self {
-        todo!()
-    }
-
-    fn as_closure(self) -> rustc_type_ir::ClosureArgs<DbInterner> {
-        todo!()
-    }
-
-    fn as_coroutine(self) -> rustc_type_ir::CoroutineArgs<DbInterner> {
-        todo!()
-    }
-
-    fn as_coroutine_closure(self) -> rustc_type_ir::CoroutineClosureArgs<DbInterner> {
-        todo!()
+        Default::default()
     }
 
     fn rebase_onto(
@@ -215,42 +203,15 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
     }
 
     fn type_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        /*
-        with_db_out_of_thin_air(|db| {
-            db.lookup_intern_rustc_generic_args(self)
-                .0
-                .get(i)
-                .and_then(|g| g.as_type())
-                .unwrap_or(Ty::error())
-        })
-        */
-        todo!()
+        self.0 .0.get(i).and_then(|g| g.as_type()).unwrap_or(Ty::error())
     }
 
     fn region_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Region {
-        /*
-        with_db_out_of_thin_air(|db| {
-            db.lookup_intern_rustc_generic_args(self)
-                .0
-                .get(i)
-                .and_then(|g| g.as_region())
-                .unwrap_or(Region::error())
-        })
-        */
-        todo!()
+        self.0 .0.get(i).and_then(|g| g.as_region()).unwrap_or(Region::error())
     }
 
     fn const_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Const {
-        /*
-        with_db_out_of_thin_air(|db| {
-            db.lookup_intern_rustc_generic_args(self)
-                .0
-                .get(i)
-                .and_then(|g| g.as_const())
-                .unwrap_or(Const::error())
-        })
-        */
-        todo!()
+        self.0 .0.get(i).and_then(|g| g.as_const()).unwrap_or(Const::error())
     }
 
     fn identity_for_item(
@@ -275,30 +236,24 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
     }
 
     fn split_closure_args(self) -> rustc_type_ir::ClosureArgsParts<DbInterner> {
-        /*
-        with_db_out_of_thin_air(|db| {
-            match db.lookup_intern_rustc_generic_args(self)[..] {
-                [ref parent_args @ .., closure_kind_ty, closure_sig_as_fn_ptr_ty, tupled_upvars_ty] => {
-                    rustc_type_ir::ClosureArgsParts {
-                        parent_args: GenericArgsSlice(self, 0, parent_args.len()),
-                        closure_kind_ty: closure_kind_ty.expect_ty(),
-                        closure_sig_as_fn_ptr_ty: closure_sig_as_fn_ptr_ty.expect_ty(),
-                        tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
-                    }
+        match self.0 .0.as_slice() {
+            [ref parent_args @ .., closure_kind_ty, closure_sig_as_fn_ptr_ty, tupled_upvars_ty] => {
+                rustc_type_ir::ClosureArgsParts {
+                    parent_args: GenericArgs::new_from_iter(parent_args.iter().cloned()),
+                    closure_kind_ty: closure_kind_ty.expect_ty(),
+                    closure_sig_as_fn_ptr_ty: closure_sig_as_fn_ptr_ty.expect_ty(),
+                    tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
                 }
-                _ => todo!(), // rustc has `bug!` here?, should we have error report
             }
-        })
-        */
-        todo!()
+            _ => todo!(), // rustc has `bug!` here?, should we have error report
+        }
     }
 
     fn split_coroutine_closure_args(self) -> rustc_type_ir::CoroutineClosureArgsParts<DbInterner> {
-        /*
-        with_db_out_of_thin_air(|db| match db.lookup_intern_rustc_generic_args(self)[..] {
+        match self.0 .0.as_slice() {
             [ref parent_args @ .., closure_kind_ty, signature_parts_ty, tupled_upvars_ty, coroutine_captures_by_ref_ty, coroutine_witness_ty] => {
                 rustc_type_ir::CoroutineClosureArgsParts {
-                    parent_args: GenericArgsSlice(self, 0, parent_args.len()),
+                    parent_args: GenericArgs::new_from_iter(parent_args.iter().cloned()),
                     closure_kind_ty: closure_kind_ty.expect_ty(),
                     signature_parts_ty: signature_parts_ty.expect_ty(),
                     tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
@@ -307,31 +262,24 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
                 }
             }
             _ => todo!(), // rustc has `bug!` here?, should we have error report
-        })
-        */
-        todo!()
+        }
     }
 
     fn split_coroutine_args(self) -> rustc_type_ir::CoroutineArgsParts<DbInterner> {
-        /*
-        with_db_out_of_thin_air(|db| {
-            match db.lookup_intern_rustc_generic_args(self)[..] {
-                [ref parent_args @ .., kind_ty, resume_ty, yield_ty, return_ty, witness, tupled_upvars_ty] => {
-                    rustc_type_ir::CoroutineArgsParts {
-                        parent_args: GenericArgsSlice(self, 0, parent_args.len()),
-                        kind_ty: kind_ty.expect_ty(),
-                        resume_ty: resume_ty.expect_ty(),
-                        yield_ty: yield_ty.expect_ty(),
-                        return_ty: return_ty.expect_ty(),
-                        witness: witness.expect_ty(),
-                        tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
-                    }
+        match self.0 .0.as_slice() {
+            [ref parent_args @ .., kind_ty, resume_ty, yield_ty, return_ty, witness, tupled_upvars_ty] => {
+                rustc_type_ir::CoroutineArgsParts {
+                    parent_args: GenericArgs::new_from_iter(parent_args.iter().cloned()),
+                    kind_ty: kind_ty.expect_ty(),
+                    resume_ty: resume_ty.expect_ty(),
+                    yield_ty: yield_ty.expect_ty(),
+                    return_ty: return_ty.expect_ty(),
+                    witness: witness.expect_ty(),
+                    tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
                 }
-                _ => todo!(), // rustc has `bug!` here?, should we have error report
             }
-        })
-        */
-        todo!()
+            _ => todo!(), // rustc has `bug!` here?, should we have error report
+        }
     }
 }
 
@@ -407,8 +355,7 @@ impl rustc_type_ir::inherent::Term<DbInterner> for Term {}
 
 impl DbInterner {
     pub(super) fn mk_args(self, args: &[GenericArg]) -> GenericArgs {
-        //db.intern_rustc_generic_args(InternedGenericArgs(args.to_vec()))
-        todo!()
+        GenericArgs::new_from_iter(args.iter().cloned())
     }
 
     pub(super) fn mk_args_from_iter<I, T>(self, iter: I) -> T::Output

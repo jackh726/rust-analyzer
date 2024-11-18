@@ -54,6 +54,27 @@ impl_internable!(
 macro_rules! _interned_vec {
     ($name:ident, $ty:ty) => {
         paste::paste! {
+            interned_vec!($name, $ty, nofold);
+
+            impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $name {
+                fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(self, folder: &mut F) -> Result<Self, F::Error> {
+                    use rustc_type_ir::inherent::{SliceLike as _};
+                    Ok($name(Interned::new(InternedWrapper(self.iter().map(|v| v.try_fold_with(folder)).collect::<Result<_, _>>()?))))
+                }
+            }
+
+            impl rustc_type_ir::visit::TypeVisitable<DbInterner> for $name {
+                fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
+                    use rustc_type_ir::inherent::{SliceLike as _};
+                    use rustc_ast_ir::visit::VisitorResult;
+                    rustc_ast_ir::walk_visitable_list!(visitor, self.as_slice().iter());
+                    V::Result::output()
+                }
+            }
+        }
+    };
+    ($name:ident, $ty:ty, nofold) => {
+        paste::paste! {
             type [<Interned $name>] = Interned<InternedWrapper<SmallVec<[$ty; 2]>>>;
 
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -91,22 +112,6 @@ macro_rules! _interned_vec {
                     $name(Interned::new(InternedWrapper(Default::default())))
                 }
             }
-
-            impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $name {
-                fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(self, folder: &mut F) -> Result<Self, F::Error> {
-                    use rustc_type_ir::inherent::{SliceLike as _};
-                    Ok($name(Interned::new(InternedWrapper(self.iter().map(|v| v.try_fold_with(folder)).collect::<Result<_, _>>()?))))
-                }
-            }
-
-            impl rustc_type_ir::visit::TypeVisitable<DbInterner> for $name {
-                fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(&self, visitor: &mut V) -> V::Result {
-                    use rustc_type_ir::inherent::{SliceLike as _};
-                    use rustc_ast_ir::visit::VisitorResult;
-                    rustc_ast_ir::walk_visitable_list!(visitor, self.as_slice().iter());
-                    V::Result::output()
-                }
-            }
         }
     };
 }
@@ -121,16 +126,6 @@ pub struct DbInterner;
 
 macro_rules! todo_structural {
     ($t:ty) => {
-        impl rustc_type_ir::relate::Relate<DbInterner> for $t {
-            fn relate<R: rustc_type_ir::relate::TypeRelation>(
-                _relation: &mut R,
-                _a: Self,
-                _b: Self,
-            ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-                todo!()
-            }
-        }
-
         impl rustc_type_ir::fold::TypeFoldable<DbInterner> for $t {
             fn try_fold_with<F: rustc_type_ir::fold::FallibleTypeFolder<DbInterner>>(
                 self,
@@ -169,7 +164,7 @@ impl inherent::Span<DbInterner> for Span {
     }
 }
 
-interned_vec!(BoundVarKinds, BoundVarKind);
+interned_vec!(BoundVarKinds, BoundVarKind, nofold);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BoundVarKind {
@@ -177,8 +172,6 @@ pub enum BoundVarKind {
     Region(BoundRegionKind),
     Const,
 }
-
-todo_structural!(BoundVarKind);
 
 impl BoundVarKind {
     pub fn expect_region(self) -> BoundRegionKind {
@@ -218,7 +211,7 @@ impl std::ops::Deref for PredefinedOpaques {
 
 interned_vec!(DefiningOpaqueTypes, GenericDefId);
 
-interned_vec!(CanonicalVars, CanonicalVarInfo);
+interned_vec!(CanonicalVars, CanonicalVarInfo, nofold);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ExternalConstraints;
@@ -259,7 +252,7 @@ impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
     }
 }
 
-interned_vec!(VariancesOf, Variance);
+interned_vec!(VariancesOf, Variance, nofold);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantIdx(VariantId);

@@ -12,7 +12,8 @@ use rustc_type_ir::{
 use crate::{interner::InternedWrapper, ConstScalar};
 
 use super::{
-    flags::FlagComputation, BoundVarKind, DbInterner, ErrorGuaranteed, Placeholder, Symbol,
+    flags::FlagComputation, BoundVarKind, DbInterner, ErrorGuaranteed, GenericArgs, Placeholder,
+    Symbol,
 };
 
 pub type ConstKind = rustc_type_ir::ConstKind<DbInterner>;
@@ -30,6 +31,10 @@ impl Const {
             outer_exclusive_binder: flags.outer_exclusive_binder,
         };
         Const(Interned::new(InternedWrapper(cached)))
+    }
+
+    pub fn error() -> Self {
+        Const::new(rustc_type_ir::ConstKind::Error(ErrorGuaranteed))
     }
 }
 
@@ -249,7 +254,9 @@ impl TypeVisitable<DbInterner> for ExprConst {
         &self,
         visitor: &mut V,
     ) -> V::Result {
-        todo!()
+        // Ensure we get back to this when we fill in the fields
+        let ExprConst = &self;
+        V::Result::output()
     }
 }
 
@@ -258,7 +265,7 @@ impl TypeFoldable<DbInterner> for ExprConst {
         self,
         folder: &mut F,
     ) -> Result<Self, F::Error> {
-        todo!()
+        Ok(ExprConst)
     }
 }
 
@@ -276,6 +283,8 @@ impl Relate<DbInterner> for ExprConst {
 
 impl rustc_type_ir::inherent::ExprConst<DbInterner> for ExprConst {
     fn args(self) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        todo!()
+        // Ensure we get back to this when we fill in the fields
+        let ExprConst = self;
+        GenericArgs::default()
     }
 }
