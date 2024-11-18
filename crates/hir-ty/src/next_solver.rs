@@ -2,6 +2,7 @@
 
 mod abi;
 mod consts;
+mod flags;
 mod generic_arg;
 mod generics;
 mod infer;

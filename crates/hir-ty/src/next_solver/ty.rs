@@ -6,22 +6,38 @@ use rustc_type_ir::{
     inherent::{BoundVarLike, IntoKind, ParamLike, PlaceholderLike},
     relate::Relate,
     visit::{Flags, TypeSuperVisitable, TypeVisitable},
-    BoundVar, TyKind,
+    BoundVar, WithCachedTypeInfo,
 };
 use smallvec::SmallVec;
 
 use crate::interner::InternedWrapper;
 
-use super::{interned_vec, BoundVarKind, DbInterner, GenericArgs, Placeholder, Symbol};
+use super::{
+    flags::FlagComputation, interned_vec, BoundVarKind, DbInterner, GenericArgs, Placeholder,
+    Symbol,
+};
 
+pub type TyKind = rustc_type_ir::TyKind<DbInterner>;
 pub type FnHeader = rustc_type_ir::FnHeader<DbInterner>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ty(Interned<InternedWrapper<TyKind<DbInterner>>>);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Ty(Interned<InternedWrapper<WithCachedTypeInfo<TyKind>>>);
 
 impl Ty {
-    pub fn new(kind: TyKind<DbInterner>) -> Self {
-        Ty(Interned::new(InternedWrapper(kind)))
+    pub fn new(kind: TyKind) -> Self {
+        let flags = FlagComputation::for_kind(&kind);
+        let cached = WithCachedTypeInfo {
+            internee: kind,
+            flags: flags.flags,
+            outer_exclusive_binder: flags.outer_exclusive_binder,
+        };
+        Ty(Interned::new(InternedWrapper(cached)))
+    }
+}
+
+impl std::fmt::Debug for Ty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0 .0.internee.fmt(f)
     }
 }
 
@@ -67,10 +83,10 @@ impl Ty {
 }
 
 impl IntoKind for Ty {
-    type Kind = TyKind<DbInterner>;
+    type Kind = TyKind;
 
     fn kind(self) -> Self::Kind {
-        self.0 .0.clone()
+        self.0 .0.internee.clone()
     }
 }
 
@@ -231,11 +247,11 @@ impl Relate<DbInterner> for Ty {
 
 impl Flags for Ty {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
-        todo!()
+        self.0.flags
     }
 
     fn outer_exclusive_binder(&self) -> rustc_type_ir::DebruijnIndex {
-        todo!()
+        self.0.outer_exclusive_binder
     }
 }
 

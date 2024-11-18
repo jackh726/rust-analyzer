@@ -6,21 +6,36 @@ use rustc_type_ir::{
     inherent::{IntoKind, PlaceholderLike},
     relate::Relate,
     visit::{Flags, TypeSuperVisitable, TypeVisitable},
+    WithCachedTypeInfo,
 };
 
 use crate::{interner::InternedWrapper, ConstScalar};
 
-use super::{BoundVarKind, DbInterner, ErrorGuaranteed, Placeholder, Symbol};
+use super::{
+    flags::FlagComputation, BoundVarKind, DbInterner, ErrorGuaranteed, Placeholder, Symbol,
+};
 
 pub type ConstKind = rustc_type_ir::ConstKind<DbInterner>;
 pub type UnevaluatedConst = rustc_type_ir::UnevaluatedConst<DbInterner>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Const(Interned<InternedWrapper<ConstKind>>);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Const(Interned<InternedWrapper<WithCachedTypeInfo<ConstKind>>>);
 
 impl Const {
     pub fn new(kind: ConstKind) -> Self {
-        Const(Interned::new(InternedWrapper(kind)))
+        let flags = FlagComputation::for_const_kind(&kind);
+        let cached = WithCachedTypeInfo {
+            internee: kind,
+            flags: flags.flags,
+            outer_exclusive_binder: flags.outer_exclusive_binder,
+        };
+        Const(Interned::new(InternedWrapper(cached)))
+    }
+}
+
+impl std::fmt::Debug for Const {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0 .0.internee.fmt(f)
     }
 }
 
@@ -69,7 +84,7 @@ impl IntoKind for Const {
     type Kind = ConstKind;
 
     fn kind(self) -> Self::Kind {
-        self.0 .0.clone()
+        self.0 .0.internee.clone()
     }
 }
 
@@ -139,7 +154,7 @@ impl TypeSuperFoldable<DbInterner> for Const {
             ConstKind::Expr(e) => ConstKind::Expr(e.try_fold_with(folder)?),
         };
         if kind != self.clone().kind() {
-            Ok(folder.cx().mk_const(kind))
+            Ok(Const::new(kind))
         } else {
             Ok(self)
         }
@@ -158,18 +173,11 @@ impl Relate<DbInterner> for Const {
 
 impl Flags for Const {
     fn flags(&self) -> rustc_type_ir::TypeFlags {
-        todo!()
+        self.0.flags
     }
 
     fn outer_exclusive_binder(&self) -> rustc_type_ir::DebruijnIndex {
-        todo!()
-    }
-}
-
-impl DbInterner {
-    fn mk_const(self, kind: ConstKind) -> Const {
-        //db.intern_rustc_const(InternedConst(kind))
-        todo!()
+        self.0.outer_exclusive_binder
     }
 }
 
@@ -179,11 +187,11 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
     }
 
     fn new_infer(interner: DbInterner, var: rustc_type_ir::InferConst) -> Self {
-        interner.mk_const(ConstKind::Infer(var))
+        Const::new(ConstKind::Infer(var))
     }
 
     fn new_var(interner: DbInterner, var: rustc_type_ir::ConstVid) -> Self {
-        interner.mk_const(ConstKind::Infer(rustc_type_ir::InferConst::Var(var)))
+        Const::new(ConstKind::Infer(rustc_type_ir::InferConst::Var(var)))
     }
 
     fn new_bound(
@@ -191,7 +199,7 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
         debruijn: rustc_type_ir::DebruijnIndex,
         var: BoundConst,
     ) -> Self {
-        interner.mk_const(ConstKind::Bound(debruijn, var))
+        Const::new(ConstKind::Bound(debruijn, var))
     }
 
     fn new_anon_bound(
@@ -199,22 +207,22 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
         debruijn: rustc_type_ir::DebruijnIndex,
         var: rustc_type_ir::BoundVar,
     ) -> Self {
-        interner.mk_const(ConstKind::Bound(debruijn, BoundConst { var }))
+        Const::new(ConstKind::Bound(debruijn, BoundConst { var }))
     }
 
     fn new_unevaluated(
         interner: DbInterner,
         uv: rustc_type_ir::UnevaluatedConst<DbInterner>,
     ) -> Self {
-        interner.mk_const(ConstKind::Unevaluated(uv))
+        Const::new(ConstKind::Unevaluated(uv))
     }
 
     fn new_expr(interner: DbInterner, expr: ExprConst) -> Self {
-        interner.mk_const(ConstKind::Expr(expr))
+        Const::new(ConstKind::Expr(expr))
     }
 
     fn new_error(interner: DbInterner, guar: ErrorGuaranteed) -> Self {
-        interner.mk_const(ConstKind::Error(guar))
+        Const::new(ConstKind::Error(guar))
     }
 }
 

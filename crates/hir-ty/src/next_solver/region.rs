@@ -5,7 +5,7 @@ use rustc_type_ir::{
     inherent::{IntoKind, PlaceholderLike},
     relate::Relate,
     visit::{Flags, TypeVisitable},
-    BoundVar, RegionKind, TypeFlags, INNERMOST,
+    BoundVar, TypeFlags, INNERMOST,
 };
 
 use crate::interner::InternedWrapper;
@@ -15,11 +15,13 @@ use super::{
     ErrorGuaranteed,
 };
 
+type RegionKind = rustc_type_ir::RegionKind<DbInterner>;
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Region(Interned<InternedWrapper<RegionKind<DbInterner>>>);
+pub struct Region(Interned<InternedWrapper<RegionKind>>);
 
 impl Region {
-    pub fn new(kind: RegionKind<DbInterner>) -> Self {
+    pub fn new(kind: RegionKind) -> Self {
         Region(Interned::new(InternedWrapper(kind)))
     }
 }
@@ -134,7 +136,7 @@ impl BoundRegionKind {
 }
 
 impl IntoKind for Region {
-    type Kind = RegionKind<DbInterner>;
+    type Kind = RegionKind;
 
     fn kind(self) -> Self::Kind {
         self.0 .0

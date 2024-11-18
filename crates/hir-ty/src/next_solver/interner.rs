@@ -13,8 +13,8 @@ use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
     elaborate, fold, inherent, ir_print, relate,
     solve::{ExternalConstraintsData, PredefinedOpaquesData},
-    visit, BoundVar, ConstKind, GenericArgKind, RegionKind, RustIr, TermKind, TyKind,
-    UniverseIndex, Variance,
+    visit, BoundVar, GenericArgKind, RegionKind, RustIr, TermKind, UniverseIndex, Variance,
+    WithCachedTypeInfo,
 };
 
 use crate::{
@@ -29,15 +29,16 @@ use super::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
     Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
-    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ErrorGuaranteed, ExprConst, GenericArg,
-    GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy, Predicate, Term,
-    Ty, Tys, ValueConst,
+    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ConstKind, ErrorGuaranteed, ExprConst,
+    GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy,
+    Predicate, PredicateKind, Term, Ty, TyKind, Tys, ValueConst,
 };
 
 impl_internable!(
-    InternedWrapper<rustc_type_ir::ConstKind<DbInterner>>,
-    InternedWrapper<rustc_type_ir::RegionKind<DbInterner>>,
-    InternedWrapper<rustc_type_ir::TyKind<DbInterner>>,
+    InternedWrapper<WithCachedTypeInfo<ConstKind>>,
+    InternedWrapper<RegionKind<DbInterner>>,
+    InternedWrapper<WithCachedTypeInfo<TyKind>>,
+    InternedWrapper<Binder<PredicateKind>>,
     InternedWrapper<SmallVec<[BoundExistentialPredicate; 2]>>,
     InternedWrapper<SmallVec<[BoundVarKind; 2]>>,
     InternedWrapper<SmallVec<[Clause; 2]>>,
@@ -46,7 +47,6 @@ impl_internable!(
     InternedWrapper<SmallVec<[CanonicalVarInfo; 2]>>,
     InternedWrapper<SmallVec<[GenericDefId; 2]>>,
     InternedWrapper<SmallVec<[Variance; 2]>>,
-    InternedWrapper<Binder<rustc_type_ir::PredicateKind<DbInterner>>>,
 );
 
 #[macro_export]
