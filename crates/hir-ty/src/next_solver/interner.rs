@@ -12,8 +12,8 @@ use triomphe::Arc;
 use rustc_ast_ir::visit::VisitorResult;
 use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
 use rustc_type_ir::{
-    elaborate, fold, inherent, ir_print, relate, solve::Reveal, visit, BoundVar, GenericArgKind,
-    RegionKind, RustIr, TermKind, UniverseIndex, Variance, WithCachedTypeInfo,
+    elaborate, fold, inherent, ir_print, relate, solve::Reveal, visit, BoundVar, CollectAndApply,
+    GenericArgKind, RegionKind, RustIr, TermKind, UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
 use crate::{
@@ -199,7 +199,8 @@ impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
         a: Self,
         b: Self,
     ) -> rustc_type_ir::relate::RelateResult<DbInterner, Self> {
-        todo!()
+        // FIXME implement this
+        Ok(a)
     }
 }
 
@@ -368,26 +369,26 @@ pub struct Features;
 
 impl inherent::Features<DbInterner> for Features {
     fn generic_const_exprs(self) -> bool {
-        todo!()
+        false
     }
 
     fn coroutine_clone(self) -> bool {
-        todo!()
+        false
     }
 
     fn associated_const_equality(self) -> bool {
-        todo!()
+        false
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct UnsizingParams;
+pub struct UnsizingParams(BitSet<u32>);
 
 impl std::ops::Deref for UnsizingParams {
     type Target = BitSet<u32>;
 
     fn deref(&self) -> &Self::Target {
-        todo!()
+        &self.0
     }
 }
 
@@ -443,15 +444,15 @@ impl rustc_type_ir::Interner for DbInterner {
         data: T,
         dep_node: Self::DepNodeIndex,
     ) -> Self::Tracked<T> {
-        todo!()
+        Tracked(data)
     }
 
     fn get_tracked<T: fmt::Debug + Clone>(self, tracked: &Self::Tracked<T>) -> T {
-        todo!()
+        tracked.0.clone()
     }
 
     fn with_cached_task<T>(self, task: impl FnOnce() -> T) -> (T, Self::DepNodeIndex) {
-        todo!()
+        (task(), DepNodeIndex)
     }
 
     type Ty = Ty;
@@ -490,15 +491,16 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         f: impl FnOnce(&mut rustc_type_ir::search_graph::GlobalCache<Self>) -> R,
     ) -> R {
-        todo!()
+        let mut cache = rustc_type_ir::search_graph::GlobalCache::default();
+        f(&mut cache)
     }
 
     fn evaluation_is_concurrent(&self) -> bool {
-        todo!()
+        false
     }
 
     fn expand_abstract_consts<T: rustc_type_ir::fold::TypeFoldable<Self>>(self, t: T) -> T {
-        todo!()
+        t
     }
 
     type GenericsOf = Generics;
@@ -543,7 +545,7 @@ impl rustc_type_ir::Interner for DbInterner {
     }
 
     fn mk_args(self, args: &[Self::GenericArg]) -> Self::GenericArgs {
-        todo!()
+        GenericArgs::new_from_iter(args.iter().cloned())
     }
 
     fn mk_args_from_iter<I, T>(self, args: I) -> T::Output
@@ -551,23 +553,20 @@ impl rustc_type_ir::Interner for DbInterner {
         I: Iterator<Item = T>,
         T: rustc_type_ir::CollectAndApply<Self::GenericArg, Self::GenericArgs>,
     {
-        todo!()
+        CollectAndApply::collect_and_apply(args, |g| GenericArgs::new_from_iter(g.iter().cloned()))
     }
 
     fn check_args_compatible(self, def_id: Self::DefId, args: Self::GenericArgs) -> bool {
         todo!()
     }
 
-    fn debug_assert_args_compatible(self, def_id: Self::DefId, args: Self::GenericArgs) {
-        todo!()
-    }
+    fn debug_assert_args_compatible(self, def_id: Self::DefId, args: Self::GenericArgs) {}
 
     fn debug_assert_existential_args_compatible(
         self,
         def_id: Self::DefId,
         args: Self::GenericArgs,
     ) {
-        todo!()
     }
 
     fn mk_type_list_from_iter<I, T>(self, args: I) -> T::Output
@@ -575,7 +574,7 @@ impl rustc_type_ir::Interner for DbInterner {
         I: Iterator<Item = T>,
         T: rustc_type_ir::CollectAndApply<Self::Ty, Self::Tys>,
     {
-        todo!()
+        CollectAndApply::collect_and_apply(args, |g| Tys::new_from_iter(g.iter().cloned()))
     }
 
     fn parent(self, def_id: Self::DefId) -> Self::DefId {
@@ -583,13 +582,13 @@ impl rustc_type_ir::Interner for DbInterner {
     }
 
     fn recursion_limit(self) -> usize {
-        todo!()
+        50
     }
 
     type Features = Features;
 
     fn features(self) -> Self::Features {
-        todo!()
+        Features
     }
 
     fn bound_coroutine_hidden_types(
@@ -597,8 +596,7 @@ impl rustc_type_ir::Interner for DbInterner {
         def_id: Self::DefId,
     ) -> impl IntoIterator<Item = rustc_type_ir::EarlyBinder<Self, rustc_type_ir::Binder<Self, Self::Ty>>>
     {
-        todo!();
-        None
+        [todo!()]
     }
 
     fn fn_sig(
