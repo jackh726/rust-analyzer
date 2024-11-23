@@ -422,7 +422,7 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         data: rustc_type_ir::solve::PredefinedOpaquesData<Self>,
     ) -> Self::PredefinedOpaques {
-        todo!()
+        PredefinedOpaques::new(data)
     }
 
     type DefiningOpaqueTypes = DefiningOpaqueTypes;
@@ -433,7 +433,7 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         infos: &[rustc_type_ir::CanonicalVarInfo<Self>],
     ) -> Self::CanonicalVars {
-        todo!()
+        CanonicalVars::new_from_iter(infos.iter().cloned())
     }
 
     type ExternalConstraints = ExternalConstraints;
@@ -442,7 +442,7 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         data: rustc_type_ir::solve::ExternalConstraintsData<Self>,
     ) -> Self::ExternalConstraints {
-        todo!()
+        ExternalConstraints::new(data)
     }
 
     type DepNodeIndex = DepNodeIndex;
@@ -633,24 +633,21 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn predicates_of(
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn own_predicates_of(
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn explicit_super_predicates_of(
@@ -658,8 +655,7 @@ impl rustc_type_ir::Interner for DbInterner {
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
     {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn explicit_implied_predicates_of(
@@ -667,8 +663,7 @@ impl rustc_type_ir::Interner for DbInterner {
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
     {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn const_conditions(
@@ -678,8 +673,7 @@ impl rustc_type_ir::Interner for DbInterner {
         Self,
         impl IntoIterator<Item = rustc_type_ir::Binder<Self, rustc_type_ir::TraitRef<Self>>>,
     > {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
+        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn has_target_features(self, def_id: Self::DefId) -> bool {
@@ -709,8 +703,7 @@ impl rustc_type_ir::Interner for DbInterner {
     }
 
     fn associated_type_def_ids(self, def_id: Self::DefId) -> impl IntoIterator<Item = Self::DefId> {
-        todo!();
-        None
+        [todo!()]
     }
 
     fn for_each_relevant_impl(
