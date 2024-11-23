@@ -57,14 +57,6 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         todo!()
     }
 
-    fn try_const_eval_resolve(
-        &self,
-        param_env: <Self::Interner as rustc_type_ir::Interner>::ParamEnv,
-        unevaluated: rustc_type_ir::UnevaluatedConst<Self::Interner>,
-    ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Const> {
-        todo!()
-    }
-
     fn well_formed_goals(
         &self,
         param_env: <Self::Interner as rustc_type_ir::Interner>::ParamEnv,
@@ -178,6 +170,14 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         src: <Self::Interner as rustc_type_ir::Interner>::Ty,
         assume: <Self::Interner as rustc_type_ir::Interner>::Const,
     ) -> Result<Certainty, NoSolution> {
+        todo!()
+    }
+
+    fn evaluate_const(
+        &self,
+        param_env: <Self::Interner as rustc_type_ir::Interner>::ParamEnv,
+        uv: rustc_type_ir::UnevaluatedConst<Self::Interner>,
+    ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Const> {
         todo!()
     }
 }

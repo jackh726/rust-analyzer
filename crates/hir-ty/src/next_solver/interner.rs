@@ -368,6 +368,10 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
     {
         todo!()
     }
+
+    fn destructor(self, ir: DbIr<'cx>) -> Option<rustc_type_ir::solve::AdtDestructorKind> {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -667,22 +671,7 @@ impl rustc_type_ir::Interner for DbInterner {
         rustc_type_ir::EarlyBinder::bind(None)
     }
 
-    fn is_const_impl(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
     fn const_conditions(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<
-        Self,
-        impl IntoIterator<Item = rustc_type_ir::Binder<Self, rustc_type_ir::TraitRef<Self>>>,
-    > {
-        todo!();
-        rustc_type_ir::EarlyBinder::bind(None)
-    }
-
-    fn implied_const_bounds(
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<
@@ -796,10 +785,6 @@ impl rustc_type_ir::Interner for DbInterner {
         todo!()
     }
 
-    fn layout_is_pointer_like(self, param_env: Self::ParamEnv, ty: Self::Ty) -> bool {
-        todo!()
-    }
-
     type UnsizingParams = UnsizingParams;
 
     fn unsizing_params_for_adt(self, adt_def_id: Self::DefId) -> Self::UnsizingParams {
@@ -825,6 +810,28 @@ impl rustc_type_ir::Interner for DbInterner {
         self,
         defining_anchor: Self::LocalDefId,
     ) -> Self::DefiningOpaqueTypes {
+        todo!()
+    }
+
+    fn alias_has_const_conditions(self, def_id: Self::DefId) -> bool {
+        todo!()
+    }
+
+    fn explicit_implied_const_bounds(
+        self,
+        def_id: Self::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self,
+        impl IntoIterator<Item = rustc_type_ir::Binder<Self, rustc_type_ir::TraitRef<Self>>>,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn fn_is_const(self, def_id: Self::DefId) -> bool {
+        todo!()
+    }
+
+    fn impl_is_const(self, def_id: Self::DefId) -> bool {
         todo!()
     }
 }
