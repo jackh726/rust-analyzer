@@ -11,9 +11,14 @@ use triomphe::Arc;
 
 use rustc_ast_ir::visit::VisitorResult;
 use rustc_index_in_tree::{bit_set::BitSet, IndexVec};
+use rustc_type_ir::visit::TypeVisitableExt;
 use rustc_type_ir::{
-    elaborate, fold, inherent, ir_print, relate, solve::Reveal, visit, BoundVar, CollectAndApply,
-    GenericArgKind, RegionKind, RustIr, TermKind, UniverseIndex, Variance, WithCachedTypeInfo,
+    elaborate, fold,
+    inherent::{self, Const as _, Region as _, Ty as _},
+    ir_print, relate,
+    solve::Reveal,
+    visit, BoundVar, CollectAndApply, DebruijnIndex, GenericArgKind, RegionKind, RustIr, TermKind,
+    UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
 use crate::{
@@ -22,17 +27,18 @@ use crate::{
 
 use super::{
     abi::Safety,
+    fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
     generics::Generics,
     mapping::{convert_binder_to_early_binder, ChalkToNextSolver},
     region::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
-    Binder, BoundConst, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy,
-    BoundTyKind, CanonicalVarInfo, Clause, Clauses, Const, ConstKind, DefiningOpaqueTypes,
-    ErrorGuaranteed, ExprConst, ExternalConstraints, ExternalConstraintsData, GenericArg,
-    GenericArgs, InternedClausesWrapper, ParamConst, ParamEnv, ParamTy, PlaceholderConst,
-    PlaceholderTy, PredefinedOpaques, PredefinedOpaquesData, Predicate, PredicateKind, Term, Ty,
-    TyKind, Tys, ValueConst,
+    Binder, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy, BoundTyKind,
+    CanonicalVarInfo, Clause, Clauses, Const, ConstKind, DefiningOpaqueTypes, ErrorGuaranteed,
+    ExprConst, ExternalConstraints, ExternalConstraintsData, GenericArg, GenericArgs,
+    InternedClausesWrapper, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy,
+    PredefinedOpaques, PredefinedOpaquesData, Predicate, PredicateKind, Term, Ty, TyKind, Tys,
+    ValueConst,
 };
 
 impl_internable!(
@@ -472,7 +478,7 @@ impl rustc_type_ir::Interner for DbInterner {
     type Const = Const;
     type PlaceholderConst = PlaceholderConst;
     type ParamConst = ParamConst;
-    type BoundConst = BoundConst;
+    type BoundConst = rustc_type_ir::BoundVar;
     type ValueConst = ValueConst;
     type ExprConst = ExprConst;
 
@@ -828,7 +834,42 @@ impl DbInterner {
     where
         T: rustc_type_ir::fold::TypeFoldable<Self>,
     {
-        todo!()
+        let shift_bv = |bv: BoundVar| BoundVar::from_usize(bv.as_usize() + bound_vars);
+        self.replace_escaping_bound_vars_uncached(
+            value,
+            FnMutDelegate {
+                regions: &mut |r: BoundRegion| {
+                    Region::new_bound(
+                        self,
+                        DebruijnIndex::ZERO,
+                        BoundRegion { var: shift_bv(r.var), kind: r.kind },
+                    )
+                },
+                types: &mut |t: BoundTy| {
+                    Ty::new_bound(
+                        self,
+                        DebruijnIndex::ZERO,
+                        BoundTy { var: shift_bv(t.var), kind: t.kind },
+                    )
+                },
+                consts: &mut |c| Const::new_bound(self, DebruijnIndex::ZERO, shift_bv(c)),
+            },
+        )
+    }
+
+    pub fn replace_escaping_bound_vars_uncached<
+        T: rustc_type_ir::fold::TypeFoldable<DbInterner>,
+    >(
+        self,
+        value: T,
+        delegate: impl BoundVarReplacerDelegate,
+    ) -> T {
+        if !value.has_escaping_bound_vars() {
+            value
+        } else {
+            let mut replacer = BoundVarReplacer::new(self, delegate);
+            value.fold_with(&mut replacer)
+        }
     }
 }
 
@@ -893,10 +934,10 @@ TrivialTypeTraversalImpls! {
     ParamConst,
     ParamTy,
     BoundRegion,
-    BoundConst,
+    BoundVar,
     Placeholder<BoundRegion>,
     Placeholder<BoundTy>,
-    Placeholder<BoundConst>,
+    Placeholder<BoundVar>,
     ValueConst,
     Reveal,
 }

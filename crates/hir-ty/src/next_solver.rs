@@ -3,6 +3,7 @@
 mod abi;
 mod consts;
 mod flags;
+pub mod fold;
 mod generic_arg;
 mod generics;
 mod infer;

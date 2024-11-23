@@ -14,8 +14,8 @@ use crate::{
 };
 
 use super::{
-    BoundConst, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind,
-    Const, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
+    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Const,
+    EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
     PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst,
 };
 
@@ -97,8 +97,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
 
     fn fold_const(&mut self, c: Const) -> Const {
         match c.clone().kind() {
-            rustc_type_ir::ConstKind::Bound(debruijn, bound_const) if self.debruijn == debruijn => {
-                let var: rustc_type_ir::BoundVar = bound_const.var();
+            rustc_type_ir::ConstKind::Bound(debruijn, var) if self.debruijn == debruijn => {
                 Const::new(rustc_type_ir::ConstKind::Param(ParamConst {
                     index: var.as_u32(),
                     name: super::Symbol,
@@ -329,7 +328,7 @@ impl ChalkToNextSolver<Const> for chalk_ir::Const<Interner> {
         Const::new(match &data.value {
             chalk_ir::ConstValue::BoundVar(bound_var) => rustc_type_ir::ConstKind::Bound(
                 bound_var.debruijn.to_nextsolver(),
-                BoundConst { var: rustc_type_ir::BoundVar::from_usize(bound_var.index) },
+                rustc_type_ir::BoundVar::from_usize(bound_var.index),
             ),
             chalk_ir::ConstValue::InferenceVar(inference_var) => {
                 rustc_type_ir::ConstKind::Infer(rustc_type_ir::InferConst::Var(

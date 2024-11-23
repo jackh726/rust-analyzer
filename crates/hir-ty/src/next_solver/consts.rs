@@ -6,7 +6,7 @@ use rustc_type_ir::{
     inherent::{IntoKind, PlaceholderLike},
     relate::Relate,
     visit::{Flags, TypeSuperVisitable, TypeVisitable},
-    WithCachedTypeInfo,
+    BoundVar, WithCachedTypeInfo,
 };
 
 use crate::{interner::InternedWrapper, ConstScalar};
@@ -44,7 +44,7 @@ impl std::fmt::Debug for Const {
     }
 }
 
-pub type PlaceholderConst = Placeholder<BoundConst>;
+pub type PlaceholderConst = Placeholder<rustc_type_ir::BoundVar>;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)] // FIXME implement manually
 pub struct ParamConst {
@@ -64,24 +64,9 @@ impl ValueConst {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ExprConst;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
-pub struct BoundConst {
-    pub var: rustc_type_ir::BoundVar,
-}
-
 impl rustc_type_ir::inherent::ParamLike for ParamConst {
     fn index(&self) -> u32 {
         self.index
-    }
-}
-
-impl rustc_type_ir::inherent::BoundVarLike<DbInterner> for BoundConst {
-    fn var(self) -> rustc_type_ir::BoundVar {
-        self.var
-    }
-
-    fn assert_eq(self, var: BoundVarKind) {
-        var.expect_const();
     }
 }
 
@@ -202,7 +187,7 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
     fn new_bound(
         interner: DbInterner,
         debruijn: rustc_type_ir::DebruijnIndex,
-        var: BoundConst,
+        var: BoundVar,
     ) -> Self {
         Const::new(ConstKind::Bound(debruijn, var))
     }
@@ -212,7 +197,7 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
         debruijn: rustc_type_ir::DebruijnIndex,
         var: rustc_type_ir::BoundVar,
     ) -> Self {
-        Const::new(ConstKind::Bound(debruijn, BoundConst { var }))
+        Const::new(ConstKind::Bound(debruijn, var))
     }
 
     fn new_unevaluated(
@@ -237,7 +222,7 @@ impl PlaceholderLike for PlaceholderConst {
     }
 
     fn var(self) -> rustc_type_ir::BoundVar {
-        self.bound.var
+        self.bound
     }
 
     fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
@@ -245,7 +230,7 @@ impl PlaceholderLike for PlaceholderConst {
     }
 
     fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
-        Placeholder { universe: ui, bound: BoundConst { var } }
+        Placeholder { universe: ui, bound: var }
     }
 }
 
