@@ -2,9 +2,10 @@
 
 use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
+use hir_def::data::adt::StructFlags;
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
-use rustc_abi::ReprOptions;
+use rustc_abi::{ReprFlags, ReprOptions};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use triomphe::Arc;
@@ -209,10 +210,33 @@ impl rustc_type_ir::relate::Relate<DbInterner> for PatId {
 interned_vec!(VariancesOf, Variance, nofold);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct VariantIdx(VariantId);
+pub struct VariantIdx(usize);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantDef;
+
+/*
+/// Definition of a variant -- a struct's fields or an enum variant.
+#[derive(Debug, HashStable, TyEncodable, TyDecodable)]
+pub struct VariantDef {
+    /// `DefId` that identifies the variant itself.
+    /// If this variant belongs to a struct or union, then this is a copy of its `DefId`.
+    pub def_id: DefId,
+    /// `DefId` that identifies the variant's constructor.
+    /// If this variant is a struct variant, then this is `None`.
+    pub ctor: Option<(CtorKind, DefId)>,
+    /// Variant or struct name, maybe empty for anonymous adt (struct or union).
+    pub name: Symbol,
+    /// Discriminant of this variant.
+    pub discr: VariantDiscr,
+    /// Fields of this variant.
+    pub fields: IndexVec<FieldIdx, FieldDef>,
+    /// The error guarantees from parser, if any.
+    tainted: Option<ErrorGuaranteed>,
+    /// Flags of the variant (e.g. is field list non-exhaustive)?
+    flags: VariantFlags,
+}
+*/
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct AdtFlags {
@@ -231,7 +255,6 @@ pub struct AdtFlags {
 
 #[derive(Debug, Clone)]
 pub struct AdtDefData {
-    pub did: GenericDefId,
     pub id: AdtId,
     pub variants: Vec<(VariantIdx, VariantDef)>,
     pub flags: AdtFlags,
@@ -248,8 +271,8 @@ impl PartialEq for AdtDefData {
         // definition of `AdtDefData` changes, a compile-error will be produced,
         // reminding us to revisit this assumption.
 
-        let Self { did: self_def_id, id: _, variants: _, flags: _, repr: _ } = self;
-        let Self { did: other_def_id, id: _, variants: _, flags: _, repr: _ } = other;
+        let Self { id: self_def_id, variants: _, flags: _, repr: _ } = self;
+        let Self { id: other_def_id, variants: _, flags: _, repr: _ } = other;
 
         let res = self_def_id == other_def_id;
 
@@ -272,7 +295,7 @@ impl Eq for AdtDefData {}
 impl std::hash::Hash for AdtDefData {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
-        self.did.hash(s)
+        self.id.hash(s)
     }
 }
 
@@ -280,8 +303,92 @@ impl std::hash::Hash for AdtDefData {
 pub struct AdtDef(AdtDefData);
 
 impl AdtDef {
-    pub fn new(def_id: AdtId) -> Self {
-        todo!()
+    pub fn new(def_id: AdtId, ir: DbIr<'_>) -> Self {
+        let (flags, variants) = match def_id {
+            AdtId::StructId(struct_id) => {
+                let data = ir.db.struct_data(struct_id);
+
+                let flags = AdtFlags {
+                    is_enum: false,
+                    is_union: false,
+                    is_struct: true,
+                    has_ctor: todo!(),
+                    is_phantom_data: data.flags.contains(StructFlags::IS_PHANTOM_DATA),
+                    is_fundamental: data.flags.contains(StructFlags::IS_FUNDAMENTAL),
+                    is_box: data.flags.contains(StructFlags::IS_BOX),
+                    is_manually_drop: data.flags.contains(StructFlags::IS_MANUALLY_DROP),
+                    is_unsafe_cell: data.flags.contains(StructFlags::IS_UNSAFE_CELL),
+                    is_variant_list_non_exhaustive: false,
+                    // FIXME: get this data
+                    is_anonymous: false,
+                };
+
+                let variants = vec![(VariantIdx(0), VariantDef)];
+
+                (flags, variants)
+            }
+            AdtId::UnionId(union_id) => {
+                let data = ir.db.union_data(union_id);
+
+                let flags = AdtFlags {
+                    is_enum: false,
+                    is_union: true,
+                    is_struct: false,
+                    has_ctor: todo!(),
+                    is_phantom_data: false,
+                    is_fundamental: false,
+                    is_box: false,
+                    is_manually_drop: false,
+                    is_unsafe_cell: false,
+                    is_variant_list_non_exhaustive: false,
+                    // FIXME: get this data
+                    is_anonymous: false,
+                };
+
+                let variants = vec![(VariantIdx(0), VariantDef)];
+
+                (flags, variants)
+            }
+            AdtId::EnumId(enum_id) => {
+                let data = ir.db.enum_data(enum_id);
+
+                let flags = AdtFlags {
+                    is_enum: true,
+                    is_union: false,
+                    is_struct: false,
+                    has_ctor: todo!(),
+                    is_phantom_data: false,
+                    is_fundamental: false,
+                    is_box: false,
+                    is_manually_drop: false,
+                    is_unsafe_cell: false,
+                    // FIXME: get this data
+                    is_variant_list_non_exhaustive: false,
+                    is_anonymous: false,
+                };
+
+                let variants = data
+                    .variants
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, v)| (VariantIdx(idx), v))
+                    .map(|(idx, v)| (idx, VariantDef))
+                    .collect();
+
+                (flags, variants)
+            }
+        };
+
+        // FIXME: keep track of these
+        let repr = ReprOptions {
+            int: None,
+            align: None,
+            pack: None,
+            flags: ReprFlags::empty(),
+            field_shuffle_seed: 0,
+        };
+
+        AdtDef(AdtDefData { id: def_id, variants, flags, repr })
     }
 
     pub fn is_enum(&self) -> bool {
@@ -296,7 +403,7 @@ impl AdtDef {
 
 impl inherent::AdtDef<DbInterner> for AdtDef {
     fn def_id(&self) -> <DbInterner as rustc_type_ir::Interner>::DefId {
-        self.0.did
+        GenericDefId::AdtId(self.0.id)
     }
 
     fn is_struct(&self) -> bool {
@@ -637,7 +744,11 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         adt_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> <Self::Interner as rustc_type_ir::Interner>::AdtDef {
-        todo!()
+        let def_id = match adt_def_id {
+            GenericDefId::AdtId(adt_id) => adt_id,
+            _ => panic!("Invalid DefId passed to adt_def"),
+        };
+        AdtDef::new(def_id, self)
     }
 
     fn alias_ty_kind(

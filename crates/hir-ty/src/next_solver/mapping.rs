@@ -96,7 +96,7 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> Ty {
         Ty::new(match self.kind(Interner) {
             chalk_ir::TyKind::Adt(adt_id, substitution) => {
-                let def = AdtDef::new(adt_id.0);
+                let def = AdtDef::new(adt_id.0, ir);
                 let args = substitution.to_nextsolver(ir);
                 rustc_type_ir::TyKind::Adt(def, args)
             }
