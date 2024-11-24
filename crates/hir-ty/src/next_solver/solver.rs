@@ -33,7 +33,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
     type Ir = DbIr<'db>;
 
     fn build_with_canonical<V>(
-        cx: Self::Interner,
+        cx: Self::Ir,
         canonical: &rustc_type_ir::CanonicalQueryInput<Self::Interner, V>,
     ) -> (Self, V, rustc_type_ir::CanonicalVarValues<Self::Interner>)
     where

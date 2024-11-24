@@ -329,7 +329,7 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
         let field_types = db.field_types(id);
 
         let last_ty: rustc_type_ir::Binder<DbInterner, Ty> =
-            field_types[last_idx].clone().to_nextsolver();
+            field_types[last_idx].clone().to_nextsolver(ir);
         Some(convert_binder_to_early_binder(last_ty))
     }
 
@@ -351,7 +351,7 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
         let fields: Vec<_> = variant_data.fields().iter().map(|(idx, _)| idx).collect();
         let tys = fields.into_iter().map(move |idx| {
             let ty: rustc_type_ir::Binder<DbInterner, Ty> =
-                field_types[idx].clone().to_nextsolver();
+                field_types[idx].clone().to_nextsolver(ir);
             let ty = convert_binder_to_early_binder(ty);
             ty.skip_binder()
         });
@@ -446,22 +446,6 @@ impl rustc_type_ir::Interner for DbInterner {
 
     type Tracked<T: fmt::Debug + Clone> = Tracked<T>;
 
-    fn mk_tracked<T: fmt::Debug + Clone>(
-        self,
-        data: T,
-        dep_node: Self::DepNodeIndex,
-    ) -> Self::Tracked<T> {
-        Tracked(data)
-    }
-
-    fn get_tracked<T: fmt::Debug + Clone>(self, tracked: &Self::Tracked<T>) -> T {
-        tracked.0.clone()
-    }
-
-    fn with_cached_task<T>(self, task: impl FnOnce() -> T) -> (T, Self::DepNodeIndex) {
-        (task(), DepNodeIndex)
-    }
-
     type Ty = Ty;
     type Tys = Tys;
     type FnInputTys = Tys;
@@ -494,62 +478,13 @@ impl rustc_type_ir::Interner for DbInterner {
     type Clause = Clause;
     type Clauses = Clauses;
 
-    fn with_global_cache<R>(
-        self,
-        f: impl FnOnce(&mut rustc_type_ir::search_graph::GlobalCache<Self>) -> R,
-    ) -> R {
-        let mut cache = rustc_type_ir::search_graph::GlobalCache::default();
-        f(&mut cache)
-    }
-
-    fn evaluation_is_concurrent(&self) -> bool {
-        false
-    }
-
-    fn expand_abstract_consts<T: rustc_type_ir::fold::TypeFoldable<Self>>(self, t: T) -> T {
-        t
-    }
-
     type GenericsOf = Generics;
-
-    fn generics_of(self, def_id: Self::DefId) -> Self::GenericsOf {
-        todo!()
-    }
 
     type VariancesOf = VariancesOf;
 
-    fn variances_of(self, def_id: Self::DefId) -> Self::VariancesOf {
-        todo!()
-    }
-
-    fn type_of(self, def_id: Self::DefId) -> rustc_type_ir::EarlyBinder<Self, Self::Ty> {
-        todo!()
-    }
-
     type AdtDef = AdtDef;
 
-    fn adt_def(self, adt_def_id: Self::DefId) -> Self::AdtDef {
-        todo!()
-    }
-
-    fn alias_ty_kind(self, alias: rustc_type_ir::AliasTy<Self>) -> rustc_type_ir::AliasTyKind {
-        todo!()
-    }
-
-    fn alias_term_kind(
-        self,
-        alias: rustc_type_ir::AliasTerm<Self>,
-    ) -> rustc_type_ir::AliasTermKind {
-        todo!()
-    }
-
-    fn trait_ref_and_own_args_for_alias(
-        self,
-        def_id: Self::DefId,
-        args: Self::GenericArgs,
-    ) -> (rustc_type_ir::TraitRef<Self>, Self::GenericArgsSlice) {
-        todo!()
-    }
+    type Features = Features;
 
     fn mk_args(self, args: &[Self::GenericArg]) -> Self::GenericArgs {
         GenericArgs::new_from_iter(args.iter().cloned())
@@ -563,267 +498,7 @@ impl rustc_type_ir::Interner for DbInterner {
         CollectAndApply::collect_and_apply(args, |g| GenericArgs::new_from_iter(g.iter().cloned()))
     }
 
-    fn check_args_compatible(self, def_id: Self::DefId, args: Self::GenericArgs) -> bool {
-        todo!()
-    }
-
-    fn debug_assert_args_compatible(self, def_id: Self::DefId, args: Self::GenericArgs) {}
-
-    fn debug_assert_existential_args_compatible(
-        self,
-        def_id: Self::DefId,
-        args: Self::GenericArgs,
-    ) {
-    }
-
-    fn mk_type_list_from_iter<I, T>(self, args: I) -> T::Output
-    where
-        I: Iterator<Item = T>,
-        T: rustc_type_ir::CollectAndApply<Self::Ty, Self::Tys>,
-    {
-        CollectAndApply::collect_and_apply(args, |g| Tys::new_from_iter(g.iter().cloned()))
-    }
-
-    fn parent(self, def_id: Self::DefId) -> Self::DefId {
-        todo!()
-    }
-
-    fn recursion_limit(self) -> usize {
-        50
-    }
-
-    type Features = Features;
-
-    fn features(self) -> Self::Features {
-        Features
-    }
-
-    fn bound_coroutine_hidden_types(
-        self,
-        def_id: Self::DefId,
-    ) -> impl IntoIterator<Item = rustc_type_ir::EarlyBinder<Self, rustc_type_ir::Binder<Self, Self::Ty>>>
-    {
-        [todo!()]
-    }
-
-    fn fn_sig(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, rustc_type_ir::Binder<Self, rustc_type_ir::FnSig<Self>>>
-    {
-        todo!()
-    }
-
-    fn coroutine_movability(self, def_id: Self::DefId) -> rustc_ast_ir::Movability {
-        todo!()
-    }
-
-    fn coroutine_for_closure(self, def_id: Self::DefId) -> Self::DefId {
-        todo!()
-    }
-
-    fn generics_require_sized_self(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn item_bounds(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn predicates_of(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn own_predicates_of(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn explicit_super_predicates_of(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
-    {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn explicit_implied_predicates_of(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
-    {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn const_conditions(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<
-        Self,
-        impl IntoIterator<Item = rustc_type_ir::Binder<Self, rustc_type_ir::TraitRef<Self>>>,
-    > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn has_target_features(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn require_lang_item(
-        self,
-        lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
-    ) -> Self::DefId {
-        todo!()
-    }
-
-    fn is_lang_item(
-        self,
-        def_id: Self::DefId,
-        lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
-    ) -> bool {
-        todo!()
-    }
-
-    fn as_lang_item(
-        self,
-        def_id: Self::DefId,
-    ) -> Option<rustc_type_ir::lang_items::TraitSolverLangItem> {
-        todo!()
-    }
-
-    fn associated_type_def_ids(self, def_id: Self::DefId) -> impl IntoIterator<Item = Self::DefId> {
-        [todo!()]
-    }
-
-    fn for_each_relevant_impl(
-        self,
-        trait_def_id: Self::DefId,
-        self_ty: Self::Ty,
-        f: impl FnMut(Self::DefId),
-    ) {
-        todo!()
-    }
-
-    fn has_item_definition(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn impl_is_default(self, impl_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn impl_trait_ref(
-        self,
-        impl_def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, rustc_type_ir::TraitRef<Self>> {
-        todo!()
-    }
-
-    fn impl_polarity(self, impl_def_id: Self::DefId) -> rustc_type_ir::ImplPolarity {
-        todo!()
-    }
-
-    fn trait_is_auto(self, trait_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn trait_is_alias(self, trait_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn trait_is_dyn_compatible(self, trait_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn trait_is_fundamental(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn trait_may_be_implemented_via_object(self, trait_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn is_impl_trait_in_trait(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn delay_bug(self, msg: impl ToString) -> Self::ErrorGuaranteed {
-        todo!()
-    }
-
-    fn is_general_coroutine(self, coroutine_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn coroutine_is_async(self, coroutine_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn coroutine_is_gen(self, coroutine_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn coroutine_is_async_gen(self, coroutine_def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
     type UnsizingParams = UnsizingParams;
-
-    fn unsizing_params_for_adt(self, adt_def_id: Self::DefId) -> Self::UnsizingParams {
-        todo!()
-    }
-
-    fn find_const_ty_from_env(
-        self,
-        param_env: &Self::ParamEnv,
-        placeholder: Self::PlaceholderConst,
-    ) -> Self::Ty {
-        todo!()
-    }
-
-    fn anonymize_bound_vars<T: rustc_type_ir::fold::TypeFoldable<Self>>(
-        self,
-        binder: rustc_type_ir::Binder<Self, T>,
-    ) -> rustc_type_ir::Binder<Self, T> {
-        todo!()
-    }
-
-    fn opaque_types_defined_by(
-        self,
-        defining_anchor: Self::LocalDefId,
-    ) -> Self::DefiningOpaqueTypes {
-        todo!()
-    }
-
-    fn alias_has_const_conditions(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn explicit_implied_const_bounds(
-        self,
-        def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<
-        Self,
-        impl IntoIterator<Item = rustc_type_ir::Binder<Self, rustc_type_ir::TraitRef<Self>>>,
-    > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
-    }
-
-    fn fn_is_const(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
-
-    fn impl_is_const(self, def_id: Self::DefId) -> bool {
-        todo!()
-    }
 }
 
 impl DbInterner {
@@ -885,6 +560,470 @@ impl<'cx> RustIr for DbIr<'cx> {
 
     fn interner(self) -> Self::Interner {
         DbInterner
+    }
+
+    fn mk_tracked<T: fmt::Debug + Clone>(
+        self,
+        data: T,
+        dep_node: <Self::Interner as rustc_type_ir::Interner>::DepNodeIndex,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::Tracked<T> {
+        Tracked(data)
+    }
+
+    fn get_tracked<T: fmt::Debug + Clone>(
+        self,
+        tracked: &<Self::Interner as rustc_type_ir::Interner>::Tracked<T>,
+    ) -> T {
+        tracked.0.clone()
+    }
+
+    fn with_cached_task<T>(
+        self,
+        task: impl FnOnce() -> T,
+    ) -> (T, <Self::Interner as rustc_type_ir::Interner>::DepNodeIndex) {
+        (task(), DepNodeIndex)
+    }
+
+    fn with_global_cache<R>(
+        self,
+        f: impl FnOnce(&mut rustc_type_ir::search_graph::GlobalCache<Self>) -> R,
+    ) -> R {
+        let mut cache = rustc_type_ir::search_graph::GlobalCache::default();
+        f(&mut cache)
+    }
+
+    fn evaluation_is_concurrent(&self) -> bool {
+        false
+    }
+
+    fn expand_abstract_consts<T: rustc_type_ir::fold::TypeFoldable<Self::Interner>>(
+        self,
+        t: T,
+    ) -> T {
+        t
+    }
+
+    fn generics_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::GenericsOf {
+        todo!()
+    }
+
+    fn variances_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::VariancesOf {
+        todo!()
+    }
+
+    fn type_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<Self::Interner, <Self::Interner as rustc_type_ir::Interner>::Ty>
+    {
+        todo!()
+    }
+
+    fn adt_def(
+        self,
+        adt_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::AdtDef {
+        todo!()
+    }
+
+    fn alias_ty_kind(
+        self,
+        alias: rustc_type_ir::AliasTy<Self::Interner>,
+    ) -> rustc_type_ir::AliasTyKind {
+        todo!()
+    }
+
+    fn alias_term_kind(
+        self,
+        alias: rustc_type_ir::AliasTerm<Self::Interner>,
+    ) -> rustc_type_ir::AliasTermKind {
+        todo!()
+    }
+
+    fn trait_ref_and_own_args_for_alias(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        args: <Self::Interner as rustc_type_ir::Interner>::GenericArgs,
+    ) -> (
+        rustc_type_ir::TraitRef<Self::Interner>,
+        <Self::Interner as rustc_type_ir::Interner>::GenericArgsSlice,
+    ) {
+        todo!()
+    }
+
+    fn check_args_compatible(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        args: <Self::Interner as rustc_type_ir::Interner>::GenericArgs,
+    ) -> bool {
+        todo!()
+    }
+
+    fn debug_assert_args_compatible(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        args: <Self::Interner as rustc_type_ir::Interner>::GenericArgs,
+    ) {
+    }
+
+    fn debug_assert_existential_args_compatible(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        args: <Self::Interner as rustc_type_ir::Interner>::GenericArgs,
+    ) {
+    }
+
+    fn mk_type_list_from_iter<I, T>(self, args: I) -> T::Output
+    where
+        I: Iterator<Item = T>,
+        T: rustc_type_ir::CollectAndApply<
+            <Self::Interner as rustc_type_ir::Interner>::Ty,
+            <Self::Interner as rustc_type_ir::Interner>::Tys,
+        >,
+    {
+        CollectAndApply::collect_and_apply(args, |g| Tys::new_from_iter(g.iter().cloned()))
+    }
+
+    fn parent(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::DefId {
+        todo!()
+    }
+
+    fn recursion_limit(self) -> usize {
+        50
+    }
+
+    fn features(self) -> <Self::Interner as rustc_type_ir::Interner>::Features {
+        Features
+    }
+
+    fn bound_coroutine_hidden_types(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> impl IntoIterator<
+        Item = rustc_type_ir::EarlyBinder<
+            Self::Interner,
+            rustc_type_ir::Binder<Self::Interner, <Self::Interner as rustc_type_ir::Interner>::Ty>,
+        >,
+    > {
+        [todo!()]
+    }
+
+    fn fn_sig(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        rustc_type_ir::Binder<Self::Interner, rustc_type_ir::FnSig<Self::Interner>>,
+    > {
+        todo!()
+    }
+
+    fn coroutine_movability(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_ast_ir::Movability {
+        todo!()
+    }
+
+    fn coroutine_for_closure(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::DefId {
+        todo!()
+    }
+
+    fn generics_require_sized_self(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn item_bounds(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn predicates_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn own_predicates_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn explicit_super_predicates_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<
+            Item = (
+                <Self::Interner as rustc_type_ir::Interner>::Clause,
+                <Self::Interner as rustc_type_ir::Interner>::Span,
+            ),
+        >,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn explicit_implied_predicates_of(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<
+            Item = (
+                <Self::Interner as rustc_type_ir::Interner>::Clause,
+                <Self::Interner as rustc_type_ir::Interner>::Span,
+            ),
+        >,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn const_conditions(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<
+            Item = rustc_type_ir::Binder<Self::Interner, rustc_type_ir::TraitRef<Self::Interner>>,
+        >,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn has_target_features(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn require_lang_item(
+        self,
+        lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::DefId {
+        todo!()
+    }
+
+    fn is_lang_item(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
+    ) -> bool {
+        todo!()
+    }
+
+    fn as_lang_item(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> Option<rustc_type_ir::lang_items::TraitSolverLangItem> {
+        todo!()
+    }
+
+    fn associated_type_def_ids(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::DefId> {
+        [todo!()]
+    }
+
+    fn for_each_relevant_impl(
+        self,
+        trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+        self_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
+        f: impl FnMut(<Self::Interner as rustc_type_ir::Interner>::DefId),
+    ) {
+        todo!()
+    }
+
+    fn has_item_definition(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn impl_is_default(
+        self,
+        impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn impl_trait_ref(
+        self,
+        impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<Self::Interner, rustc_type_ir::TraitRef<Self::Interner>> {
+        todo!()
+    }
+
+    fn impl_polarity(
+        self,
+        impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::ImplPolarity {
+        todo!()
+    }
+
+    fn trait_is_auto(
+        self,
+        trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn trait_is_alias(
+        self,
+        trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn trait_is_dyn_compatible(
+        self,
+        trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn trait_is_fundamental(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn trait_may_be_implemented_via_object(
+        self,
+        trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn is_impl_trait_in_trait(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn delay_bug(
+        self,
+        msg: impl ToString,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::ErrorGuaranteed {
+        todo!()
+    }
+
+    fn is_general_coroutine(
+        self,
+        coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn coroutine_is_async(
+        self,
+        coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn coroutine_is_gen(
+        self,
+        coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn coroutine_is_async_gen(
+        self,
+        coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn unsizing_params_for_adt(
+        self,
+        adt_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::UnsizingParams {
+        todo!()
+    }
+
+    fn find_const_ty_from_env(
+        self,
+        param_env: &<Self::Interner as rustc_type_ir::Interner>::ParamEnv,
+        placeholder: <Self::Interner as rustc_type_ir::Interner>::PlaceholderConst,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::Ty {
+        todo!()
+    }
+
+    fn anonymize_bound_vars<T: rustc_type_ir::fold::TypeFoldable<Self::Interner>>(
+        self,
+        binder: rustc_type_ir::Binder<Self::Interner, T>,
+    ) -> rustc_type_ir::Binder<Self::Interner, T> {
+        todo!()
+    }
+
+    fn opaque_types_defined_by(
+        self,
+        defining_anchor: <Self::Interner as rustc_type_ir::Interner>::LocalDefId,
+    ) -> <Self::Interner as rustc_type_ir::Interner>::DefiningOpaqueTypes {
+        todo!()
+    }
+
+    fn alias_has_const_conditions(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> bool {
+        todo!()
+    }
+
+    fn explicit_implied_const_bounds(
+        self,
+        def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
+    ) -> rustc_type_ir::EarlyBinder<
+        Self::Interner,
+        impl IntoIterator<
+            Item = rustc_type_ir::Binder<Self::Interner, rustc_type_ir::TraitRef<Self::Interner>>,
+        >,
+    > {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn fn_is_const(self, def_id: <Self::Interner as rustc_type_ir::Interner>::DefId) -> bool {
+        todo!()
+    }
+
+    fn impl_is_const(self, def_id: <Self::Interner as rustc_type_ir::Interner>::DefId) -> bool {
+        todo!()
     }
 }
 
