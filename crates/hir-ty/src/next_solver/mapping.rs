@@ -1,23 +1,29 @@
 use base_db::ra_salsa;
 use chalk_ir::interner::HasInterner;
-use hir_def::{ConstParamId, FunctionId, LifetimeParamId, TypeAliasId, TypeParamId};
+use hir_def::{ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
     fold::{TypeFoldable, TypeSuperFoldable},
     inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike},
-    visit::TypeVisitable,
+    solve::Goal,
+    visit::{TypeVisitable, TypeVisitableExt},
+    PredicateKind, RustIr,
 };
 
 use crate::{
     db::HirDatabase,
-    next_solver::interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
+    next_solver::{
+        interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
+        Binder, ClauseKind, TraitPredicate,
+    },
     Interner,
 };
 
 use super::{
     BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Const, DbIr,
-    EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
-    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst, VariancesOf,
+    EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy,
+    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, Region, TraitRef, Ty, Tys,
+    ValueConst, VariancesOf,
 };
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
@@ -446,5 +452,70 @@ impl ChalkToNextSolver<rustc_type_ir::Variance> for chalk_ir::Variance {
 impl ChalkToNextSolver<VariancesOf> for chalk_ir::Variances<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> VariancesOf {
         VariancesOf::new_from_iter(self.as_slice(Interner).iter().map(|v| v.to_nextsolver(ir)))
+    }
+}
+
+impl ChalkToNextSolver<Goal<DbInterner, Predicate>>
+    for chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>
+{
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> Goal<DbInterner, Predicate> {
+        let param_env = ParamEnv::empty();
+        //let param_env = self.canonical.value.environment.to_nextsolver(ir);
+        let bound_vars = BoundVarKinds::new_from_iter(self.canonical.binders.iter(Interner).map(
+            |k| match &k.kind {
+                chalk_ir::VariableKind::Ty(ty_variable_kind) => BoundVarKind::Ty(BoundTyKind::Anon),
+                chalk_ir::VariableKind::Lifetime => BoundVarKind::Region(BoundRegionKind::Anon),
+                chalk_ir::VariableKind::Const(ty) => BoundVarKind::Const,
+            },
+        ));
+        match self.canonical.value.goal.data(Interner) {
+            chalk_ir::GoalData::Quantified(quantifier_kind, binders) => todo!(),
+            chalk_ir::GoalData::Implies(program_clauses, goal) => todo!(),
+            chalk_ir::GoalData::All(goals) => todo!(),
+            chalk_ir::GoalData::Not(goal) => todo!(),
+            chalk_ir::GoalData::EqGoal(eq_goal) => todo!(),
+            chalk_ir::GoalData::SubtypeGoal(subtype_goal) => todo!(),
+            chalk_ir::GoalData::DomainGoal(domain_goal) => match domain_goal {
+                chalk_ir::DomainGoal::Holds(where_clause) => match where_clause {
+                    chalk_ir::WhereClause::Implemented(trait_ref) => {
+                        let predicate = TraitPredicate {
+                            trait_ref: trait_ref.to_nextsolver(ir),
+                            polarity: rustc_type_ir::PredicatePolarity::Positive,
+                        };
+                        let pred_kind = Binder::bind_with_vars(
+                            PredicateKind::Clause(ClauseKind::Trait(predicate)),
+                            bound_vars,
+                        );
+                        Goal::new(ir.interner(), param_env, Predicate::new(pred_kind))
+                    }
+                    chalk_ir::WhereClause::AliasEq(alias_eq) => todo!(),
+                    chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
+                    chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),
+                },
+                chalk_ir::DomainGoal::WellFormed(well_formed) => todo!(),
+                chalk_ir::DomainGoal::FromEnv(_) => todo!(),
+                chalk_ir::DomainGoal::Normalize(normalize) => todo!(),
+                chalk_ir::DomainGoal::IsLocal(ty) => todo!(),
+                chalk_ir::DomainGoal::IsUpstream(ty) => todo!(),
+                chalk_ir::DomainGoal::IsFullyVisible(ty) => todo!(),
+                chalk_ir::DomainGoal::LocalImplAllowed(trait_ref) => todo!(),
+                chalk_ir::DomainGoal::Compatible => todo!(),
+                chalk_ir::DomainGoal::DownstreamType(ty) => todo!(),
+                chalk_ir::DomainGoal::Reveal => todo!(),
+                chalk_ir::DomainGoal::ObjectSafe(trait_id) => todo!(),
+            },
+            chalk_ir::GoalData::CannotProve => todo!(),
+        }
+    }
+}
+
+impl ChalkToNextSolver<TraitRef> for chalk_ir::TraitRef<Interner> {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> TraitRef {
+        let args = self.substitution.to_nextsolver(ir);
+        TraitRef::new_from_args(
+            ir,
+            GenericDefId::TraitId(ra_salsa::InternKey::from_intern_id(self.trait_id.0)),
+            args,
+        )
     }
 }

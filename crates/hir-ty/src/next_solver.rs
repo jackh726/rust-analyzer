@@ -9,7 +9,7 @@ mod generics;
 mod infer;
 pub mod interner;
 mod ir_print;
-mod mapping;
+pub mod mapping;
 mod opaques;
 mod predicate;
 mod region;

@@ -1,45 +1,47 @@
+use std::any::type_name_of_val;
+
 use rustc_type_ir::{self as ty, ir_print::IrPrint};
 
 use super::interner::DbInterner;
 
 impl IrPrint<ty::AliasTy<Self>> for DbInterner {
     fn print(t: &ty::AliasTy<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(t: &ty::AliasTy<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 
 impl IrPrint<ty::AliasTerm<Self>> for DbInterner {
     fn print(t: &ty::AliasTerm<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(t: &ty::AliasTerm<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::TraitRef<Self>> for DbInterner {
     fn print(t: &ty::TraitRef<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(t: &ty::TraitRef<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::TraitPredicate<Self>> for DbInterner {
     fn print(t: &ty::TraitPredicate<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::TraitPredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<rustc_type_ir::HostEffectPredicate<Self>> for DbInterner {
@@ -47,14 +49,14 @@ impl IrPrint<rustc_type_ir::HostEffectPredicate<Self>> for DbInterner {
         t: &rustc_type_ir::HostEffectPredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &rustc_type_ir::HostEffectPredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::ExistentialTraitRef<Self>> for DbInterner {
@@ -62,14 +64,14 @@ impl IrPrint<ty::ExistentialTraitRef<Self>> for DbInterner {
         t: &ty::ExistentialTraitRef<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::ExistentialTraitRef<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::ExistentialProjection<Self>> for DbInterner {
@@ -77,14 +79,14 @@ impl IrPrint<ty::ExistentialProjection<Self>> for DbInterner {
         t: &ty::ExistentialProjection<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::ExistentialProjection<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::ProjectionPredicate<Self>> for DbInterner {
@@ -92,26 +94,26 @@ impl IrPrint<ty::ProjectionPredicate<Self>> for DbInterner {
         t: &ty::ProjectionPredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::ProjectionPredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::NormalizesTo<Self>> for DbInterner {
     fn print(t: &ty::NormalizesTo<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::NormalizesTo<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::SubtypePredicate<Self>> for DbInterner {
@@ -119,34 +121,34 @@ impl IrPrint<ty::SubtypePredicate<Self>> for DbInterner {
         t: &ty::SubtypePredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::SubtypePredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::CoercePredicate<Self>> for DbInterner {
     fn print(t: &ty::CoercePredicate<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(
         t: &ty::CoercePredicate<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }
 impl IrPrint<ty::FnSig<Self>> for DbInterner {
     fn print(t: &ty::FnSig<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 
     fn print_debug(t: &ty::FnSig<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(t, fmt)
+        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
     }
 }

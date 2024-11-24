@@ -15,7 +15,7 @@ pub type Goal<P> = rustc_type_ir::solve::Goal<DbInterner, P>;
 
 #[derive(Clone)]
 pub(crate) struct SolverContext<'db> {
-    table: InferenceTable<'db>,
+    pub(crate) table: InferenceTable<'db>,
 }
 
 impl<'db> std::ops::Deref for SolverContext<'db> {

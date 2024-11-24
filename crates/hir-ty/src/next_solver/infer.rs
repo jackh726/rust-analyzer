@@ -14,11 +14,16 @@ pub type CanonicalVarInfo = rustc_type_ir::CanonicalVarInfo<DbInterner>;
 
 #[derive(Clone)]
 pub(crate) struct InferenceTable<'db> {
-    interner: DbIr<'db>,
-    pub(crate) db: &'db dyn HirDatabase,
+    ir: DbIr<'db>,
     // unify: ena::unify::InPlaceUnificationTable<TyVid>,
     // vars: Vec<TyVid>,
     max_universe: UniverseIndex,
+}
+
+impl<'db> InferenceTable<'db> {
+    pub fn new(db: &'db dyn HirDatabase) -> Self {
+        InferenceTable { ir: DbIr { db }, max_universe: UniverseIndex::from_u32(1) }
+    }
 }
 
 impl<'db> InferCtxtLike for InferenceTable<'db> {
@@ -26,7 +31,7 @@ impl<'db> InferCtxtLike for InferenceTable<'db> {
     type Interner = DbInterner;
 
     fn cx(&self) -> Self::Ir {
-        self.interner
+        self.ir
     }
 
     fn typing_mode(

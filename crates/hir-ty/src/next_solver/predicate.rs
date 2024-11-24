@@ -320,6 +320,12 @@ pub struct ParamEnv {
     pub(super) clauses: Clauses,
 }
 
+impl ParamEnv {
+    pub fn empty() -> Self {
+        ParamEnv { reveal: Reveal::UserFacing, clauses: Clauses::new_from_iter([]) }
+    }
+}
+
 impl TypeVisitable<DbInterner> for ParamEnv {
     fn visit_with<V: rustc_type_ir::visit::TypeVisitor<DbInterner>>(
         &self,

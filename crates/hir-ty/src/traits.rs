@@ -14,13 +14,18 @@ use hir_def::{
 };
 use hir_expand::name::Name;
 use intern::sym;
+use rustc_next_trait_solver::solve::SolverDelegateEvalExt;
+use rustc_type_ir::InferCtxtLike;
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
 
 use crate::{
-    db::HirDatabase, infer::unify::InferenceTable, utils::UnevaluatedConstEvaluatorFolder, AliasEq,
-    AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
+    db::HirDatabase,
+    infer::unify::InferenceTable,
+    next_solver::{mapping::ChalkToNextSolver, SolverContext},
+    utils::UnevaluatedConstEvaluatorFolder,
+    AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
     ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
 };
 
@@ -143,6 +148,7 @@ pub(crate) fn trait_solve_query(
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
     let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
+    solve_nextsolver(db, krate, block, &u_canonical);
     solve(db, krate, block, &u_canonical)
 }
 
@@ -195,6 +201,21 @@ fn solve(
     } else {
         solve()
     }
+}
+
+fn solve_nextsolver(
+    db: &dyn HirDatabase,
+    _krate: CrateId,
+    _block: Option<BlockId>,
+    goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
+) {
+    let context = SolverContext { table: super::next_solver::InferenceTable::new(db) };
+
+    let goal = goal.to_nextsolver(context.table.cx());
+
+    let (res, _) =
+        context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
+    let _ = res.expect("Next solver failed.");
 }
 
 struct LoggingRustIrDatabaseLoggingOnDrop<'a>(LoggingRustIrDatabase<Interner, ChalkContext<'a>>);
