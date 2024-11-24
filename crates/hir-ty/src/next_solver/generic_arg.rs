@@ -161,7 +161,7 @@ impl GenericArgs {
         args.reserve(defs.own_params.len());
         for param in &defs.own_params {
             let kind = mk_kind(param, args);
-            assert_eq!(param.index as usize, args.len(), "{args:#?}, {defs:#?}");
+            assert_eq!(param.index() as usize, args.len(), "{args:#?}, {defs:#?}");
             args.push(kind);
         }
     }
@@ -227,7 +227,7 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
         original_args: &[<DbInterner as rustc_type_ir::Interner>::GenericArg],
     ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
         Self::for_item(interner, def_id.into(), |def, _| {
-            if let Some(arg) = original_args.get(def.index as usize) {
+            if let Some(arg) = original_args.get(def.index() as usize) {
                 arg.clone()
             } else {
                 def.to_error(interner)

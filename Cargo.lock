@@ -1779,12 +1779,12 @@ dependencies = [
 [[package]]
 name = "rustc_ast_ir"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 
 [[package]]
 name = "rustc_index"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 dependencies = [
  "arrayvec",
  "rustc_index_macros",
@@ -1794,7 +1794,7 @@ dependencies = [
 [[package]]
 name = "rustc_index_macros"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1804,7 +1804,7 @@ dependencies = [
 [[package]]
 name = "rustc_next_trait_solver"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 dependencies = [
  "derive-where",
  "rustc_ast_ir",
@@ -1817,7 +1817,7 @@ dependencies = [
 [[package]]
 name = "rustc_type_ir"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 dependencies = [
  "bitflags 2.6.0",
  "derive-where",
@@ -1834,7 +1834,7 @@ dependencies = [
 [[package]]
 name = "rustc_type_ir_macros"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#565d1613bf516e745be3e2de1c77b651c4a4b49e"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#9fe96eb8e55df5a7bfe0e76e36b57952be923ffb"
 dependencies = [
  "proc-macro2",
  "quote",

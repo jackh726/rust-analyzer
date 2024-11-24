@@ -1,5 +1,5 @@
 use hir_def::GenericDefId;
-use intern::Interned;
+use intern::{Interned, Symbol};
 use rustc_type_ir::{
     fold::TypeFoldable,
     inherent::{IntoKind, PlaceholderLike},
@@ -11,7 +11,7 @@ use rustc_type_ir::{
 use crate::interner::InternedWrapper;
 
 use super::{
-    interner::{BoundVarKind, DbInterner, Placeholder, Symbol},
+    interner::{BoundVarKind, DbInterner, Placeholder},
     ErrorGuaranteed,
 };
 
@@ -24,17 +24,21 @@ impl Region {
     pub fn new(kind: RegionKind) -> Self {
         Region(Interned::new(InternedWrapper(kind)))
     }
+
+    pub fn new_early_param(early_bound_region: EarlyParamRegion) -> Self {
+        Region::new(RegionKind::ReEarlyParam(early_bound_region))
+    }
 }
 
 pub type PlaceholderRegion = Placeholder<BoundRegion>;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct EarlyParamRegion {
     pub index: u32,
     pub name: Symbol,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Copy, Debug)] // FIXME implement Debug manually
+#[derive(Clone, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug manually
 /// The parameter representation of late-bound function parameters, "some region
 /// at least as big as the scope `fr.scope`".
 ///
@@ -48,7 +52,7 @@ pub struct LateParamRegion {
     pub bound_region: BoundRegionKind,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Copy, Debug)] // FIXME implement Debug manually
+#[derive(Clone, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug manually
 pub enum BoundRegionKind {
     /// An anonymous region parameter for a given fn (&T)
     Anon,
@@ -64,7 +68,7 @@ pub enum BoundRegionKind {
     ClosureEnv,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BoundRegion {
     pub var: BoundVar,
     pub kind: BoundRegionKind,
@@ -84,7 +88,7 @@ impl std::fmt::Debug for EarlyParamRegion {
 }
 
 impl rustc_type_ir::inherent::BoundVarLike<DbInterner> for BoundRegion {
-    fn var(self) -> BoundVar {
+    fn var(&self) -> BoundVar {
         self.var
     }
 
@@ -95,7 +99,7 @@ impl rustc_type_ir::inherent::BoundVarLike<DbInterner> for BoundRegion {
 
 impl core::fmt::Debug for BoundRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
+        match &self.kind {
             BoundRegionKind::Anon => write!(f, "{:?}", self.var),
             BoundRegionKind::ClosureEnv => write!(f, "{:?}.Env", self.var),
             BoundRegionKind::Named(def, symbol) => {
@@ -107,7 +111,7 @@ impl core::fmt::Debug for BoundRegion {
 
 impl BoundRegionKind {
     pub fn is_named(&self) -> bool {
-        match *self {
+        match self {
             BoundRegionKind::Named(_, name) => {
                 true
                 // name != kw::UnderscoreLifetime && name != kw::Empty
@@ -118,8 +122,8 @@ impl BoundRegionKind {
 
     pub fn get_name(&self) -> Option<Symbol> {
         if self.is_named() {
-            match *self {
-                BoundRegionKind::Named(_, name) => return Some(name),
+            match self {
+                BoundRegionKind::Named(_, name) => return Some(name.clone()),
                 _ => unreachable!(),
             }
         }
@@ -128,8 +132,8 @@ impl BoundRegionKind {
     }
 
     pub fn get_id(&self) -> Option<GenericDefId> {
-        match *self {
-            BoundRegionKind::Named(id, _) => Some(id),
+        match self {
+            BoundRegionKind::Named(id, _) => Some(*id),
             _ => None,
         }
     }
@@ -139,7 +143,7 @@ impl IntoKind for Region {
     type Kind = RegionKind;
 
     fn kind(self) -> Self::Kind {
-        self.0 .0
+        self.0 .0.clone()
     }
 }
 
@@ -254,16 +258,16 @@ impl Region {
 }
 
 impl PlaceholderLike for PlaceholderRegion {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
+    fn universe(&self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
 
-    fn var(self) -> rustc_type_ir::BoundVar {
+    fn var(&self) -> rustc_type_ir::BoundVar {
         self.bound.var
     }
 
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        Placeholder { universe: ui, ..self }
+    fn with_updated_universe(&self, ui: rustc_type_ir::UniverseIndex) -> Self {
+        Placeholder { universe: ui, bound: self.bound.clone() }
     }
 
     fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {

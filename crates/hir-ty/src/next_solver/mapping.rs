@@ -1,6 +1,7 @@
 use base_db::ra_salsa;
 use chalk_ir::interner::HasInterner;
 use hir_def::{ConstParamId, FunctionId, LifetimeParamId, TypeAliasId, TypeParamId};
+use intern::sym;
 use rustc_type_ir::{
     fold::{TypeFoldable, TypeSuperFoldable},
     inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike},
@@ -18,27 +19,6 @@ use super::{
     EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
     PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst,
 };
-
-pub fn ty_to_param_idx(db: &dyn HirDatabase, id: TypeParamId) -> ParamTy {
-    let interned_id = db.intern_type_or_const_param_id(id.into());
-    ParamTy { index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(), name: super::Symbol }
-}
-
-pub fn const_to_param_idx(db: &dyn HirDatabase, id: ConstParamId) -> ParamConst {
-    let interned_id = db.intern_type_or_const_param_id(id.into());
-    ParamConst {
-        index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(),
-        name: super::Symbol,
-    }
-}
-
-pub fn lt_to_param_idx(db: &dyn HirDatabase, id: LifetimeParamId) -> EarlyParamRegion {
-    let interned_id = db.intern_lifetime_param_id(id);
-    EarlyParamRegion {
-        index: ra_salsa::InternKey::as_intern_id(&interned_id).as_u32(),
-        name: super::Symbol,
-    }
-}
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
     binder: rustc_type_ir::Binder<DbInterner, T>,
@@ -75,7 +55,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
                 let var: rustc_type_ir::BoundVar = bound_ty.var();
                 Ty::new(rustc_type_ir::TyKind::Param(ParamTy {
                     index: var.as_u32(),
-                    name: super::Symbol,
+                    name: sym::MISSING_NAME.clone(),
                 }))
             }
             _ => t,
@@ -88,7 +68,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
                 let var: rustc_type_ir::BoundVar = bound_region.var();
                 Region::new(rustc_type_ir::RegionKind::ReEarlyParam(EarlyParamRegion {
                     index: var.as_u32(),
-                    name: super::Symbol,
+                    name: sym::MISSING_NAME.clone(),
                 }))
             }
             _ => r,
@@ -100,7 +80,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
             rustc_type_ir::ConstKind::Bound(debruijn, var) if self.debruijn == debruijn => {
                 Const::new(rustc_type_ir::ConstKind::Param(ParamConst {
                     index: var.as_u32(),
-                    name: super::Symbol,
+                    name: sym::MISSING_NAME.clone(),
                 }))
             }
             _ => c,

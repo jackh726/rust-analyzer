@@ -1,5 +1,5 @@
 use hir_def::GenericDefId;
-use intern::Interned;
+use intern::{Interned, Symbol};
 use rustc_abi::{Float, Integer, Size};
 use rustc_ast_ir::{try_visit, visit::VisitorResult};
 use rustc_type_ir::{
@@ -20,7 +20,7 @@ use super::{
     flags::FlagComputation,
     interned_vec,
     util::{FloatExt, IntegerExt},
-    BoundVarKind, DbInterner, GenericArgs, Placeholder, Symbol,
+    BoundVarKind, DbInterner, GenericArgs, Placeholder,
 };
 
 pub type TyKind = rustc_type_ir::TyKind<DbInterner>;
@@ -38,6 +38,10 @@ impl Ty {
             outer_exclusive_binder: flags.outer_exclusive_binder,
         };
         Ty(Interned::new(InternedWrapper(cached)))
+    }
+
+    pub fn new_param(index: u32, name: Symbol) -> Self {
+        Ty::new(TyKind::Param(ParamTy { index, name }))
     }
 }
 
@@ -61,19 +65,19 @@ impl rustc_type_ir::inherent::Tys<DbInterner> for Tys {
 
 pub type PlaceholderTy = Placeholder<BoundTy>;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)] // FIXME implement Debug by hand
+#[derive(Clone, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
 pub struct ParamTy {
     pub index: u32,
     pub name: Symbol,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
+#[derive(Clone, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand
 pub struct BoundTy {
     pub var: BoundVar,
     pub kind: BoundTyKind,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum BoundTyKind {
     Anon,
     Param(GenericDefId, Symbol),
@@ -573,7 +577,7 @@ impl ParamLike for ParamTy {
 }
 
 impl BoundVarLike<DbInterner> for BoundTy {
-    fn var(self) -> BoundVar {
+    fn var(&self) -> BoundVar {
         self.var
     }
 
@@ -583,16 +587,16 @@ impl BoundVarLike<DbInterner> for BoundTy {
 }
 
 impl PlaceholderLike for PlaceholderTy {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
+    fn universe(&self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
 
-    fn var(self) -> BoundVar {
+    fn var(&self) -> BoundVar {
         self.bound.var
     }
 
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        Placeholder { universe: ui, ..self }
+    fn with_updated_universe(&self, ui: rustc_type_ir::UniverseIndex) -> Self {
+        Placeholder { universe: ui, bound: self.bound.clone() }
     }
 
     fn new(ui: rustc_type_ir::UniverseIndex, var: BoundVar) -> Self {

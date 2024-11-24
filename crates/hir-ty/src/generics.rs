@@ -255,7 +255,7 @@ pub(crate) fn trait_self_param_idx(db: &dyn DefDatabase, def: GenericDefId) -> O
     }
 }
 
-fn parent_generic_def(db: &dyn DefDatabase, def: GenericDefId) -> Option<GenericDefId> {
+pub(crate) fn parent_generic_def(db: &dyn DefDatabase, def: GenericDefId) -> Option<GenericDefId> {
     let container = match def {
         GenericDefId::FunctionId(it) => it.lookup(db).container,
         GenericDefId::TypeAliasId(it) => it.lookup(db).container,

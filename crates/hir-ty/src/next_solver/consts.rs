@@ -1,4 +1,4 @@
-use intern::Interned;
+use intern::{Interned, Symbol};
 use rustc_ast_ir::try_visit;
 use rustc_ast_ir::visit::VisitorResult;
 use rustc_type_ir::{
@@ -13,7 +13,6 @@ use crate::{interner::InternedWrapper, ConstScalar};
 
 use super::{
     flags::FlagComputation, BoundVarKind, DbInterner, ErrorGuaranteed, GenericArgs, Placeholder,
-    Symbol,
 };
 
 pub type ConstKind = rustc_type_ir::ConstKind<DbInterner>;
@@ -36,6 +35,10 @@ impl Const {
     pub fn error() -> Self {
         Const::new(rustc_type_ir::ConstKind::Error(ErrorGuaranteed))
     }
+
+    pub fn new_param(param: ParamConst) -> Self {
+        Const::new(rustc_type_ir::ConstKind::Param(param))
+    }
 }
 
 impl std::fmt::Debug for Const {
@@ -46,7 +49,7 @@ impl std::fmt::Debug for Const {
 
 pub type PlaceholderConst = Placeholder<rustc_type_ir::BoundVar>;
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)] // FIXME implement manually
+#[derive(Clone, Hash, Eq, PartialEq, Debug)] // FIXME implement manually
 pub struct ParamConst {
     pub index: u32,
     pub name: Symbol,
@@ -217,16 +220,16 @@ impl rustc_type_ir::inherent::Const<DbInterner> for Const {
 }
 
 impl PlaceholderLike for PlaceholderConst {
-    fn universe(self) -> rustc_type_ir::UniverseIndex {
+    fn universe(&self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
 
-    fn var(self) -> rustc_type_ir::BoundVar {
+    fn var(&self) -> rustc_type_ir::BoundVar {
         self.bound
     }
 
-    fn with_updated_universe(self, ui: rustc_type_ir::UniverseIndex) -> Self {
-        Placeholder { universe: ui, ..self }
+    fn with_updated_universe(&self, ui: rustc_type_ir::UniverseIndex) -> Self {
+        Placeholder { universe: ui, bound: self.bound.clone() }
     }
 
     fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {

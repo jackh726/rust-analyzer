@@ -128,9 +128,6 @@ macro_rules! _interned_vec {
 pub use crate::_interned_vec as interned_vec;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
-pub struct Symbol;
-
-#[derive(Debug, Copy, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct DbInterner;
 
 impl inherent::DefId<DbInterner> for GenericDefId {
