@@ -17,7 +17,7 @@ use crate::{
 use super::{
     BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Const, DbIr,
     EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamTy,
-    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst,
+    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Region, Ty, Tys, ValueConst, VariancesOf,
 };
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
@@ -430,5 +430,21 @@ impl ChalkToNextSolver<rustc_ast_ir::Mutability> for chalk_ir::Mutability {
             chalk_ir::Mutability::Mut => rustc_ast_ir::Mutability::Mut,
             chalk_ir::Mutability::Not => rustc_ast_ir::Mutability::Not,
         }
+    }
+}
+
+impl ChalkToNextSolver<rustc_type_ir::Variance> for chalk_ir::Variance {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> rustc_type_ir::Variance {
+        match self {
+            chalk_ir::Variance::Covariant => rustc_type_ir::Variance::Covariant,
+            chalk_ir::Variance::Invariant => rustc_type_ir::Variance::Invariant,
+            chalk_ir::Variance::Contravariant => rustc_type_ir::Variance::Contravariant,
+        }
+    }
+}
+
+impl ChalkToNextSolver<VariancesOf> for chalk_ir::Variances<Interner> {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> VariancesOf {
+        VariancesOf::new_from_iter(self.as_slice(Interner).iter().map(|v| v.to_nextsolver(ir)))
     }
 }

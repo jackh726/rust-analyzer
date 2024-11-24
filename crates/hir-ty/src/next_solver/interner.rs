@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use base_db::CrateId;
+use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
@@ -21,10 +21,9 @@ use rustc_type_ir::{
     UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
-use crate::{
-    db::HirDatabase, generics::generics, interner::InternedWrapper, ConstScalar, FnAbi, Interner,
-};
+use crate::{db::HirDatabase, interner::InternedWrapper, ConstScalar, FnAbi, Interner};
 
+use super::generics::generics;
 use super::{
     abi::Safety,
     fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
@@ -607,14 +606,23 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> <Self::Interner as rustc_type_ir::Interner>::GenericsOf {
-        todo!()
+        generics(self.db.upcast(), def_id)
     }
 
     fn variances_of(
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> <Self::Interner as rustc_type_ir::Interner>::VariancesOf {
-        todo!()
+        match def_id {
+            GenericDefId::FunctionId(def_id) => {
+                HirDatabase::fn_def_variance(self.db, chalk_ir::FnDefId(def_id.as_intern_id()))
+                    .to_nextsolver(self)
+            }
+            GenericDefId::AdtId(def_id) => {
+                HirDatabase::adt_variance(self.db, chalk_ir::AdtId(def_id)).to_nextsolver(self)
+            }
+            _ => todo!(),
+        }
     }
 
     fn type_of(
