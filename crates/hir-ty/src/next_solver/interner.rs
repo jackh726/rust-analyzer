@@ -649,6 +649,15 @@ impl DbInterner {
             value.fold_with(&mut replacer)
         }
     }
+
+    pub fn replace_bound_vars_uncached<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
+        self,
+        value: Binder<T>,
+        delegate: impl BoundVarReplacerDelegate,
+    ) -> T {
+        self.replace_escaping_bound_vars_uncached(value.skip_binder(), delegate)
+    }
+
 }
 
 #[derive(Debug, Copy, Clone)]

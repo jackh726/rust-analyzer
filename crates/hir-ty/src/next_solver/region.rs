@@ -1,11 +1,7 @@
 use hir_def::GenericDefId;
 use intern::{Interned, Symbol};
 use rustc_type_ir::{
-    fold::TypeFoldable,
-    inherent::{IntoKind, PlaceholderLike},
-    relate::Relate,
-    visit::{Flags, TypeVisitable},
-    BoundVar, TypeFlags, INNERMOST,
+    fold::TypeFoldable, inherent::{IntoKind, PlaceholderLike}, relate::Relate, visit::{Flags, TypeVisitable}, BoundVar, RegionVid, TypeFlags, INNERMOST
 };
 
 use crate::interner::InternedWrapper;
@@ -27,6 +23,22 @@ impl Region {
 
     pub fn new_early_param(early_bound_region: EarlyParamRegion) -> Self {
         Region::new(RegionKind::ReEarlyParam(early_bound_region))
+    }
+
+    pub fn new_placeholder(placeholder: PlaceholderRegion) -> Self {
+        Region::new(RegionKind::RePlaceholder(placeholder))
+    }
+
+    pub fn new_var(v: RegionVid) -> Region {
+        Region::new(RegionKind::ReVar(v))
+    }
+
+    pub fn is_placeholder(&self) -> bool {
+        matches!(self.0.0, RegionKind::RePlaceholder(..))
+    }
+
+    pub fn is_static(&self) -> bool {
+        matches!(self.0.0, RegionKind::ReStatic)
     }
 }
 

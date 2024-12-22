@@ -39,6 +39,14 @@ impl Const {
     pub fn new_param(param: ParamConst) -> Self {
         Const::new(rustc_type_ir::ConstKind::Param(param))
     }
+
+    pub fn new_placeholder(placeholder: PlaceholderConst) -> Self {
+        Const::new(ConstKind::Placeholder(placeholder))
+    }
+
+    pub fn is_ct_infer(&self) -> bool {
+        matches!(&self.0.internee, ConstKind::Infer(_))
+    }
 }
 
 impl std::fmt::Debug for Const {

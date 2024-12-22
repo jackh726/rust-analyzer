@@ -1,11 +1,7 @@
 use hir_def::GenericDefId;
 use intern::Interned;
 use rustc_type_ir::{
-    fold::TypeFoldable,
-    inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike},
-    relate::{Relate, VarianceDiagInfo},
-    visit::TypeVisitable,
-    CollectAndApply, GenericArgKind, Interner, RustIr, TermKind, TyKind, Variance,
+    fold::TypeFoldable, inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike}, relate::{Relate, VarianceDiagInfo}, visit::TypeVisitable, CollectAndApply, ConstVid, GenericArgKind, Interner, RustIr, TermKind, TyKind, TyVid, Variance
 };
 use smallvec::SmallVec;
 
@@ -354,6 +350,26 @@ impl Relate<DbInterner> for Term {
 }
 
 impl rustc_type_ir::inherent::Term<DbInterner> for Term {}
+
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum TermVid {
+    Ty(TyVid),
+    Const(ConstVid),
+}
+
+impl From<TyVid> for TermVid {
+    fn from(value: TyVid) -> Self {
+        TermVid::Ty(value)
+    }
+}
+
+impl From<ConstVid> for TermVid {
+    fn from(value: ConstVid) -> Self {
+        TermVid::Const(value)
+    }
+}
+
 
 impl DbInterner {
     pub(super) fn mk_args(self, args: &[GenericArg]) -> GenericArgs {

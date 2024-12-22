@@ -1,35 +1,30 @@
 use rustc_next_trait_solver::delegate::SolverDelegate;
 use rustc_type_ir::{
-    solve::{Certainty, NoSolution},
-    UniverseIndex,
+    inherent::Span as _, solve::{Certainty, NoSolution}, UniverseIndex
 };
 
 use crate::db::HirDatabase;
 
 use super::{
-    infer::InferenceTable, Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner,
-    DbIr, GenericArg, GenericArgs, ParamEnv, Predicate, Span, Ty, UnevaluatedConst,
+    infer::{DbInternerInferExt, InferCtxt}, Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner, DbIr, GenericArg, GenericArgs, ParamEnv, Predicate, Span, Ty, UnevaluatedConst
 };
 
 pub type Goal<P> = rustc_type_ir::solve::Goal<DbInterner, P>;
 
-#[derive(Clone)]
-pub(crate) struct SolverContext<'db> {
-    pub(crate) table: InferenceTable<'db>,
-}
+pub(crate) struct SolverContext<'db>(pub(crate) InferCtxt<'db>);
 
 impl<'db> std::ops::Deref for SolverContext<'db> {
-    type Target = InferenceTable<'db>;
+    type Target = InferCtxt<'db>;
 
     fn deref(&self) -> &Self::Target {
-        &self.table
+        &self.0
     }
 }
 
 impl<'db> SolverDelegate for SolverContext<'db> {
     type Interner = DbInterner;
     type Span = Span;
-    type Infcx = InferenceTable<'db>;
+    type Infcx = InferCtxt<'db>;
     type Ir = DbIr<'db>;
 
     fn build_with_canonical<V>(
@@ -39,7 +34,8 @@ impl<'db> SolverDelegate for SolverContext<'db> {
     where
         V: rustc_type_ir::fold::TypeFoldable<Self::Interner>,
     {
-        todo!()
+        let (infcx, value, vars) = cx.infer_ctxt().build_with_canonical(Span::dummy(), canonical);
+        (SolverContext(infcx), value, vars)
     }
 
     fn fresh_var_for_kind_with_span(
@@ -78,7 +74,8 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         rustc_type_ir::OpaqueTypeKey<Self::Interner>,
         <Self::Interner as rustc_type_ir::Interner>::Ty,
     )> {
-        todo!()
+        // FIXME
+        vec![]
     }
 
     fn make_deduplicated_outlives_constraints(

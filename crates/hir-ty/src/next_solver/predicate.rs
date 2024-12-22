@@ -44,6 +44,10 @@ pub type PolyTypeOutlivesPredicate = Binder<TypeOutlivesPredicate>;
 pub type PolySubtypePredicate = Binder<SubtypePredicate>;
 pub type PolyCoercePredicate = Binder<CoercePredicate>;
 pub type PolyProjectionPredicate = Binder<ProjectionPredicate>;
+pub type PolyTraitRef = Binder<TraitRef>;
+pub type PolyExistentialTraitRef = Binder<ExistentialTraitRef>;
+pub type PolyExistentialProjection = Binder<ExistentialProjection>;
+
 
 /// Compares via an ordering that will not change if modules are reordered or other changes are
 /// made to the tree. In particular, this ordering is preserved across incremental compilations.
@@ -186,6 +190,28 @@ impl Predicate {
             outer_exclusive_binder: flags.outer_exclusive_binder,
         };
         Predicate(Interned::new(InternedWrapper(cached)))
+    }
+
+    /// Flips the polarity of a Predicate.
+    ///
+    /// Given `T: Trait` predicate it returns `T: !Trait` and given `T: !Trait` returns `T: Trait`.
+    pub fn flip_polarity(self) -> Option<Predicate> {
+        let kind = self
+            .kind()
+            .map_bound(|kind| match kind {
+                PredicateKind::Clause(ClauseKind::Trait(TraitPredicate {
+                    trait_ref,
+                    polarity,
+                })) => Some(PredicateKind::Clause(ClauseKind::Trait(TraitPredicate {
+                    trait_ref,
+                    polarity: polarity.flip(),
+                }))),
+
+                _ => None,
+            })
+            .transpose()?;
+
+        Some(Predicate::new(kind))
     }
 }
 
@@ -357,6 +383,18 @@ impl rustc_type_ir::inherent::ParamEnv<DbInterner> for ParamEnv {
         self,
     ) -> impl IntoIterator<Item = <DbInterner as rustc_type_ir::Interner>::Clause> {
         self.clauses.iter()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ParamEnvAnd<T> {
+    pub param_env: ParamEnv,
+    pub value: T,
+}
+
+impl<T> ParamEnvAnd<T> {
+    pub fn into_parts(self) -> (ParamEnv, T) {
+        (self.param_env, self.value)
     }
 }
 

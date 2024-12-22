@@ -15,7 +15,7 @@ use hir_def::{
 use hir_expand::name::Name;
 use intern::sym;
 use rustc_next_trait_solver::solve::SolverDelegateEvalExt;
-use rustc_type_ir::InferCtxtLike;
+use rustc_type_ir::{InferCtxtLike, TypingMode};
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
@@ -23,7 +23,7 @@ use triomphe::Arc;
 use crate::{
     db::HirDatabase,
     infer::unify::InferenceTable,
-    next_solver::{mapping::ChalkToNextSolver, SolverContext},
+    next_solver::{infer::DbInternerInferExt, mapping::ChalkToNextSolver, DbIr, SolverContext},
     utils::UnevaluatedConstEvaluatorFolder,
     AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
     ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
@@ -209,9 +209,9 @@ fn solve_nextsolver(
     _block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
 ) {
-    let context = SolverContext { table: super::next_solver::InferenceTable::new(db) };
+    let context = SolverContext(DbIr::new(db).infer_ctxt().build(TypingMode::non_body_analysis()));
 
-    let goal = goal.to_nextsolver(context.table.cx());
+    let goal = goal.to_nextsolver(context.cx());
 
     let (res, _) =
         context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);

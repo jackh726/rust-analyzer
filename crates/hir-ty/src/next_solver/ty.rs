@@ -3,11 +3,7 @@ use intern::{Interned, Symbol};
 use rustc_abi::{Float, Integer, Size};
 use rustc_ast_ir::{try_visit, visit::VisitorResult};
 use rustc_type_ir::{
-    fold::{TypeFoldable, TypeSuperFoldable},
-    inherent::{BoundVarLike, GenericArgs as _, IntoKind, ParamLike, PlaceholderLike, SliceLike},
-    relate::Relate,
-    visit::{Flags, TypeSuperVisitable, TypeVisitable},
-    BoundVar, ClosureKind, InferTy, IntTy, UintTy, WithCachedTypeInfo,
+    fold::{TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, GenericArgs as _, IntoKind, ParamLike, PlaceholderLike, SliceLike}, relate::Relate, visit::{Flags, TypeSuperVisitable, TypeVisitable}, BoundVar, ClosureKind, FloatTy, FloatVid, InferTy, IntTy, IntVid, UintTy, WithCachedTypeInfo
 };
 use smallvec::SmallVec;
 
@@ -43,6 +39,46 @@ impl Ty {
     pub fn new_param(index: u32, name: Symbol) -> Self {
         Ty::new(TyKind::Param(ParamTy { index, name }))
     }
+
+    pub fn new_placeholder(placeholder: PlaceholderTy) -> Ty {
+        Ty::new(TyKind::Placeholder(placeholder))
+    }
+
+    pub fn new_infer(infer: InferTy) -> Ty {
+        Ty::new(TyKind::Infer(infer))
+    }
+
+    pub fn new_int_var(v: IntVid) -> Ty {
+        Ty::new_infer(InferTy::IntVar(v))
+    }
+
+    pub fn new_float_var(v: FloatVid) -> Ty {
+        Ty::new_infer(InferTy::FloatVar(v))
+    }
+
+    pub fn new_int(i: IntTy) -> Ty {
+        Ty::new(TyKind::Int(i))
+    }
+
+    pub fn new_uint(ui: UintTy) -> Ty {
+        Ty::new(TyKind::Uint(ui))
+    }
+
+    pub fn new_float(f: FloatTy) -> Ty {
+        Ty::new(TyKind::Float(f))
+    }
+
+    pub fn new_fresh(n: u32) -> Ty {
+        Ty::new_infer(InferTy::FreshTy(n))
+    }
+
+    pub fn new_fresh_int(n: u32) -> Ty {
+        Ty::new_infer(InferTy::FreshIntTy(n))
+    }
+
+    pub fn new_fresh_float(n: u32) -> Ty {
+        Ty::new_infer(InferTy::FreshFloatTy(n))
+    }
 }
 
 impl std::fmt::Debug for Ty {
@@ -69,6 +105,12 @@ pub type PlaceholderTy = Placeholder<BoundTy>;
 pub struct ParamTy {
     pub index: u32,
     pub name: Symbol,
+}
+
+impl ParamTy {
+    pub fn to_ty(self) -> Ty {
+        Ty::new_param(self.index, self.name)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)] // FIXME implement Debug by hand

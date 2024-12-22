@@ -1779,12 +1779,12 @@ dependencies = [
 [[package]]
 name = "rustc_ast_ir"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 
 [[package]]
 name = "rustc_index"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 dependencies = [
  "arrayvec",
  "rustc_index_macros",
@@ -1794,7 +1794,7 @@ dependencies = [
 [[package]]
 name = "rustc_index_macros"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1804,7 +1804,7 @@ dependencies = [
 [[package]]
 name = "rustc_next_trait_solver"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 dependencies = [
  "derive-where",
  "rustc_ast_ir",
@@ -1817,10 +1817,11 @@ dependencies = [
 [[package]]
 name = "rustc_type_ir"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 dependencies = [
  "bitflags 2.6.0",
  "derive-where",
+ "ena",
  "indexmap",
  "rustc-hash 1.1.0",
  "rustc_ast_ir",
@@ -1834,7 +1835,7 @@ dependencies = [
 [[package]]
 name = "rustc_type_ir_macros"
 version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#04c9649900a7949a33705b839145c0da84ca6bb3"
+source = "git+https://github.com/jackh726/rust.git?branch=rust-analyzer-next-solver#d989ea99a654e215360233cfe22c1d60a24d8ace"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -52,10 +52,10 @@ pub struct Generics {
 
 #[derive(Debug)]
 pub struct GenericParamDef {
-    name: Symbol,
+    pub(crate) name: Symbol,
     //def_id: GenericDefId,
     index: u32,
-    kind: GenericParamDefKind,
+    pub(crate) kind: GenericParamDefKind,
 }
 
 impl GenericParamDef {

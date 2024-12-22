@@ -1,8 +1,8 @@
 use extension_traits::extension;
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
-use rustc_type_ir::{CoroutineArgs, FloatTy, IntTy, UintTy};
+use rustc_type_ir::{fold::{TypeFolder, TypeSuperFoldable}, inherent::IntoKind, visit::{TypeSuperVisitable, TypeVisitor}, ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, UintTy, UniverseIndex};
 
-use super::{DbInterner, Ty, TyKind};
+use super::{Const, DbInterner, Region, Ty, TyKind};
 
 #[derive(Clone, Debug)]
 pub struct Discr {
@@ -226,5 +226,92 @@ impl CoroutineArgs<DbInterner> {
     #[inline]
     fn discr_ty(&self, interner: DbInterner) -> Ty {
         Ty::new(TyKind::Uint(UintTy::U32))
+    }
+}
+
+
+/// Finds the max universe present
+pub struct MaxUniverse {
+    max_universe: UniverseIndex,
+}
+
+impl MaxUniverse {
+    pub fn new() -> Self {
+        MaxUniverse { max_universe: UniverseIndex::ROOT }
+    }
+
+    pub fn max_universe(self) -> UniverseIndex {
+        self.max_universe
+    }
+}
+
+impl TypeVisitor<DbInterner> for MaxUniverse {
+    type Result = ();
+
+    fn visit_ty(&mut self, t: Ty) {
+        if let TyKind::Placeholder(placeholder) = t.clone().kind() {
+            self.max_universe = UniverseIndex::from_u32(
+                self.max_universe.as_u32().max(placeholder.universe.as_u32()),
+            );
+        }
+
+        t.super_visit_with(self)
+    }
+
+    fn visit_const(&mut self, c: Const) {
+        if let ConstKind::Placeholder(placeholder) = c.clone().kind() {
+            self.max_universe = UniverseIndex::from_u32(
+                self.max_universe.as_u32().max(placeholder.universe.as_u32()),
+            );
+        }
+
+        c.super_visit_with(self)
+    }
+
+    fn visit_region(&mut self, r: Region) {
+        if let RegionKind::RePlaceholder(placeholder) = r.kind() {
+            self.max_universe = UniverseIndex::from_u32(
+                self.max_universe.as_u32().max(placeholder.universe.as_u32()),
+            );
+        }
+    }
+}
+
+pub struct BottomUpFolder<F, G, H>
+where
+    F: FnMut(Ty) -> Ty,
+    G: FnMut(Region) -> Region,
+    H: FnMut(Const) -> Const,
+{
+    pub interner: DbInterner,
+    pub ty_op: F,
+    pub lt_op: G,
+    pub ct_op: H,
+}
+
+impl<F, G, H> TypeFolder<DbInterner> for BottomUpFolder<F, G, H>
+where
+    F: FnMut(Ty) -> Ty,
+    G: FnMut(Region) -> Region,
+    H: FnMut(Const) -> Const,
+{
+    fn cx(&self) -> DbInterner {
+        self.interner
+    }
+
+    fn fold_ty(&mut self, ty: Ty) -> Ty {
+        let t = ty.super_fold_with(self);
+        (self.ty_op)(t)
+    }
+
+    fn fold_region(&mut self, r: Region) -> Region {
+        // This one is a little different, because `super_fold_with` is not
+        // implemented on non-recursive `Region`.
+        (self.lt_op)(r)
+    }
+
+    fn fold_const(&mut self, ct: Const) -> Const {
+        let ct = ct.super_fold_with(self);
+        (self.ct_op)(ct)
     }
 }
