@@ -6,8 +6,11 @@ use hir_def::data::adt::StructFlags;
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use rustc_abi::{ReprFlags, ReprOptions};
+use rustc_type_ir::inherent::IntoKind;
+use rustc_type_ir::InferTy;
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
+use std::ops::ControlFlow;
 use triomphe::Arc;
 
 use rustc_ast_ir::visit::VisitorResult;
@@ -22,6 +25,8 @@ use rustc_type_ir::{
     UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
+use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
+use crate::next_solver::util::for_trait_impls;
 use crate::{db::HirDatabase, interner::InternedWrapper, ConstScalar, FnAbi, Interner};
 
 use super::generics::generics;
@@ -300,7 +305,7 @@ impl std::hash::Hash for AdtDefData {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct AdtDef(AdtDefData);
+pub struct AdtDef(pub(crate) AdtDefData);
 
 impl AdtDef {
     pub fn new(def_id: AdtId, ir: DbIr<'_>) -> Self {
@@ -663,11 +668,13 @@ impl DbInterner {
 #[derive(Debug, Copy, Clone)]
 pub struct DbIr<'a> {
     pub(crate) db: &'a dyn HirDatabase,
+    pub(crate) krate: CrateId,
+    pub(crate) block: Option<BlockId>,
 }
 
 impl<'a> DbIr<'a> {
-    pub fn new(db: &'a dyn HirDatabase) -> Self {
-        DbIr { db }
+    pub fn new(db: &'a dyn HirDatabase, krate: CrateId, block: Option<BlockId>) -> Self {
+        DbIr { db, krate, block }
     }
 }
 impl<'cx> RustIr for DbIr<'cx> {
@@ -988,9 +995,38 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
         self_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
-        f: impl FnMut(<Self::Interner as rustc_type_ir::Interner>::DefId),
+        mut f: impl FnMut(<Self::Interner as rustc_type_ir::Interner>::DefId),
     ) {
-        todo!()
+
+        let trait_ = match trait_def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => panic!("for_each_relevant_impl called for non-trait"),
+        };
+
+        let self_ty_fp = TyFingerprint::for_trait_impl_ns(&self_ty);
+        let fps: &[TyFingerprint] = match self_ty.clone().kind() {
+            TyKind::Infer(InferTy::IntVar(..)) => &ALL_INT_FPS,
+            TyKind::Infer(InferTy::FloatVar(..)) => &ALL_FLOAT_FPS,
+            _ => self_ty_fp.as_ref().map(std::slice::from_ref).unwrap_or(&[]),
+        };
+
+        if fps.is_empty() {
+            for_trait_impls(self.db, self.krate, self.block, trait_, self_ty_fp, |impls| {
+                for i in impls.for_trait(trait_) {
+                    f(GenericDefId::ImplId(i));
+                }
+                ControlFlow::Continue(())
+            });
+        } else {
+            for_trait_impls(self.db, self.krate, self.block, trait_, self_ty_fp, |impls| {
+                for fp in fps {
+                    for i in impls.for_trait_and_self_ty(trait_, *fp) {
+                        f(GenericDefId::ImplId(i));
+                    }
+                }
+                ControlFlow::Continue(())
+            });
+        }
     }
 
     fn has_item_definition(

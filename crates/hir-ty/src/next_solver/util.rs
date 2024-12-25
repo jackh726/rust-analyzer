@@ -1,6 +1,13 @@
+use std::iter;
+use std::ops::{self, ControlFlow};
+
+use base_db::CrateId;
 use extension_traits::extension;
+use hir_def::{BlockId, HasModule};
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
 use rustc_type_ir::{fold::{TypeFolder, TypeSuperFoldable}, inherent::IntoKind, visit::{TypeSuperVisitable, TypeVisitor}, ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, UintTy, UniverseIndex};
+
+use crate::{db::HirDatabase, from_foreign_def_id, method_resolution::{TraitImpls, TyFingerprint}};
 
 use super::{Const, DbInterner, Region, Ty, TyKind};
 
@@ -314,4 +321,57 @@ where
         let ct = ct.super_fold_with(self);
         (self.ct_op)(ct)
     }
+}
+
+pub(crate) fn for_trait_impls(
+    db: &dyn HirDatabase,
+    krate: CrateId,
+    block: Option<BlockId>,
+    trait_id: hir_def::TraitId,
+    self_ty_fp: Option<TyFingerprint>,
+    mut f: impl FnMut(&TraitImpls) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    // Note: Since we're using `impls_for_trait` and `impl_provided_for`,
+    // only impls where the trait can be resolved should ever reach Chalk.
+    // `impl_datum` relies on that and will panic if the trait can't be resolved.
+    let in_deps = db.trait_impls_in_deps(krate);
+    let in_self = db.trait_impls_in_crate(krate);
+    let trait_module = trait_id.module(db.upcast());
+    let type_module = match self_ty_fp {
+        Some(TyFingerprint::Adt(adt_id)) => Some(adt_id.module(db.upcast())),
+        Some(TyFingerprint::ForeignType(type_id)) => {
+            Some(from_foreign_def_id(type_id).module(db.upcast()))
+        }
+        Some(TyFingerprint::Dyn(trait_id)) => Some(trait_id.module(db.upcast())),
+        _ => None,
+    };
+
+    let mut def_blocks =
+        [trait_module.containing_block(), type_module.and_then(|it| it.containing_block())];
+
+    let block_impls = iter::successors(block, |&block_id| {
+        cov_mark::hit!(block_local_impls);
+        db.block_def_map(block_id).parent().and_then(|module| module.containing_block())
+    })
+    .inspect(|&block_id| {
+        // make sure we don't search the same block twice
+        def_blocks.iter_mut().for_each(|block| {
+            if *block == Some(block_id) {
+                *block = None;
+            }
+        });
+    })
+    .filter_map(|block_id| db.trait_impls_in_block(block_id));
+    f(&in_self)?;
+    for it in in_deps.iter().map(ops::Deref::deref) {
+        f(it)?;
+    }
+    for it in block_impls {
+        f(&it)?;
+    }
+    for it in def_blocks.into_iter().flatten().filter_map(|it| db.trait_impls_in_block(it))
+    {
+        f(&it)?;
+    }
+    ControlFlow::Continue(())
 }

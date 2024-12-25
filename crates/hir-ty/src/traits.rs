@@ -205,11 +205,12 @@ fn solve(
 
 fn solve_nextsolver(
     db: &dyn HirDatabase,
-    _krate: CrateId,
-    _block: Option<BlockId>,
+    krate: CrateId,
+    block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
 ) {
-    let context = SolverContext(DbIr::new(db).infer_ctxt().build(TypingMode::non_body_analysis()));
+    // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
+    let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
 
     let goal = goal.to_nextsolver(context.cx());
 

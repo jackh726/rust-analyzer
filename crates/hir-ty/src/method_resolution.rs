@@ -15,6 +15,7 @@ use hir_def::{
 use hir_expand::name::Name;
 use intern::sym;
 use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_type_ir::inherent::{IntoKind, SliceLike};
 use smallvec::{smallvec, SmallVec};
 use stdx::never;
 use triomphe::Arc;
@@ -109,6 +110,85 @@ impl TyFingerprint {
             | TyKind::BoundVar(_)
             | TyKind::InferenceVar(_, _)
             | TyKind::Error => return None,
+        };
+        Some(fp)
+    }
+
+    /// Creates a TyFingerprint for looking up a trait impl.
+    pub fn for_trait_impl_ns(ty: &crate::next_solver::Ty) -> Option<TyFingerprint> {
+        use rustc_type_ir::TyKind;
+        let fp = match ty.clone().kind() {
+            TyKind::Str => TyFingerprint::Str,
+            TyKind::Never => TyFingerprint::Never,
+            TyKind::Slice(..) => TyFingerprint::Slice,
+            TyKind::Array(..) => TyFingerprint::Array,
+            TyKind::Int(int) => TyFingerprint::Scalar(Scalar::Int(match int {
+                rustc_type_ir::IntTy::Isize => IntTy::Isize,
+                rustc_type_ir::IntTy::I8 => IntTy::I8,
+                rustc_type_ir::IntTy::I16 => IntTy::I16,
+                rustc_type_ir::IntTy::I32 => IntTy::I32,
+                rustc_type_ir::IntTy::I64 => IntTy::I64,
+                rustc_type_ir::IntTy::I128 => IntTy::I128,
+            })),
+            TyKind::Uint(uint) => TyFingerprint::Scalar(Scalar::Uint(match uint {
+                rustc_type_ir::UintTy::Usize => UintTy::Usize,
+                rustc_type_ir::UintTy::U8 => UintTy::U8,
+                rustc_type_ir::UintTy::U16 => UintTy::U16,
+                rustc_type_ir::UintTy::U32 => UintTy::U32,
+                rustc_type_ir::UintTy::U64 => UintTy::U64,
+                rustc_type_ir::UintTy::U128 => UintTy::U128,
+            })),
+            TyKind::Float(float) => TyFingerprint::Scalar(Scalar::Float(match float {
+                rustc_type_ir::FloatTy::F16 => FloatTy::F16,
+                rustc_type_ir::FloatTy::F32 => FloatTy::F32,
+                rustc_type_ir::FloatTy::F64 => FloatTy::F64,
+                rustc_type_ir::FloatTy::F128 => FloatTy::F128,
+            })),
+            TyKind::Bool => TyFingerprint::Scalar(Scalar::Bool),
+            TyKind::Char => TyFingerprint::Scalar(Scalar::Char),
+            TyKind::Adt(def, _) => TyFingerprint::Adt(def.0.id),
+            TyKind::RawPtr(.., mutability) => match mutability {
+                rustc_ast_ir::Mutability::Mut => TyFingerprint::RawPtr(Mutability::Mut),
+                rustc_ast_ir::Mutability::Not => TyFingerprint::RawPtr(Mutability::Not),
+            },
+            TyKind::Foreign(..) => {
+                todo!()
+                //TyFingerprint::ForeignType(alias_id),
+            }
+            TyKind::Dynamic(bounds, _, _) => {
+                let trait_ref = bounds.as_slice().iter().map(|b| b.clone().skip_binder()).filter_map(|b| match b {
+                    rustc_type_ir::ExistentialPredicate::Trait(t) => Some(t.def_id),
+                    _ => None,
+                }).next()?;
+                let trait_id = match trait_ref {
+                    hir_def::GenericDefId::TraitId(id) => id,
+                    _ => panic!("Bad GenericDefId in trait ref"),
+                };
+                TyFingerprint::Dyn(trait_id)
+            }
+            TyKind::Ref(_, ty, _) => return TyFingerprint::for_trait_impl_ns(&ty),
+            TyKind::Tuple(tys) => {
+                let first_ty = tys.as_slice().iter().next();
+                match first_ty {
+                    Some(ty) => return TyFingerprint::for_trait_impl_ns(ty),
+                    None => TyFingerprint::Unit,
+                }
+            }
+            TyKind::FnDef(_, _)
+            | TyKind::Closure(_, _)
+            | TyKind::Coroutine(..)
+            | TyKind::CoroutineWitness(..) 
+            | TyKind::Pat(..)
+            | TyKind::CoroutineClosure(..) => TyFingerprint::Unnameable,
+            TyKind::FnPtr(sig, _) => {
+                TyFingerprint::Function(sig.inputs().skip_binder().len() as u32)
+            }
+            TyKind::Alias(..)
+            | TyKind::Placeholder(_)
+            | TyKind::Bound(..)
+            | TyKind::Infer(_)
+            | TyKind::Error(_)
+            | TyKind::Param(..) => return None,
         };
         Some(fp)
     }
