@@ -148,7 +148,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
     }
 
     fn reset_opaque_types(&self) {
-        todo!()
+        std::mem::take(&mut self.inner.borrow_mut().opaque_type_storage.opaque_types);
     }
 
     fn fetch_eligible_assoc_item(

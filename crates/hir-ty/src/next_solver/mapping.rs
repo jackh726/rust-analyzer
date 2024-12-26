@@ -1,13 +1,9 @@
-use base_db::ra_salsa;
+use base_db::ra_salsa::{self, InternKey};
 use chalk_ir::interner::HasInterner;
 use hir_def::{ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    fold::{TypeFoldable, TypeSuperFoldable},
-    inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike},
-    solve::Goal,
-    visit::{TypeVisitable, TypeVisitableExt},
-    PredicateKind, RustIr,
+    fold::{TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, PredicateKind, ProjectionPredicate, RustIr
 };
 
 use crate::{
@@ -20,10 +16,7 @@ use crate::{
 };
 
 use super::{
-    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Const, DbIr,
-    EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy,
-    PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, Region, TraitRef, Ty, Tys,
-    ValueConst, VariancesOf,
+    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
 };
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
@@ -488,7 +481,25 @@ impl ChalkToNextSolver<Goal<DbInterner, Predicate>>
                         );
                         Goal::new(ir.interner(), param_env, Predicate::new(pred_kind))
                     }
-                    chalk_ir::WhereClause::AliasEq(alias_eq) => todo!(),
+                    chalk_ir::WhereClause::AliasEq(alias_eq) => {
+                        let projection = match &alias_eq.alias {
+                            chalk_ir::AliasTy::Projection(p) => p,
+                            _ => todo!(),
+                        };
+                        let def_id = GenericDefId::TypeAliasId(TypeAliasId::from_intern_id(projection.associated_ty_id.0));
+                        let args = projection.substitution.to_nextsolver(ir);
+                        let term: Ty = alias_eq.ty.to_nextsolver(ir);
+                        let term: Term = term.into();
+                        let predicate = ProjectionPredicate {
+                            projection_term: AliasTerm::new_from_args(ir, def_id, args),
+                            term,
+                        };
+                        let pred_kind = Binder::bind_with_vars(
+                            PredicateKind::Clause(ClauseKind::Projection(predicate)),
+                            bound_vars,
+                        );
+                        Goal::new(ir.interner(), param_env, Predicate::new(pred_kind))
+                    }
                     chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
                     chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),
                 },

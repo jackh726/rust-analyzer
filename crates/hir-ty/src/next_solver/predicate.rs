@@ -580,8 +580,16 @@ impl rustc_type_ir::inherent::Predicate<DbInterner> for Predicate {
     fn is_coinductive(&self, interner: DbInterner) -> bool {
         match self.clone().kind().skip_binder() {
             ty::PredicateKind::Clause(ty::ClauseKind::Trait(data)) => {
-                todo!()
-                // tcx.trait_is_coinductive(data.def_id())
+                // FIXME
+                /*
+                let trait_ = match trait_def_id {
+                    GenericDefId::TraitId(id) => id,
+                    _ => panic!("Unexpected GenericDefId in trait_is_auto"),
+                };
+                let trait_data = self.db.trait_data(trait_);
+                trait_data.is_auto
+                */
+                false
             }
             ty::PredicateKind::Clause(ty::ClauseKind::WellFormed(_)) => true,
             _ => false,

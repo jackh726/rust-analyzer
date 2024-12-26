@@ -83,26 +83,26 @@ pub(crate) type UnificationTable<'a, T> = ut::UnificationTable<
 /// call to `start_snapshot` and `rollback_to`.
 #[derive(Clone)]
 pub struct InferCtxtInner {
-    undo_log: InferCtxtUndoLogs,
+    pub(crate) undo_log: InferCtxtUndoLogs,
 
     /// Cache for projections.
     ///
     /// This cache is snapshotted along with the infcx.
-    projection_cache: ProjectionCacheStorage,
+    pub(crate) projection_cache: ProjectionCacheStorage,
 
     /// We instantiate `UnificationTable` with `bounds<Ty>` because the types
     /// that might instantiate a general type variable have an order,
     /// represented by its upper and lower bounds.
-    type_variable_storage: type_variable::TypeVariableStorage,
+    pub(crate) type_variable_storage: type_variable::TypeVariableStorage,
 
     /// Map from const parameter variable to the kind of const it represents.
-    const_unification_storage: ut::UnificationTableStorage<ConstVidKey>,
+    pub(crate) const_unification_storage: ut::UnificationTableStorage<ConstVidKey>,
 
     /// Map from integral variable to the kind of integer it represents.
-    int_unification_storage: ut::UnificationTableStorage<IntVid>,
+    pub(crate) int_unification_storage: ut::UnificationTableStorage<IntVid>,
 
     /// Map from floating variable to the kind of float it represents.
-    float_unification_storage: ut::UnificationTableStorage<FloatVid>,
+    pub(crate) float_unification_storage: ut::UnificationTableStorage<FloatVid>,
 
     /// Tracks the set of region variables and the constraints between them.
     ///
@@ -110,7 +110,7 @@ pub struct InferCtxtInner {
     /// `resolve_regions_and_report_errors` is invoked, this gets set to `None`
     /// -- further attempts to perform unification, etc., may fail if new
     /// region constraints would've been added.
-    region_constraint_storage: Option<RegionConstraintStorage>,
+    pub(crate) region_constraint_storage: Option<RegionConstraintStorage>,
 
     /// A set of constraints that regionck must validate.
     ///
@@ -144,10 +144,10 @@ pub struct InferCtxtInner {
     /// for each body-id in this map, which will process the
     /// obligations within. This is expected to be done 'late enough'
     /// that all type inference variables have been bound and so forth.
-    region_obligations: Vec<RegionObligation>,
+    pub(crate) region_obligations: Vec<RegionObligation>,
 
     /// Caches for opaque type inference.
-    opaque_type_storage: OpaqueTypeStorage,
+    pub(crate) opaque_type_storage: OpaqueTypeStorage,
 }
 
 impl InferCtxtInner {

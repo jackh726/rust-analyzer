@@ -148,8 +148,13 @@ pub(crate) fn trait_solve_query(
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
     let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
-    solve_nextsolver(db, krate, block, &u_canonical);
-    solve(db, krate, block, &u_canonical)
+    let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
+    let chalk_res = solve(db, krate, block, &u_canonical);
+    match (&chalk_res, next_solver_res) {
+        (Some(_), Err(_)) => panic!("Next solver failed when Chalk did not."),
+        _ => {}
+    }
+    chalk_res
 }
 
 fn solve(
@@ -208,15 +213,16 @@ fn solve_nextsolver(
     krate: CrateId,
     block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
-) {
+) -> Result<(rustc_next_trait_solver::solve::HasChanged, rustc_type_ir::solve::Certainty), rustc_type_ir::solve::NoSolution> {
     // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
     let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
 
     let goal = goal.to_nextsolver(context.cx());
+    dbg!(&goal);
 
     let (res, _) =
         context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
-    let _ = res.expect("Next solver failed.");
+    res
 }
 
 struct LoggingRustIrDatabaseLoggingOnDrop<'a>(LoggingRustIrDatabase<Interner, ChalkContext<'a>>);

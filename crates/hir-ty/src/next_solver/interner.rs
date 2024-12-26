@@ -3,11 +3,12 @@
 use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::data::adt::StructFlags;
+use hir_def::ItemContainerId;
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use rustc_abi::{ReprFlags, ReprOptions};
 use rustc_type_ir::inherent::IntoKind;
-use rustc_type_ir::InferTy;
+use rustc_type_ir::{AliasTermKind, InferTy};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use std::ops::ControlFlow;
@@ -317,7 +318,7 @@ impl AdtDef {
                     is_enum: false,
                     is_union: false,
                     is_struct: true,
-                    has_ctor: todo!(),
+                    has_ctor: false, // FIXME
                     is_phantom_data: data.flags.contains(StructFlags::IS_PHANTOM_DATA),
                     is_fundamental: data.flags.contains(StructFlags::IS_FUNDAMENTAL),
                     is_box: data.flags.contains(StructFlags::IS_BOX),
@@ -339,7 +340,7 @@ impl AdtDef {
                     is_enum: false,
                     is_union: true,
                     is_struct: false,
-                    has_ctor: todo!(),
+                    has_ctor: false, // FIXME
                     is_phantom_data: false,
                     is_fundamental: false,
                     is_box: false,
@@ -361,7 +362,7 @@ impl AdtDef {
                     is_enum: true,
                     is_union: false,
                     is_struct: false,
-                    has_ctor: todo!(),
+                    has_ctor: false, // FIXME
                     is_phantom_data: false,
                     is_fundamental: false,
                     is_box: false,
@@ -778,7 +779,8 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         alias: rustc_type_ir::AliasTerm<Self::Interner>,
     ) -> rustc_type_ir::AliasTermKind {
-        todo!()
+        // FIXME
+        AliasTermKind::ProjectionTy
     }
 
     fn trait_ref_and_own_args_for_alias(
@@ -829,7 +831,23 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> <Self::Interner as rustc_type_ir::Interner>::DefId {
-        todo!()
+        use hir_def::Lookup;
+
+        let container = match def_id {
+            GenericDefId::FunctionId(it) => it.lookup(self.db.upcast()).container,
+            GenericDefId::TypeAliasId(it) => it.lookup(self.db.upcast()).container,
+            GenericDefId::ConstId(it) => it.lookup(self.db.upcast()).container,
+            GenericDefId::AdtId(_)
+            | GenericDefId::TraitId(_)
+            | GenericDefId::ImplId(_)
+            | GenericDefId::TraitAliasId(_) => panic!(),
+        };
+    
+        match container {
+            ItemContainerId::ImplId(it) => it.into(),
+            ItemContainerId::TraitId(it) => it.into(),
+            ItemContainerId::ModuleId(_) | ItemContainerId::ExternBlockId(_) => panic!(),
+        }
     }
 
     fn recursion_limit(self) -> usize {
@@ -974,14 +992,193 @@ impl<'cx> RustIr for DbIr<'cx> {
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
         lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
     ) -> bool {
-        todo!()
+        use rustc_type_ir::lang_items::TraitSolverLangItem::*;
+
+        // FIXME: derive PartialEq on TraitSolverLangItem
+        self.as_lang_item(def_id).map_or(false, |l| match (l, lang_item) {
+            (AsyncDestruct, AsyncDestruct) => true,
+            (AsyncFn, AsyncFn) => true,
+            (AsyncFnKindHelper, AsyncFnKindHelper) => true,
+            (AsyncFnKindUpvars, AsyncFnKindUpvars) => true,
+            (AsyncFnMut, AsyncFnMut) => true,
+            (AsyncFnOnce, AsyncFnOnce) => true,
+            (AsyncFnOnceOutput, AsyncFnOnceOutput) => true,
+            (AsyncIterator, AsyncIterator) => true,
+            (CallOnceFuture, CallOnceFuture) => true,
+            (CallRefFuture, CallRefFuture) => true,
+            (Clone, Clone) => true,
+            (Copy, Copy) => true,
+            (Coroutine, Coroutine) => true,
+            (CoroutineReturn, CoroutineReturn) => true,
+            (CoroutineYield, CoroutineYield) => true,
+            (Destruct, Destruct) => true,
+            (DiscriminantKind, DiscriminantKind) => true,
+            (Drop, Drop) => true,
+            (DynMetadata, DynMetadata) => true,
+            (Fn, Fn) => true,
+            (FnMut, FnMut) => true,
+            (FnOnce, FnOnce) => true,
+            (FnPtrTrait, FnPtrTrait) => true,
+            (FusedIterator, FusedIterator) => true,
+            (Future, Future) => true,
+            (FutureOutput, FutureOutput) => true,
+            (Iterator, Iterator) => true,
+            (Metadata, Metadata) => true,
+            (Option, Option) => true,
+            (PointeeTrait, PointeeTrait) => true,
+            (Poll, Poll) => true,
+            (Sized, Sized) => true,
+            (TransmuteTrait, TransmuteTrait) => true,
+            (Tuple, Tuple) => true,
+            (Unpin, Unpin) => true,
+            (Unsize, Unsize) => true,
+            _ => false,
+        })
     }
 
     fn as_lang_item(
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> Option<rustc_type_ir::lang_items::TraitSolverLangItem> {
-        todo!()
+        let trait_ = match def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => panic!("Unexpected GenericDefId in as_lang_item"),
+        };
+        let lang_item = self.db.lang_attr(trait_.into())?;
+        Some(match lang_item {
+            hir_def::lang_item::LangItem::Sized => rustc_type_ir::lang_items::TraitSolverLangItem::Sized,
+            hir_def::lang_item::LangItem::Unsize => rustc_type_ir::lang_items::TraitSolverLangItem::Unsize,
+            hir_def::lang_item::LangItem::StructuralPeq => return None,
+            hir_def::lang_item::LangItem::StructuralTeq => return None,
+            hir_def::lang_item::LangItem::Copy => rustc_type_ir::lang_items::TraitSolverLangItem::Copy,
+            hir_def::lang_item::LangItem::Clone => rustc_type_ir::lang_items::TraitSolverLangItem::Clone,
+            hir_def::lang_item::LangItem::Sync => return None,
+            hir_def::lang_item::LangItem::DiscriminantKind => rustc_type_ir::lang_items::TraitSolverLangItem::DiscriminantKind,
+            hir_def::lang_item::LangItem::Discriminant => return None,
+            hir_def::lang_item::LangItem::PointeeTrait => rustc_type_ir::lang_items::TraitSolverLangItem::PointeeTrait,
+            hir_def::lang_item::LangItem::Metadata => rustc_type_ir::lang_items::TraitSolverLangItem::Metadata,
+            hir_def::lang_item::LangItem::DynMetadata => rustc_type_ir::lang_items::TraitSolverLangItem::DynMetadata,
+            hir_def::lang_item::LangItem::Freeze => return None,
+            hir_def::lang_item::LangItem::FnPtrTrait => rustc_type_ir::lang_items::TraitSolverLangItem::FnPtrTrait,
+            hir_def::lang_item::LangItem::FnPtrAddr => return None,
+            hir_def::lang_item::LangItem::Drop => rustc_type_ir::lang_items::TraitSolverLangItem::Drop,
+            hir_def::lang_item::LangItem::Destruct => rustc_type_ir::lang_items::TraitSolverLangItem::Destruct,
+            hir_def::lang_item::LangItem::CoerceUnsized => return None,
+            hir_def::lang_item::LangItem::DispatchFromDyn => return None,
+            hir_def::lang_item::LangItem::TransmuteOpts => return None,
+            hir_def::lang_item::LangItem::TransmuteTrait => rustc_type_ir::lang_items::TraitSolverLangItem::TransmuteTrait,
+            hir_def::lang_item::LangItem::Add => return None,
+            hir_def::lang_item::LangItem::Sub => return None,
+            hir_def::lang_item::LangItem::Mul => return None,
+            hir_def::lang_item::LangItem::Div => return None,
+            hir_def::lang_item::LangItem::Rem => return None,
+            hir_def::lang_item::LangItem::Neg => return None,
+            hir_def::lang_item::LangItem::Not => return None,
+            hir_def::lang_item::LangItem::BitXor => return None,
+            hir_def::lang_item::LangItem::BitAnd => return None,
+            hir_def::lang_item::LangItem::BitOr => return None,
+            hir_def::lang_item::LangItem::Shl => return None,
+            hir_def::lang_item::LangItem::Shr => return None,
+            hir_def::lang_item::LangItem::AddAssign => return None,
+            hir_def::lang_item::LangItem::SubAssign => return None,
+            hir_def::lang_item::LangItem::MulAssign => return None,
+            hir_def::lang_item::LangItem::DivAssign => return None,
+            hir_def::lang_item::LangItem::RemAssign => return None,
+            hir_def::lang_item::LangItem::BitXorAssign => return None,
+            hir_def::lang_item::LangItem::BitAndAssign => return None,
+            hir_def::lang_item::LangItem::BitOrAssign => return None,
+            hir_def::lang_item::LangItem::ShlAssign => return None,
+            hir_def::lang_item::LangItem::ShrAssign => return None,
+            hir_def::lang_item::LangItem::Index => return None,
+            hir_def::lang_item::LangItem::IndexMut => return None,
+            hir_def::lang_item::LangItem::UnsafeCell => return None,
+            hir_def::lang_item::LangItem::VaList => return None,
+            hir_def::lang_item::LangItem::Deref => return None,
+            hir_def::lang_item::LangItem::DerefMut => return None,
+            hir_def::lang_item::LangItem::DerefTarget => return None,
+            hir_def::lang_item::LangItem::Receiver => return None,
+            hir_def::lang_item::LangItem::Fn => rustc_type_ir::lang_items::TraitSolverLangItem::Fn,
+            hir_def::lang_item::LangItem::FnMut => rustc_type_ir::lang_items::TraitSolverLangItem::FnMut,
+            hir_def::lang_item::LangItem::FnOnce => rustc_type_ir::lang_items::TraitSolverLangItem::FnOnce,
+            hir_def::lang_item::LangItem::FnOnceOutput => return None,
+            hir_def::lang_item::LangItem::Future => rustc_type_ir::lang_items::TraitSolverLangItem::Future,
+            hir_def::lang_item::LangItem::CoroutineState => return None,
+            hir_def::lang_item::LangItem::Coroutine => rustc_type_ir::lang_items::TraitSolverLangItem::Coroutine,
+            hir_def::lang_item::LangItem::Unpin => rustc_type_ir::lang_items::TraitSolverLangItem::Unpin,
+            hir_def::lang_item::LangItem::Pin => return None,
+            hir_def::lang_item::LangItem::PartialEq => return None,
+            hir_def::lang_item::LangItem::PartialOrd => return None,
+            hir_def::lang_item::LangItem::CVoid => return None,
+            hir_def::lang_item::LangItem::Panic => return None,
+            hir_def::lang_item::LangItem::PanicNounwind => return None,
+            hir_def::lang_item::LangItem::PanicFmt => return None,
+            hir_def::lang_item::LangItem::PanicDisplay => return None,
+            hir_def::lang_item::LangItem::ConstPanicFmt => return None,
+            hir_def::lang_item::LangItem::PanicBoundsCheck => return None,
+            hir_def::lang_item::LangItem::PanicMisalignedPointerDereference => return None,
+            hir_def::lang_item::LangItem::PanicInfo => return None,
+            hir_def::lang_item::LangItem::PanicLocation => return None,
+            hir_def::lang_item::LangItem::PanicImpl => return None,
+            hir_def::lang_item::LangItem::PanicCannotUnwind => return None,
+            hir_def::lang_item::LangItem::BeginPanic => return None,
+            hir_def::lang_item::LangItem::FormatAlignment => return None,
+            hir_def::lang_item::LangItem::FormatArgument => return None,
+            hir_def::lang_item::LangItem::FormatArguments => return None,
+            hir_def::lang_item::LangItem::FormatCount => return None,
+            hir_def::lang_item::LangItem::FormatPlaceholder => return None,
+            hir_def::lang_item::LangItem::FormatUnsafeArg => return None,
+            hir_def::lang_item::LangItem::ExchangeMalloc => return None,
+            hir_def::lang_item::LangItem::BoxFree => return None,
+            hir_def::lang_item::LangItem::DropInPlace => return None,
+            hir_def::lang_item::LangItem::AllocLayout => return None,
+            hir_def::lang_item::LangItem::Start => return None,
+            hir_def::lang_item::LangItem::EhPersonality => return None,
+            hir_def::lang_item::LangItem::EhCatchTypeinfo => return None,
+            hir_def::lang_item::LangItem::OwnedBox => return None,
+            hir_def::lang_item::LangItem::PhantomData => return None,
+            hir_def::lang_item::LangItem::ManuallyDrop => return None,
+            hir_def::lang_item::LangItem::MaybeUninit => return None,
+            hir_def::lang_item::LangItem::AlignOffset => return None,
+            hir_def::lang_item::LangItem::Termination => return None,
+            hir_def::lang_item::LangItem::Try => return None,
+            hir_def::lang_item::LangItem::Tuple => rustc_type_ir::lang_items::TraitSolverLangItem::Tuple,
+            hir_def::lang_item::LangItem::SliceLen => return None,
+            hir_def::lang_item::LangItem::TryTraitFromResidual => return None,
+            hir_def::lang_item::LangItem::TryTraitFromOutput => return None,
+            hir_def::lang_item::LangItem::TryTraitBranch => return None,
+            hir_def::lang_item::LangItem::TryTraitFromYeet => return None,
+            hir_def::lang_item::LangItem::PointerLike => return None,
+            hir_def::lang_item::LangItem::ConstParamTy => return None,
+            hir_def::lang_item::LangItem::Poll => rustc_type_ir::lang_items::TraitSolverLangItem::Poll,
+            hir_def::lang_item::LangItem::PollReady => return None,
+            hir_def::lang_item::LangItem::PollPending => return None,
+            hir_def::lang_item::LangItem::ResumeTy => return None,
+            hir_def::lang_item::LangItem::GetContext => return None,
+            hir_def::lang_item::LangItem::Context => return None,
+            hir_def::lang_item::LangItem::FuturePoll => return None,
+            hir_def::lang_item::LangItem::FutureOutput => rustc_type_ir::lang_items::TraitSolverLangItem::FutureOutput,
+            hir_def::lang_item::LangItem::Option => rustc_type_ir::lang_items::TraitSolverLangItem::Option,
+            hir_def::lang_item::LangItem::OptionSome => return None,
+            hir_def::lang_item::LangItem::OptionNone => return None,
+            hir_def::lang_item::LangItem::ResultOk => return None,
+            hir_def::lang_item::LangItem::ResultErr => return None,
+            hir_def::lang_item::LangItem::ControlFlowContinue => return None,
+            hir_def::lang_item::LangItem::ControlFlowBreak => return None,
+            hir_def::lang_item::LangItem::IntoFutureIntoFuture => return None,
+            hir_def::lang_item::LangItem::IntoIterIntoIter => return None,
+            hir_def::lang_item::LangItem::IteratorNext => return None,
+            hir_def::lang_item::LangItem::Iterator => rustc_type_ir::lang_items::TraitSolverLangItem::Iterator,
+            hir_def::lang_item::LangItem::PinNewUnchecked => return None,
+            hir_def::lang_item::LangItem::RangeFrom => return None,
+            hir_def::lang_item::LangItem::RangeFull => return None,
+            hir_def::lang_item::LangItem::RangeInclusiveStruct => return None,
+            hir_def::lang_item::LangItem::RangeInclusiveNew => return None,
+            hir_def::lang_item::LangItem::Range => return None,
+            hir_def::lang_item::LangItem::RangeToInclusive => return None,
+            hir_def::lang_item::LangItem::RangeTo => return None,
+            hir_def::lang_item::LangItem::String => return None,
+            hir_def::lang_item::LangItem::CStr => return None,
+        })
     }
 
     fn associated_type_def_ids(
@@ -1040,35 +1237,54 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        false
     }
 
     fn impl_trait_ref(
         self,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self::Interner, rustc_type_ir::TraitRef<Self::Interner>> {
-        todo!()
+        let impl_id = match impl_def_id {
+            GenericDefId::ImplId(id) => id,
+            _ => panic!("Unexpected GenericDefId in impl_trait_ref"),
+        };
+
+        let db = self.db;
+
+        let trait_ref = db
+            .impl_trait(impl_id)
+            // ImplIds for impls where the trait ref can't be resolved should never reach trait solving
+            .expect("invalid impl passed to trait solver");
+        convert_binder_to_early_binder(trait_ref.to_nextsolver(self))
     }
 
     fn impl_polarity(
         self,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> rustc_type_ir::ImplPolarity {
-        todo!()
+        // FIXME
+        rustc_type_ir::ImplPolarity::Positive
     }
 
     fn trait_is_auto(
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        let trait_ = match trait_def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => panic!("Unexpected GenericDefId in trait_is_auto"),
+        };
+        let trait_data = self.db.trait_data(trait_);
+        trait_data.is_auto
     }
 
     fn trait_is_alias(
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        false
     }
 
     fn trait_is_dyn_compatible(
@@ -1082,14 +1298,20 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        let trait_ = match def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => panic!("Unexpected GenericDefId in trait_is_fundamental"),
+        };
+        let trait_data = self.db.trait_data(trait_);
+        trait_data.fundamental
     }
 
     fn trait_may_be_implemented_via_object(
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        true
     }
 
     fn is_impl_trait_in_trait(
