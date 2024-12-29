@@ -1,3 +1,4 @@
+use hir_def::TypeAliasId;
 use rustc_next_trait_solver::delegate::SolverDelegate;
 use rustc_type_ir::{
     inherent::Span as _, solve::{Certainty, NoSolution}, UniverseIndex
@@ -6,7 +7,7 @@ use rustc_type_ir::{
 use crate::db::HirDatabase;
 
 use super::{
-    infer::{DbInternerInferExt, InferCtxt}, Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner, DbIr, GenericArg, GenericArgs, ParamEnv, Predicate, Span, Ty, UnevaluatedConst
+    infer::{canonical::instantiate::CanonicalExt, DbInternerInferExt, InferCtxt}, Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner, DbIr, GenericArg, GenericArgs, ParamEnv, Predicate, Span, Ty, UnevaluatedConst
 };
 
 pub type Goal<P> = rustc_type_ir::solve::Goal<DbInterner, P>;
@@ -50,7 +51,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         &self,
         max_input_universe: rustc_type_ir::UniverseIndex,
     ) -> Result<(), NoSolution> {
-        todo!()
+        Ok(())
     }
 
     fn well_formed_goals(
@@ -86,7 +87,8 @@ impl<'db> SolverDelegate for SolverContext<'db> {
             <Self::Interner as rustc_type_ir::Interner>::GenericArg,
         >,
     > {
-        todo!()
+        // FIXME: add if we care about regions
+        vec![]
     }
 
     fn instantiate_canonical<V>(
@@ -97,7 +99,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
     where
         V: rustc_type_ir::fold::TypeFoldable<Self::Interner>,
     {
-        todo!()
+        canonical.instantiate(DbInterner, &values)
     }
 
     fn instantiate_canonical_var_with_infer(
@@ -157,7 +159,8 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         trait_assoc_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> Result<Option<<Self::Interner as rustc_type_ir::Interner>::DefId>, NoSolution> {
-        todo!()
+        // FIXME: is there a different def id for associated types in traits & impls?
+        Ok(Some(trait_assoc_def_id))
     }
 
     fn is_transmutable(

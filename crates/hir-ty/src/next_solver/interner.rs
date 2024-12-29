@@ -7,8 +7,8 @@ use hir_def::ItemContainerId;
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use rustc_abi::{ReprFlags, ReprOptions};
-use rustc_type_ir::inherent::IntoKind;
-use rustc_type_ir::{AliasTermKind, InferTy};
+use rustc_type_ir::inherent::{GenericsOf, IntoKind, SliceLike};
+use rustc_type_ir::{AliasTermKind, InferTy, TraitRef};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use std::ops::ControlFlow;
@@ -28,6 +28,7 @@ use rustc_type_ir::{
 
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
+use crate::next_solver::FxIndexMap;
 use crate::{db::HirDatabase, interner::InternedWrapper, ConstScalar, FnAbi, Interner};
 
 use super::generics::generics;
@@ -754,7 +755,12 @@ impl<'cx> RustIr for DbIr<'cx> {
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self::Interner, <Self::Interner as rustc_type_ir::Interner>::Ty>
     {
-        todo!()
+        let def_id = match def_id {
+            GenericDefId::TypeAliasId(id) => crate::TyDefId::TypeAliasId(id),
+            _ => todo!()
+        };
+        let ty = self.db.ty(def_id);
+        convert_binder_to_early_binder(ty.to_nextsolver(self))
     }
 
     fn adt_def(
@@ -772,7 +778,8 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         alias: rustc_type_ir::AliasTy<Self::Interner>,
     ) -> rustc_type_ir::AliasTyKind {
-        todo!()
+        // FIXME: not currently creating any others
+        rustc_type_ir::AliasTyKind::Projection
     }
 
     fn alias_term_kind(
@@ -791,7 +798,14 @@ impl<'cx> RustIr for DbIr<'cx> {
         rustc_type_ir::TraitRef<Self::Interner>,
         <Self::Interner as rustc_type_ir::Interner>::GenericArgsSlice,
     ) {
-        todo!()
+        let trait_def_id = self.parent(def_id);
+        let trait_generics = self.generics_of(trait_def_id);
+        let trait_args = args.clone().iter().take(trait_generics.count());
+        let alias_args = GenericArgs::new_from_iter(args.as_slice()[trait_generics.count()..].iter().cloned());
+        (
+            TraitRef::new_from_args(self, trait_def_id, GenericArgs::new_from_iter(trait_args)),
+            alias_args,
+        )
     }
 
     fn check_args_compatible(
@@ -799,7 +813,8 @@ impl<'cx> RustIr for DbIr<'cx> {
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
         args: <Self::Interner as rustc_type_ir::Interner>::GenericArgs,
     ) -> bool {
-        todo!()
+        // FIXME
+        true
     }
 
     fn debug_assert_args_compatible(
@@ -918,7 +933,11 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
     > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
+        let predicates = self.db.generic_predicates(def_id);
+        rustc_type_ir::EarlyBinder::bind(predicates.iter().map(|p| {
+            let bound_predicate_kind = convert_binder_to_early_binder(p.to_nextsolver(self)).skip_binder();
+            Clause(Predicate::new(bound_predicate_kind))
+        }).collect::<Vec<_>>().into_iter())
     }
 
     fn own_predicates_of(
@@ -928,7 +947,11 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
     > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
+        let predicates = self.db.generic_predicates_without_parent(def_id);
+        rustc_type_ir::EarlyBinder::bind(predicates.iter().map(|p| {
+            let bound_predicate_kind = convert_binder_to_early_binder(p.to_nextsolver(self)).skip_binder();
+            Clause(Predicate::new(bound_predicate_kind))
+        }).collect::<Vec<_>>().into_iter())
     }
 
     fn explicit_super_predicates_of(
@@ -943,7 +966,16 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
+        match def_id {
+            GenericDefId::TraitId(trait_) => {
+                dbg!(self.db.trait_data(trait_).name.as_str());
+            }
+            _ => {
+                dbg!(def_id);
+            }
+        }
+        // FIXME
+        rustc_type_ir::EarlyBinder::bind([])
     }
 
     fn explicit_implied_predicates_of(
@@ -958,7 +990,16 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
+        match def_id {
+            GenericDefId::TraitId(trait_) => {
+                dbg!(self.db.trait_data(trait_).name.as_str());
+            }
+            _ => {
+                dbg!(def_id);
+            }
+        }
+        // FIXME
+        rustc_type_ir::EarlyBinder::bind([])
     }
 
     fn const_conditions(
@@ -1230,7 +1271,8 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME: should check if has value
+        true
     }
 
     fn impl_is_default(
@@ -1318,7 +1360,8 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        false
     }
 
     fn delay_bug(
@@ -1373,9 +1416,47 @@ impl<'cx> RustIr for DbIr<'cx> {
 
     fn anonymize_bound_vars<T: rustc_type_ir::fold::TypeFoldable<Self::Interner>>(
         self,
-        binder: rustc_type_ir::Binder<Self::Interner, T>,
+        value: rustc_type_ir::Binder<Self::Interner, T>,
     ) -> rustc_type_ir::Binder<Self::Interner, T> {
-        todo!()
+        struct Anonymize<'a> {
+            map: &'a mut FxIndexMap<BoundVar, BoundVarKind>,
+        }
+        impl BoundVarReplacerDelegate for Anonymize<'_> {
+            fn replace_region(&mut self, br: BoundRegion) -> Region {
+                let entry = self.map.entry(br.var);
+                let index = entry.index();
+                let var = BoundVar::from_usize(index);
+                let kind = entry
+                    .or_insert_with(|| BoundVarKind::Region(BoundRegionKind::Anon))
+                    .clone()
+                    .expect_region();
+                let br = BoundRegion { var, kind };
+                Region::new_bound(DbInterner, DebruijnIndex::ZERO, br)
+            }
+            fn replace_ty(&mut self, bt: BoundTy) -> Ty {
+                let entry = self.map.entry(bt.var);
+                let index = entry.index();
+                let var = BoundVar::from_usize(index);
+                let kind = entry
+                    .or_insert_with(|| BoundVarKind::Ty(BoundTyKind::Anon))
+                    .clone()
+                    .expect_ty();
+                Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var, kind })
+            }
+            fn replace_const(&mut self, bv: BoundVar) -> Const {
+                let entry = self.map.entry(bv);
+                let index = entry.index();
+                let var = BoundVar::from_usize(index);
+                let () = entry.or_insert_with(|| BoundVarKind::Const).clone().expect_const();
+                Const::new_bound(DbInterner, DebruijnIndex::ZERO, var)
+            }
+        }
+
+        let mut map = Default::default();
+        let delegate = Anonymize { map: &mut map };
+        let inner = DbInterner.replace_escaping_bound_vars_uncached(value.skip_binder(), delegate);
+        let bound_vars = CollectAndApply::collect_and_apply(map.into_values(), |xs| BoundVarKinds::new_from_iter(xs.iter().cloned()));
+        Binder::bind_with_vars(inner, bound_vars)
     }
 
     fn opaque_types_defined_by(
@@ -1462,4 +1543,37 @@ TrivialTypeTraversalImpls! {
     Placeholder<BoundVar>,
     ValueConst,
     Reveal,
+}
+
+pub mod tls {
+    scoped_tls::scoped_thread_local!(static DB: *const dyn crate::db::HirDatabase);
+
+    pub fn with_db<T>(db: &dyn crate::db::HirDatabase, f: impl FnOnce() -> T) -> T {
+        DB.set(
+            &(unsafe { std::mem::transmute::<_, &'static dyn crate::db::HirDatabase>(db) }
+                as *const dyn crate::db::HirDatabase),
+            move || {
+                f()
+            },
+        )
+    }
+
+    impl super::DbInterner {
+        pub(super) fn with_db<T>(self, f: impl FnOnce(&dyn crate::db::HirDatabase) -> T) -> T {
+            DB.with(move |slot| f(unsafe { &**slot }))
+        }
+    }
+
+    pub fn with_db_out_of_thin_air<T>(f: impl FnOnce(&dyn crate::db::HirDatabase) -> T) -> T {
+        DB.with(move |slot| f(unsafe { &**slot }))
+    }
+
+
+    pub fn with_opt_db_out_of_thin_air<T>(f: impl FnOnce(Option<&dyn crate::db::HirDatabase>) -> T) -> T {
+        if DB.is_set() {
+            DB.with(move |slot| f(Some(unsafe { &**slot })))
+        } else {
+            f(None)
+        }
+    }
 }

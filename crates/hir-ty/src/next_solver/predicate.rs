@@ -177,7 +177,28 @@ pub struct Predicate(Interned<InternedWrapper<WithCachedTypeInfo<Binder<Predicat
 
 impl std::fmt::Debug for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0 .0.internee.fmt(f)
+        match self.0.0.internee.clone().skip_binder() {
+            rustc_type_ir::PredicateKind::Clause(clause_kind) => {
+                write!(f, "{:?}", clause_kind)
+            }
+            rustc_type_ir::PredicateKind::DynCompatible(trait_def_id) => {
+                write!(f, "the trait `{:?}` is dyn-compatible", trait_def_id)
+            }
+            rustc_type_ir::PredicateKind::Subtype(subtype_predicate) => {
+                write!(f, "{:?}", subtype_predicate)
+            }
+            rustc_type_ir::PredicateKind::Coerce(coerce_predicate) => {
+                write!(f, "{:?}", coerce_predicate)
+            }
+            rustc_type_ir::PredicateKind::ConstEquate(c1, c2) => {
+                write!(f, "the constant `{:?}` equals `{:?}`", c1, c2)
+            }
+            rustc_type_ir::PredicateKind::Ambiguous => write!(f, "ambiguous"),
+            rustc_type_ir::PredicateKind::NormalizesTo(data) => write!(f, "{:?}", data),
+            rustc_type_ir::PredicateKind::AliasRelate(t1, t2, dir) => {
+                write!(f, "{:?} {:?} {:?}", t1, dir, t2)
+            }
+        }
     }
 }
 
@@ -337,13 +358,13 @@ impl rustc_type_ir::visit::TypeSuperVisitable<DbInterner> for Clauses {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)] // TODO implement Debug by hand
-pub struct Clause(Predicate);
+pub struct Clause(pub(crate) Predicate);
 
 // We could cram the reveal into the clauses like rustc does, probably
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ParamEnv {
-    pub(super) reveal: Reveal,
-    pub(super) clauses: Clauses,
+    pub(crate) reveal: Reveal,
+    pub(crate) clauses: Clauses,
 }
 
 impl ParamEnv {

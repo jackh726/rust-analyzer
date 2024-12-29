@@ -6,30 +6,96 @@ use super::interner::DbInterner;
 
 impl IrPrint<ty::AliasTy<Self>> for DbInterner {
     fn print(t: &ty::AliasTy<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let alias_ = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected TypeAlais."),
+                    };
+                    fmt.write_str(&format!("AliasTy({:?}[{:?}])", db.type_alias_data(alias_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("AliasTy({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 
     fn print_debug(t: &ty::AliasTy<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let alias_ = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected TypeAlais."),
+                    };
+                    fmt.write_str(&format!("AliasTy({:?}[{:?}])", db.type_alias_data(alias_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("AliasTy({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 }
 
 impl IrPrint<ty::AliasTerm<Self>> for DbInterner {
     fn print(t: &ty::AliasTerm<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let alias_ = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected TypeAlais."),
+                    };
+                    fmt.write_str(&format!("AliasTerm({:?}[{:?}])", db.type_alias_data(alias_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("AliasTerm({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 
     fn print_debug(t: &ty::AliasTerm<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let alias_ = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected TypeAlais."),
+                    };
+                    fmt.write_str(&format!("AliasTerm({:?}[{:?}])", db.type_alias_data(alias_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("AliasTerm({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 }
 impl IrPrint<ty::TraitRef<Self>> for DbInterner {
     fn print(t: &ty::TraitRef<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let trait_ = match t.def_id {
+                        hir_def::GenericDefId::TraitId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("TraitRef({:?}[{:?}])", db.trait_data(trait_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("TraitRef({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 
     fn print_debug(t: &ty::TraitRef<Self>, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let trait_ = match t.def_id {
+                        hir_def::GenericDefId::TraitId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("TraitRef({:?}[{:?}])", db.trait_data(trait_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("TraitRef({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 }
 impl IrPrint<ty::TraitPredicate<Self>> for DbInterner {

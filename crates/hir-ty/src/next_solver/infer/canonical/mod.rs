@@ -29,7 +29,7 @@ use crate::next_solver::{infer::{traits::{Obligation, PredicateObligations}, Def
 
 use super::RegionVariableOrigin;
 
-mod instantiate;
+pub mod instantiate;
 
 impl<'db> InferCtxt<'db> {
     /// Creates an instantiation S for the canonical value with fresh inference
