@@ -1,9 +1,9 @@
 use base_db::ra_salsa::{self, InternKey};
-use chalk_ir::interner::HasInterner;
+use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
 use hir_def::{ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    fold::{TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, ProjectionPredicate, RustIr,
+    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, ProjectionPredicate, RustIr, UniverseIndex,
 };
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
+    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
 };
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
@@ -57,7 +57,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
                     name: sym::MISSING_NAME.clone(),
                 }))
             }
-            _ => t,
+            _ => t.super_fold_with(self),
         }
     }
 
@@ -82,7 +82,7 @@ impl rustc_type_ir::fold::TypeFolder<DbInterner> for BinderToEarlyBinder {
                     name: sym::MISSING_NAME.clone(),
                 }))
             }
-            _ => c,
+            _ => c.super_fold_with(self),
         }
     }
 }
@@ -448,19 +448,31 @@ impl ChalkToNextSolver<VariancesOf> for chalk_ir::Variances<Interner> {
     }
 }
 
-impl ChalkToNextSolver<Goal<DbInterner, Predicate>>
-    for chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>
+impl ChalkToNextSolver<Canonical<Goal<DbInterner, Predicate>>>
+    for chalk_ir::Canonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>
 {
-    fn to_nextsolver(&self, ir: DbIr<'_>) -> Goal<DbInterner, Predicate> {
-        let param_env = self.canonical.value.environment.to_nextsolver(ir);
-        let bound_vars = BoundVarKinds::new_from_iter(self.canonical.binders.iter(Interner).map(
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> Canonical<Goal<DbInterner, Predicate>> {
+        let param_env = self.value.environment.to_nextsolver(ir);
+        let variables = CanonicalVars::new_from_iter(self.binders.iter(Interner).map(
             |k| match &k.kind {
-                chalk_ir::VariableKind::Ty(ty_variable_kind) => BoundVarKind::Ty(BoundTyKind::Anon),
-                chalk_ir::VariableKind::Lifetime => BoundVarKind::Region(BoundRegionKind::Anon),
-                chalk_ir::VariableKind::Const(ty) => BoundVarKind::Const,
+                chalk_ir::VariableKind::Ty(ty_variable_kind) => {
+                    CanonicalVarInfo {
+                        kind: rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ROOT))
+                    }
+                }
+                chalk_ir::VariableKind::Lifetime => {
+                    CanonicalVarInfo {
+                        kind: rustc_type_ir::CanonicalVarKind::Region(UniverseIndex::ROOT)
+                    }
+                }
+                chalk_ir::VariableKind::Const(ty) => {
+                    CanonicalVarInfo {
+                        kind: rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ROOT)
+                    }
+                }
             },
         ));
-        match self.canonical.value.goal.data(Interner) {
+        match self.value.goal.data(Interner) {
             chalk_ir::GoalData::Quantified(quantifier_kind, binders) => todo!(),
             chalk_ir::GoalData::Implies(program_clauses, goal) => todo!(),
             chalk_ir::GoalData::All(goals) => todo!(),
@@ -475,10 +487,15 @@ impl ChalkToNextSolver<Goal<DbInterner, Predicate>>
                             polarity: rustc_type_ir::PredicatePolarity::Positive,
                         };
                         let pred_kind = Binder::bind_with_vars(
-                            PredicateKind::Clause(ClauseKind::Trait(predicate)),
-                            bound_vars,
+                            shift_vars(DbInterner, PredicateKind::Clause(ClauseKind::Trait(predicate)), 1),
+                            BoundVarKinds::new_from_iter([]),
                         );
-                        Goal::new(ir.interner(), param_env, Predicate::new(pred_kind))
+                        Canonical {
+                            max_universe: UniverseIndex::ROOT,
+                            value: Goal::new(ir.interner(), param_env, Predicate::new(pred_kind)),
+                            variables,
+                        }
+                        
                     }
                     chalk_ir::WhereClause::AliasEq(alias_eq) => {
                         let projection = match &alias_eq.alias {
@@ -494,10 +511,14 @@ impl ChalkToNextSolver<Goal<DbInterner, Predicate>>
                             term,
                         };
                         let pred_kind = Binder::bind_with_vars(
-                            PredicateKind::Clause(ClauseKind::Projection(predicate)),
-                            bound_vars,
+                            shift_vars(DbInterner, PredicateKind::Clause(ClauseKind::Projection(predicate)), 1),
+                            BoundVarKinds::new_from_iter([]),
                         );
-                        Goal::new(ir.interner(), param_env, Predicate::new(pred_kind))
+                        Canonical {
+                            max_universe: UniverseIndex::ROOT,
+                            value: Goal::new(ir.interner(), param_env, Predicate::new(pred_kind)),
+                            variables,
+                        }
                     }
                     chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
                     chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),

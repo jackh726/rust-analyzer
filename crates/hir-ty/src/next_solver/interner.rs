@@ -26,6 +26,7 @@ use rustc_type_ir::{
     UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
+use crate::lower::generic_predicates_filtered_by;
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -306,7 +307,7 @@ impl std::hash::Hash for AdtDefData {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct AdtDef(pub(crate) AdtDefData);
 
 impl AdtDef {
@@ -481,6 +482,32 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
 
     fn destructor(self, ir: DbIr<'cx>) -> Option<rustc_type_ir::solve::AdtDestructorKind> {
         todo!()
+    }
+}
+
+impl fmt::Debug for AdtDef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    match self.0.id {
+                        AdtId::StructId(struct_id) => {
+                            let data = db.struct_data(struct_id);
+                            f.write_str(data.name.as_str())
+                        }
+                        AdtId::UnionId(union_id) => {
+                            let data = db.union_data(union_id);
+                            f.write_str(data.name.as_str())
+                        }
+                        AdtId::EnumId(enum_id) => {
+                            let data = db.enum_data(enum_id);
+                            f.write_str(data.name.as_str())
+                        }
+                    }
+                }
+                None => f.write_str(&format!("AdtDef({:?})", self.0.id)),
+            }
+        })
     }
 }
 
@@ -974,6 +1001,11 @@ impl<'cx> RustIr for DbIr<'cx> {
                 dbg!(def_id);
             }
         }
+        generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+            dbg!(p);
+            dbg!(def_id);
+            true
+        });
         // FIXME
         rustc_type_ir::EarlyBinder::bind([])
     }
@@ -998,6 +1030,11 @@ impl<'cx> RustIr for DbIr<'cx> {
                 dbg!(def_id);
             }
         }
+        generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+            dbg!(p);
+            dbg!(def_id);
+            true
+        });
         // FIXME
         rustc_type_ir::EarlyBinder::bind([])
     }

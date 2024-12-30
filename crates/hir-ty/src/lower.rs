@@ -1761,8 +1761,8 @@ pub(crate) fn generic_predicates_without_parent_query(
 }
 
 /// Resolve the where clause(s) of an item with generics,
-/// except the ones inherited from the parent
-fn generic_predicates_filtered_by<F>(
+/// with a given filter
+pub(crate) fn generic_predicates_filtered_by<F>(
     db: &dyn HirDatabase,
     def: GenericDefId,
     filter: F,

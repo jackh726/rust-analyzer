@@ -177,6 +177,7 @@ pub struct Predicate(Interned<InternedWrapper<WithCachedTypeInfo<Binder<Predicat
 
 impl std::fmt::Debug for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Binder<")?;
         match self.0.0.internee.clone().skip_binder() {
             rustc_type_ir::PredicateKind::Clause(clause_kind) => {
                 write!(f, "{:?}", clause_kind)
@@ -198,7 +199,9 @@ impl std::fmt::Debug for Predicate {
             rustc_type_ir::PredicateKind::AliasRelate(t1, t2, dir) => {
                 write!(f, "{:?} {:?} {:?}", t1, dir, t2)
             }
-        }
+        }?;
+        write!(f, ", [{:?}]>", self.0.0.internee.bound_vars())?;
+        Ok(())
     }
 }
 

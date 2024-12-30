@@ -15,7 +15,7 @@ use hir_def::{
 use hir_expand::name::Name;
 use intern::sym;
 use rustc_next_trait_solver::solve::SolverDelegateEvalExt;
-use rustc_type_ir::{InferCtxtLike, TypingMode};
+use rustc_type_ir::{inherent::Span, InferCtxtLike, TypingMode};
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
@@ -148,7 +148,6 @@ pub(crate) fn trait_solve_query(
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
     let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
-    dbg!(&u_canonical);
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
@@ -187,6 +186,7 @@ fn solve(
         } else {
             None
         };
+        dbg!(&goal);
         let solution = if is_chalk_print() {
             let logging_db =
                 LoggingRustIrDatabaseLoggingOnDrop(LoggingRustIrDatabase::new(context));
@@ -219,8 +219,10 @@ fn solve_nextsolver(
         // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
         let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
 
-        let goal = goal.to_nextsolver(context.cx());
+        let goal = goal.canonical.to_nextsolver(context.cx());
         dbg!(&goal);
+
+        let (goal, _) = context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
 
         let (res, pt) =
             context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::Yes);
