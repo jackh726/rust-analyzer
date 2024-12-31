@@ -128,12 +128,6 @@ pub enum BoundTyKind {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ErrorGuaranteed;
 
-impl Ty {
-    pub fn error() -> Self {
-        Ty::new(TyKind::Error(ErrorGuaranteed))
-    }
-}
-
 impl IntoKind for Ty {
     type Kind = TyKind;
 
@@ -188,8 +182,7 @@ impl TypeSuperVisitable<DbInterner> for Ty {
             }
             TyKind::Tuple(ts) => ts.visit_with(visitor),
             TyKind::FnDef(_, args) => args.visit_with(visitor),
-            //TyKind::FnPtr(ref sig_tys, _) => sig_tys.visit_with(visitor),
-            TyKind::FnPtr(ref sig_tys, _) => todo!(),
+            TyKind::FnPtr(ref sig_tys, _) => sig_tys.visit_with(visitor),
             TyKind::Ref(r, ty, _) => {
                 try_visit!(r.visit_with(visitor));
                 ty.visit_with(visitor)

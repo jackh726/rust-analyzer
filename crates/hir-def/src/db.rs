@@ -9,27 +9,11 @@ use syntax::{ast, AstPtr};
 use triomphe::Arc;
 
 use crate::{
-    attr::{Attrs, AttrsWithOwner},
-    body::{scope::ExprScopes, Body, BodySourceMap},
-    data::{
+    attr::{Attrs, AttrsWithOwner}, body::{scope::ExprScopes, Body, BodySourceMap}, data::{
         adt::{EnumData, EnumVariantData, StructData, VariantData},
         ConstData, ExternCrateDeclData, FunctionData, ImplData, Macro2Data, MacroRulesData,
         ProcMacroData, StaticData, TraitAliasData, TraitData, TypeAliasData,
-    },
-    generics::GenericParams,
-    import_map::ImportMap,
-    item_tree::{AttrOwner, ItemTree, ItemTreeSourceMaps},
-    lang_item::{self, LangItem, LangItemTarget, LangItems},
-    nameres::{diagnostics::DefDiagnostics, DefMap},
-    type_ref::TypesSourceMap,
-    visibility::{self, Visibility},
-    AttrDefId, BlockId, BlockLoc, ConstBlockId, ConstBlockLoc, ConstId, ConstLoc, DefWithBodyId,
-    EnumId, EnumLoc, EnumVariantId, EnumVariantLoc, ExternBlockId, ExternBlockLoc, ExternCrateId,
-    ExternCrateLoc, FunctionId, FunctionLoc, GenericDefId, ImplId, ImplLoc, InTypeConstId,
-    InTypeConstLoc, LocalFieldId, Macro2Id, Macro2Loc, MacroId, MacroRulesId, MacroRulesLoc,
-    MacroRulesLocFlags, ProcMacroId, ProcMacroLoc, StaticId, StaticLoc, StructId, StructLoc,
-    TraitAliasId, TraitAliasLoc, TraitId, TraitLoc, TypeAliasId, TypeAliasLoc, UnionId, UnionLoc,
-    UseId, UseLoc, VariantId,
+    }, generics::GenericParams, import_map::ImportMap, item_tree::{AttrOwner, ItemTree, ItemTreeSourceMaps}, lang_item::{self, LangItem, LangItemTarget, LangItems}, nameres::{diagnostics::DefDiagnostics, DefMap}, type_ref::TypesSourceMap, visibility::{self, Visibility}, AttrDefId, BlockId, BlockLoc, ClosureId, ClosureLoc, ConstBlockId, ConstBlockLoc, ConstId, ConstLoc, DefWithBodyId, EnumId, EnumLoc, EnumVariantId, EnumVariantLoc, ExternBlockId, ExternBlockLoc, ExternCrateId, ExternCrateLoc, FunctionId, FunctionLoc, GenericDefId, ImplId, ImplLoc, InTypeConstId, InTypeConstLoc, LocalFieldId, Macro2Id, Macro2Loc, MacroId, MacroRulesId, MacroRulesLoc, MacroRulesLocFlags, ProcMacroId, ProcMacroLoc, StaticId, StaticLoc, StructId, StructLoc, TraitAliasId, TraitAliasLoc, TraitId, TraitLoc, TypeAliasId, TypeAliasLoc, UnionId, UnionLoc, UseId, UseLoc, VariantId
 };
 
 #[ra_salsa::query_group(InternDatabaseStorage)]
@@ -77,6 +61,8 @@ pub trait InternDatabase: SourceDatabase {
     fn intern_anonymous_const(&self, id: ConstBlockLoc) -> ConstBlockId;
     #[ra_salsa::interned]
     fn intern_in_type_const(&self, id: InTypeConstLoc) -> InTypeConstId;
+    #[ra_salsa::interned]
+    fn intern_closure_def(&self, id: ClosureLoc) -> ClosureId;
 }
 
 #[ra_salsa::query_group(DefDatabaseStorage)]

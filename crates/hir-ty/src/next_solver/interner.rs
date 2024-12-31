@@ -3,12 +3,13 @@
 use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::data::adt::StructFlags;
+use hir_def::lang_item::LangItem;
 use hir_def::ItemContainerId;
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use intern::{impl_internable, Interned};
 use rustc_abi::{ReprFlags, ReprOptions};
-use rustc_type_ir::inherent::{GenericsOf, IntoKind, SliceLike};
-use rustc_type_ir::{AliasTermKind, InferTy, TraitRef};
+use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, SliceLike};
+use rustc_type_ir::{AliasTermKind, EarlyBinder, InferTy, TraitRef};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use std::ops::ControlFlow;
@@ -33,6 +34,7 @@ use crate::next_solver::FxIndexMap;
 use crate::{db::HirDatabase, interner::InternedWrapper, ConstScalar, FnAbi, Interner};
 
 use super::generics::generics;
+use super::util::sized_constraint_for_ty;
 use super::{
     abi::Safety,
     fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
@@ -474,10 +476,18 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
 
     fn sized_constraint(
         self,
-        interner: DbIr<'cx>,
+        ir: DbIr<'cx>,
     ) -> Option<rustc_type_ir::EarlyBinder<DbInterner, <DbInterner as rustc_type_ir::Interner>::Ty>>
     {
-        todo!()
+        if self.is_struct() {
+            let tail_ty = self.all_field_tys(ir).skip_binder().into_iter().last()?;
+        
+            let constraint_ty = sized_constraint_for_ty(ir, tail_ty)?;
+        
+            Some(EarlyBinder::bind(constraint_ty))
+        } else {
+            None
+        }
     }
 
     fn destructor(self, ir: DbIr<'cx>) -> Option<rustc_type_ir::solve::AdtDestructorKind> {
@@ -783,7 +793,14 @@ impl<'cx> RustIr for DbIr<'cx> {
     ) -> rustc_type_ir::EarlyBinder<Self::Interner, <Self::Interner as rustc_type_ir::Interner>::Ty>
     {
         let def_id = match def_id {
-            GenericDefId::TypeAliasId(id) => crate::TyDefId::TypeAliasId(id),
+            GenericDefId::TypeAliasId(id) => {
+                use hir_def::Lookup;
+                match id.lookup(self.db.upcast()).container {
+                    ItemContainerId::ImplId(it) => it,
+                    _ => panic!("assoc ty value should be in impl"),
+                };
+                crate::TyDefId::TypeAliasId(id)
+            }
             _ => todo!()
         };
         let ty = self.db.ty(def_id);
@@ -879,6 +896,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::FunctionId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::TypeAliasId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::ConstId(it) => it.lookup(self.db.upcast()).container,
+            GenericDefId::ClosureId(it) => return it.lookup(self.db.upcast()).parent.as_generic_def_id(self.db.upcast()).unwrap(),
             GenericDefId::AdtId(_)
             | GenericDefId::TraitId(_)
             | GenericDefId::ImplId(_)
@@ -953,6 +971,7 @@ impl<'cx> RustIr for DbIr<'cx> {
         rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
+    #[tracing::instrument(level = "debug", skip(self), ret)]
     fn predicates_of(
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
@@ -1062,7 +1081,56 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
     ) -> <Self::Interner as rustc_type_ir::Interner>::DefId {
-        todo!()
+        let lang_item = match lang_item {
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncDestruct => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFn => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnKindHelper => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnKindUpvars => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnMut => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnOnce => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnOnceOutput => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncIterator => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::CallOnceFuture => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::CallRefFuture => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::Clone => LangItem::Clone,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Copy => LangItem::Copy,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Coroutine => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::CoroutineReturn => LangItem::Coroutine,
+            rustc_type_ir::lang_items::TraitSolverLangItem::CoroutineYield => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::Destruct => LangItem::Destruct,
+            rustc_type_ir::lang_items::TraitSolverLangItem::DiscriminantKind => LangItem::DiscriminantKind,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Drop => LangItem::Drop,
+            rustc_type_ir::lang_items::TraitSolverLangItem::DynMetadata => LangItem::DynMetadata,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Fn => LangItem::Fn,
+            rustc_type_ir::lang_items::TraitSolverLangItem::FnMut => LangItem::FnMut,
+            rustc_type_ir::lang_items::TraitSolverLangItem::FnOnce => LangItem::FnOnce,
+            rustc_type_ir::lang_items::TraitSolverLangItem::FnPtrTrait => LangItem::FnPtrTrait,
+            rustc_type_ir::lang_items::TraitSolverLangItem::FusedIterator => todo!(),
+            rustc_type_ir::lang_items::TraitSolverLangItem::Future => LangItem::Future,
+            rustc_type_ir::lang_items::TraitSolverLangItem::FutureOutput => LangItem::FutureOutput,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Iterator => LangItem::Iterator,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Metadata => LangItem::Metadata,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Option => LangItem::Option,
+            rustc_type_ir::lang_items::TraitSolverLangItem::PointeeTrait => LangItem::PointeeTrait,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Poll => LangItem::Poll,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Sized => LangItem::Sized,
+            rustc_type_ir::lang_items::TraitSolverLangItem::TransmuteTrait => LangItem::TransmuteTrait,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Tuple => LangItem::Tuple,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Unpin => LangItem::Unpin,
+            rustc_type_ir::lang_items::TraitSolverLangItem::Unsize => LangItem::Unsize,
+        };
+        let target = self.db.lang_item(self.krate, lang_item).unwrap();
+        match target {
+            hir_def::lang_item::LangItemTarget::EnumId(enum_id) => enum_id.into(),
+            hir_def::lang_item::LangItemTarget::Function(function_id) => function_id.into(),
+            hir_def::lang_item::LangItemTarget::ImplDef(impl_id) => impl_id.into(),
+            hir_def::lang_item::LangItemTarget::Static(static_id) => todo!(),
+            hir_def::lang_item::LangItemTarget::Struct(struct_id) => struct_id.into(),
+            hir_def::lang_item::LangItemTarget::Union(union_id) => union_id.into(),
+            hir_def::lang_item::LangItemTarget::TypeAlias(type_alias_id) => type_alias_id.into(),
+            hir_def::lang_item::LangItemTarget::Trait(trait_id) => trait_id.into(),
+            hir_def::lang_item::LangItemTarget::EnumVariant(enum_variant_id) => todo!(),
+        }
     }
 
     fn is_lang_item(

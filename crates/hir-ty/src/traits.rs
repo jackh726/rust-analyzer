@@ -151,7 +151,7 @@ pub(crate) fn trait_solve_query(
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
-        (Some(_), Err(_)) => panic!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n", chalk_res, next_solver_res),
+        (Some(Solution::Unique(_)), Err(_)) => panic!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n", chalk_res, next_solver_res),
         _ => {}
     }
     chalk_res
@@ -224,10 +224,8 @@ fn solve_nextsolver(
 
         let (goal, _) = context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
 
-        let (res, pt) =
-            context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::Yes);
-
-        dbg!(pt.unwrap().evaluation);
+        let (res, _) =
+            context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
 
         res
     })

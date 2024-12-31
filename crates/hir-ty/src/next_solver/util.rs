@@ -5,11 +5,13 @@ use base_db::CrateId;
 use extension_traits::extension;
 use hir_def::{BlockId, HasModule};
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
+use rustc_type_ir::inherent::{IrAdtDef, SliceLike};
+use rustc_type_ir::EarlyBinder;
 use rustc_type_ir::{fold::{TypeFolder, TypeSuperFoldable}, inherent::IntoKind, visit::{TypeSuperVisitable, TypeVisitor}, ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, UintTy, UniverseIndex};
 
 use crate::{db::HirDatabase, from_foreign_def_id, method_resolution::{TraitImpls, TyFingerprint}};
 
-use super::{Const, DbInterner, Region, Ty, TyKind};
+use super::{Const, DbInterner, DbIr, Region, Ty, TyKind};
 
 #[derive(Clone, Debug)]
 pub struct Discr {
@@ -374,4 +376,50 @@ pub(crate) fn for_trait_impls(
         f(&it)?;
     }
     ControlFlow::Continue(())
+}
+
+#[tracing::instrument(level = "debug", skip(ir), ret)]
+pub fn sized_constraint_for_ty(ir: DbIr<'_>, ty: Ty) -> Option<Ty> {
+    use rustc_type_ir::TyKind::*;
+
+    match ty.clone().kind() {
+        // these are always sized
+        Bool
+        | Char
+        | Int(..)
+        | Uint(..)
+        | Float(..)
+        | RawPtr(..)
+        | Ref(..)
+        | FnDef(..)
+        | FnPtr(..)
+        | Array(..)
+        | Closure(..)
+        | CoroutineClosure(..)
+        | Coroutine(..)
+        | CoroutineWitness(..)
+        | Never
+        | Dynamic(_, _, rustc_type_ir::DynKind::DynStar) => None,
+
+        // these are never sized
+        Str | Slice(..) | Dynamic(_, _, rustc_type_ir::DynKind::Dyn) | Foreign(..) => Some(ty),
+
+        Pat(ty, _) => sized_constraint_for_ty(ir, ty),
+
+        Tuple(tys) => tys.into_iter().last().and_then(|ty| sized_constraint_for_ty(ir, ty)),
+
+        // recursive case
+        Adt(adt, args) => {
+            
+            let tail_ty = EarlyBinder::bind(adt.all_field_tys(ir).skip_binder().into_iter().last()?).instantiate(DbInterner, args);
+            sized_constraint_for_ty(ir, ty)
+        }
+
+        // these can be sized or unsized
+        Param(..) | Alias(..) | Error(_) => Some(ty),
+
+        Placeholder(..) | Bound(..) | Infer(..) => {
+            panic!("unexpected type `{ty:?}` in sized_constraint_for_ty")
+        }
+    }
 }

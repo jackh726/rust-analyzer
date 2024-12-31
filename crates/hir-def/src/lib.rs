@@ -373,6 +373,18 @@ pub struct ConstBlockLoc {
     pub root: hir::ExprId,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct ClosureId(ra_salsa::InternId);
+impl_intern!(ClosureId, ClosureLoc, intern_closure_def, lookup_intern_closure_def);
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct ClosureLoc {
+    /// The parent of the anonymous const block.
+    pub parent: DefWithBodyId,
+    /// The root expression of this const block in the parent body.
+    pub root: hir::ExprId,
+}
+
 /// A `ModuleId` that is always a crate's root module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CrateRootModuleId {
@@ -740,6 +752,7 @@ impl From<GenericDefId> for TypeOwnerId {
             GenericDefId::TypeAliasId(it) => it.into(),
             GenericDefId::ImplId(it) => it.into(),
             GenericDefId::ConstId(it) => it.into(),
+            GenericDefId::ClosureId(it) => todo!(),
         }
     }
 }
@@ -926,6 +939,7 @@ pub enum GenericDefId {
     ImplId(ImplId),
     // consts can have type parameters from their parents (i.e. associated consts of traits)
     ConstId(ConstId),
+    ClosureId(ClosureId),
 }
 impl_from!(
     FunctionId,
@@ -934,7 +948,8 @@ impl_from!(
     TraitAliasId,
     TypeAliasId,
     ImplId,
-    ConstId
+    ConstId,
+    ClosureId
     for GenericDefId
 );
 
@@ -965,6 +980,7 @@ impl GenericDefId {
             GenericDefId::TraitAliasId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ImplId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ConstId(it) => (it.lookup(db).id.file_id(), None),
+            GenericDefId::ClosureId(it) => (todo!(), None),
         }
     }
 
@@ -1346,6 +1362,7 @@ impl HasModule for GenericDefId {
             GenericDefId::TypeAliasId(it) => it.module(db),
             GenericDefId::ImplId(it) => it.module(db),
             GenericDefId::ConstId(it) => it.module(db),
+            GenericDefId::ClosureId(it) => todo!(),
         }
     }
 }

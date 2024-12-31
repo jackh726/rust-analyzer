@@ -1,6 +1,6 @@
 use base_db::ra_salsa::{self, InternKey};
 use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
-use hir_def::{ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
+use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
     fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, ProjectionPredicate, RustIr, UniverseIndex,
@@ -185,10 +185,9 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
             }
             chalk_ir::TyKind::Str => rustc_type_ir::TyKind::Str,
             chalk_ir::TyKind::Never => rustc_type_ir::TyKind::Never,
-            chalk_ir::TyKind::Closure(_closure_id, _substitution) => {
-                //let id = ra_salsa::InternKey::from_intern_id(closure_id.0);
-                //rustc_type_ir::TyKind::Closure(id.into(), substitution.to_nextsolver(ir))
-                todo!("Needs GenericDefId::Closure")
+            chalk_ir::TyKind::Closure(closure_id, substitution) => {
+                let id: ClosureId = ra_salsa::InternKey::from_intern_id(closure_id.0);
+                rustc_type_ir::TyKind::Closure(id.into(), substitution.to_nextsolver(ir))
             }
             chalk_ir::TyKind::Coroutine(_coroutine_id, _substitution) => {
                 //let id = ra_salsa::InternKey::from_intern_id(coroutine_id.0);
@@ -338,7 +337,9 @@ impl ChalkToNextSolver<BoundExistentialPredicates>
 
 impl ChalkToNextSolver<rustc_type_ir::FnSigTys<DbInterner>> for chalk_ir::FnSubst<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> rustc_type_ir::FnSigTys<DbInterner> {
-        todo!()
+        rustc_type_ir::FnSigTys {
+            inputs_and_output: Tys::new_from_iter(self.0.iter(Interner).map(|g| g.assert_ty_ref(Interner).to_nextsolver(ir)))
+        }
     }
 }
 
@@ -637,8 +638,18 @@ impl ChalkToNextSolver<PredicateKind> for chalk_ir::WhereClause<Interner> {
             chalk_ir::WhereClause::AliasEq(alias_eq) => {
                 let alias_ty = chalk_ir::Ty::new(Interner, chalk_ir::TyKind::Alias(alias_eq.alias.clone()));
                 let alias_ty: Ty = alias_ty.to_nextsolver(ir);
+                let (def_id, args) = match &alias_eq.alias {
+                    chalk_ir::AliasTy::Projection(p) => {
+                        let args: GenericArgs = p.substitution.to_nextsolver(ir);
+                        (GenericDefId::TypeAliasId(TypeAliasId::from_intern_id(p.associated_ty_id.0)), args)
+                    }
+                    _ => todo!(),
+                };
                 let to_ty: Ty = alias_eq.ty.to_nextsolver(ir);
-                PredicateKind::AliasRelate(alias_ty.into(), to_ty.into(), rustc_type_ir::AliasRelationDirection::Equate)
+                PredicateKind::Clause(rustc_type_ir::ClauseKind::Projection(ProjectionPredicate {
+                   projection_term: AliasTerm::new(ir, def_id, args),
+                   term: to_ty.into(),
+                }))
             }
             chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
             chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),

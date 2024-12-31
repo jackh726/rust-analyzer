@@ -197,6 +197,7 @@ impl From<GenericDefId> for GenericDef {
             GenericDefId::TypeAliasId(it) => GenericDef::TypeAlias(it.into()),
             GenericDefId::ImplId(it) => GenericDef::Impl(it.into()),
             GenericDefId::ConstId(it) => GenericDef::Const(it.into()),
+            GenericDefId::ClosureId(it) => todo!(),
         }
     }
 }

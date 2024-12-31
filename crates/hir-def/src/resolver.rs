@@ -1213,6 +1213,7 @@ impl HasResolver for GenericDefId {
             GenericDefId::TypeAliasId(inner) => inner.resolver(db),
             GenericDefId::ImplId(inner) => inner.resolver(db),
             GenericDefId::ConstId(inner) => inner.resolver(db),
+            GenericDefId::ClosureId(inner) => todo!(),
         }
     }
 }

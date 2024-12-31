@@ -1,10 +1,10 @@
-use hir_def::TypeAliasId;
+use hir_def::{AssocItemId, GenericDefId, TypeAliasId};
 use rustc_next_trait_solver::delegate::SolverDelegate;
 use rustc_type_ir::{
     inherent::Span as _, solve::{Certainty, NoSolution}, UniverseIndex
 };
 
-use crate::db::HirDatabase;
+use crate::{db::HirDatabase, TraitRefExt};
 
 use super::{
     infer::{canonical::instantiate::CanonicalExt, DbInternerInferExt, InferCtxt}, Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner, DbIr, GenericArg, GenericArgs, ParamEnv, Predicate, Span, Ty, UnevaluatedConst
@@ -159,8 +159,35 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         trait_assoc_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> Result<Option<<Self::Interner as rustc_type_ir::Interner>::DefId>, NoSolution> {
-        // FIXME: is there a different def id for associated types in traits & impls?
-        Ok(Some(trait_assoc_def_id))
+        let impl_id = match impl_def_id {
+            hir_def::GenericDefId::ImplId(id) => id,
+            _ => panic!("Unexpected GenericDefId"),
+        };
+        let trait_assoc_id = match trait_assoc_def_id {
+            hir_def::GenericDefId::TypeAliasId(id) => id,
+            _ => panic!("Unexpected GenericDefId"),
+        };
+        let trait_ref = self.ir.db
+            .impl_trait(impl_id)
+            // ImplIds for impls where the trait ref can't be resolved should never reach solver
+            .expect("invalid impl passed to next-solver")
+            .into_value_and_skipped_binders()
+            .0;
+        let trait_ = trait_ref.hir_trait_id();
+        let impl_data = self.ir.db.impl_data(impl_id);
+        let trait_data = self.ir.db.trait_data(trait_);
+        let id = impl_data
+            .items
+            .iter()
+            .find_map(|item| -> Option<_> { match item {
+                AssocItemId::TypeAliasId(type_alias) => {
+                    let name = &self.ir.db.type_alias_data(*type_alias).name;
+                    let found_trait_assoc_id = trait_data.associated_type_by_name(name)?;
+                    (found_trait_assoc_id == trait_assoc_id).then_some(*type_alias)
+                }
+                _ => None,
+            }});
+        Ok(id.map(|id| GenericDefId::TypeAliasId(id)))
     }
 
     fn is_transmutable(

@@ -1,10 +1,11 @@
 use hir_def::{db::DefDatabase, generics::TypeOrConstParamData, GenericDefId, GenericParamId};
 use hir_expand::name::Name;
 use intern::Symbol;
+use rustc_type_ir::inherent::{Ty as _};
 
 use crate::{db::HirDatabase, generics::parent_generic_def, next_solver::Ty};
 
-use super::{Const, EarlyParamRegion, ParamConst, Region};
+use super::{Const, EarlyParamRegion, ErrorGuaranteed, ParamConst, Region};
 
 use super::{DbInterner, GenericArg};
 
@@ -81,7 +82,7 @@ impl GenericParamDef {
     pub fn to_error(&self, interner: DbInterner) -> GenericArg {
         match &self.kind {
             GenericParamDefKind::Lifetime => Region::error().into(),
-            GenericParamDefKind::Type => Ty::error().into(),
+            GenericParamDefKind::Type => Ty::new_error(interner, ErrorGuaranteed).into(),
             GenericParamDefKind::Const => Const::error().into(),
         }
     }

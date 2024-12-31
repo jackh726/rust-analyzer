@@ -1,15 +1,14 @@
 use hir_def::GenericDefId;
 use intern::Interned;
 use rustc_type_ir::{
-    fold::TypeFoldable, inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike}, relate::{Relate, VarianceDiagInfo}, visit::TypeVisitable, CollectAndApply, ConstVid, GenericArgKind, Interner, RustIr, TermKind, TyKind, TyVid, Variance
+    fold::TypeFoldable, inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike, Ty as _}, relate::{Relate, VarianceDiagInfo}, visit::TypeVisitable, CollectAndApply, ConstVid, FnSig, FnSigTys, GenericArgKind, IntTy, Interner, RustIr, TermKind, TyKind, TyVid, Variance
 };
 use smallvec::SmallVec;
 
 use crate::interner::InternedWrapper;
 
 use super::{
-    generics::{GenericParamDef, Generics},
-    interned_vec, Const, DbInterner, DbIr, Region, Ty,
+    generics::{GenericParamDef, Generics}, interned_vec, Const, DbInterner, DbIr, ErrorGuaranteed, Region, Ty, Tys
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -189,28 +188,40 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
     }
 
     fn type_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Ty {
-        self.0 .0.get(i).and_then(|g| g.as_type()).unwrap_or(Ty::error())
+        self.0 .0.get(i).and_then(|g| g.as_type()).unwrap_or_else(|| Ty::new_error(DbInterner, ErrorGuaranteed))
     }
 
     fn region_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Region {
-        self.0 .0.get(i).and_then(|g| g.as_region()).unwrap_or(Region::error())
+        self.0 .0.get(i).and_then(|g| g.as_region()).unwrap_or_else(|| Region::error())
     }
 
     fn const_at(self, i: usize) -> <DbInterner as rustc_type_ir::Interner>::Const {
-        self.0 .0.get(i).and_then(|g| g.as_const()).unwrap_or(Const::error())
+        self.0 .0.get(i).and_then(|g| g.as_const()).unwrap_or_else(|| Const::error())
     }
 
     fn split_closure_args(self) -> rustc_type_ir::ClosureArgsParts<DbInterner> {
-        match self.0 .0.as_slice() {
-            [ref parent_args @ .., closure_kind_ty, closure_sig_as_fn_ptr_ty, tupled_upvars_ty] => {
+        // FIXME: should use `ClosureSubst` when possible
+        match self.0.0.as_slice() {
+            [sig_ty, parent_args @ ..] => {
+                // This is stupid, but the next solver expects the first input to actually be a tuple
+                let sig_ty = match sig_ty.expect_ty().kind() {
+                    TyKind::FnPtr(sig_tys, header) => {
+                        Ty::new(TyKind::FnPtr(sig_tys.map_bound(|s| {
+                            let inputs = Ty::new_tup_from_iter(DbInterner, s.clone().inputs().iter());
+                            let output = s.output();
+                            FnSigTys { inputs_and_output: Tys::new_from_iter([inputs, output]) }
+                        }), header))
+                    }
+                    _ => todo!(),
+                };
                 rustc_type_ir::ClosureArgsParts {
                     parent_args: GenericArgs::new_from_iter(parent_args.iter().cloned()),
-                    closure_kind_ty: closure_kind_ty.expect_ty(),
-                    closure_sig_as_fn_ptr_ty: closure_sig_as_fn_ptr_ty.expect_ty(),
-                    tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
+                    closure_sig_as_fn_ptr_ty: sig_ty,
+                    closure_kind_ty: Ty::new(TyKind::Int(IntTy::I8)),
+                    tupled_upvars_ty: Ty::new_unit(DbInterner),
                 }
             }
-            _ => todo!(), // rustc has `bug!` here?, should we have error report
+            _ => { unreachable!("unexpected closure sig"); }
         }
     }
 
