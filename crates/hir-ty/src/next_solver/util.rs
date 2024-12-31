@@ -410,9 +410,8 @@ pub fn sized_constraint_for_ty(ir: DbIr<'_>, ty: Ty) -> Option<Ty> {
 
         // recursive case
         Adt(adt, args) => {
-            
             let tail_ty = EarlyBinder::bind(adt.all_field_tys(ir).skip_binder().into_iter().last()?).instantiate(DbInterner, args);
-            sized_constraint_for_ty(ir, ty)
+            sized_constraint_for_ty(ir, tail_ty)
         }
 
         // these can be sized or unsized
