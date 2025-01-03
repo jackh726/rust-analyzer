@@ -1,9 +1,9 @@
 use base_db::ra_salsa::{self, InternKey};
 use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
-use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeParamId};
+use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, ProjectionPredicate, RustIr, UniverseIndex,
+    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
@@ -16,8 +16,17 @@ use crate::{
 };
 
 use super::{
-    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
+    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, Placeholder, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
 };
+
+pub fn to_placeholder_idx<T: Clone + std::fmt::Debug>(db: &dyn HirDatabase, id: TypeOrConstParamId, map: impl Fn(BoundVar) -> T) -> Placeholder<T> {
+    let interned_id = db.intern_type_or_const_param_id(id);
+    Placeholder { 
+        universe: UniverseIndex::ZERO,
+        bound: map(BoundVar::from_usize(ra_salsa::InternKey::as_intern_id(&interned_id).as_usize()))
+    }
+}
+
 
 pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
     binder: rustc_type_ir::Binder<DbInterner, T>,
@@ -95,7 +104,7 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> Ty {
         Ty::new(match self.kind(Interner) {
             chalk_ir::TyKind::Adt(adt_id, substitution) => {
-                let def = AdtDef::new(adt_id.0, ir);
+                let def = AdtDef::new(adt_id.0, ir.db);
                 let args = substitution.to_nextsolver(ir);
                 rustc_type_ir::TyKind::Adt(def, args)
             }
@@ -370,14 +379,19 @@ impl ChalkToNextSolver<BoundVarKind> for chalk_ir::VariableKind<Interner> {
     }
 }
 
+impl ChalkToNextSolver<GenericArg> for chalk_ir::GenericArg<Interner> {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> GenericArg {
+        match self.data(Interner) {
+            chalk_ir::GenericArgData::Ty(ty) => ty.to_nextsolver(ir).into(),
+            chalk_ir::GenericArgData::Lifetime(lifetime) => lifetime.to_nextsolver(ir).into(),
+            chalk_ir::GenericArgData::Const(_) => todo!(),
+        }
+    }
+}
 impl ChalkToNextSolver<GenericArgs> for chalk_ir::Substitution<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> GenericArgs {
         GenericArgs::new(self.iter(Interner).map(|arg| -> GenericArg {
-            match arg.data(Interner) {
-                chalk_ir::GenericArgData::Ty(ty) => ty.to_nextsolver(ir).into(),
-                chalk_ir::GenericArgData::Lifetime(lifetime) => lifetime.to_nextsolver(ir).into(),
-                chalk_ir::GenericArgData::Const(_) => todo!(),
-            }
+            arg.to_nextsolver(ir)
         }))
     }
 }

@@ -5,13 +5,15 @@ use base_db::CrateId;
 use extension_traits::extension;
 use hir_def::{BlockId, HasModule};
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
-use rustc_type_ir::inherent::{IrAdtDef, SliceLike};
-use rustc_type_ir::EarlyBinder;
+use rustc_type_ir::fold::TypeFoldable;
+use rustc_type_ir::inherent::{GenericArg, IrAdtDef, SliceLike};
+use rustc_type_ir::{BoundVar, EarlyBinder};
 use rustc_type_ir::{fold::{TypeFolder, TypeSuperFoldable}, inherent::IntoKind, visit::{TypeSuperVisitable, TypeVisitor}, ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, UintTy, UniverseIndex};
 
 use crate::{db::HirDatabase, from_foreign_def_id, method_resolution::{TraitImpls, TyFingerprint}};
 
-use super::{Const, DbInterner, DbIr, Region, Ty, TyKind};
+use super::fold::{BoundVarReplacer, FnMutDelegate};
+use super::{Binder, BoundRegion, BoundTy, Clause, Const, DbInterner, DbIr, GenericArgs, Region, Ty, TyKind};
 
 #[derive(Clone, Debug)]
 pub struct Discr {
@@ -421,4 +423,18 @@ pub fn sized_constraint_for_ty(ir: DbIr<'_>, ty: Ty) -> Option<Ty> {
             panic!("unexpected type `{ty:?}` in sized_constraint_for_ty")
         }
     }
+}
+
+pub fn apply_args_to_binder<T: TypeFoldable<DbInterner>>(b: Binder<T>, args: GenericArgs, db: &dyn HirDatabase) -> T {
+    // An Ir is needed for debug_asserting args compatible in Alias creation - it's just a noop for us so we can give fake data for CrateId and Block
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    let types = &mut |ty: BoundTy| { args.as_slice()[ty.var.index()].expect_ty() };
+    let regions = &mut |region: BoundRegion| { args.as_slice()[region.var.index()].expect_region() };
+    let consts = &mut |const_: BoundVar| { args.as_slice()[const_.index()].expect_const() };
+    let mut instantiate = BoundVarReplacer::new(DbInterner, FnMutDelegate {
+        types,
+        regions,
+        consts,
+    });
+    instantiate.fold_binder(b).skip_binder()
 }

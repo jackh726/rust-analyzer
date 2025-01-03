@@ -32,6 +32,7 @@ mod infer;
 mod inhabitedness;
 mod interner;
 mod lower;
+mod lower_nextsolver;
 mod mapping;
 mod next_solver;
 mod tls;

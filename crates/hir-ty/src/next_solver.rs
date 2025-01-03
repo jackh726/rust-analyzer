@@ -1,22 +1,23 @@
 #![allow(unused, unreachable_pub)]
 
-mod abi;
+pub mod abi;
 mod consts;
+pub mod elaborate;
 mod flags;
 pub mod fold;
 mod generic_arg;
-mod generics;
+pub mod generics;
 pub mod infer;
 //mod infer_new;
 pub mod interner;
 mod ir_print;
 pub mod mapping;
 mod opaques;
-mod predicate;
+pub mod predicate;
 mod region;
 mod solver;
 mod ty;
-mod util;
+pub mod util;
 
 pub use consts::*;
 pub use generic_arg::*;
