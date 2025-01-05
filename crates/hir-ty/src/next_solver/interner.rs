@@ -459,20 +459,45 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
         impl IntoIterator<Item = <DbInterner as rustc_type_ir::Interner>::Ty>,
     > {
         let db = ir.db;
-        let id = match self.0.id {
-            AdtId::StructId(struct_id) => VariantId::StructId(struct_id),
-            AdtId::UnionId(union_id) => VariantId::UnionId(union_id),
-            AdtId::EnumId(enum_id) => todo!(),
+        // FIXME: this is disabled just to match the behavior with chalk right now
+        let field_tys = |id: VariantId| {
+            let variant_data = id.variant_data(db.upcast());
+            let field_types = db.field_types(id);
+            let fields = if variant_data.fields().is_empty() {
+                vec![]
+            } else {
+                let field_types = db.field_types(id);
+                variant_data
+                    .fields()
+                    .iter()
+                    .map(|(idx, _)| {
+                        let ty: rustc_type_ir::Binder<DbInterner, Ty> =
+                            field_types[idx].clone().to_nextsolver(ir);
+                        let ty = convert_binder_to_early_binder(ty);
+                        ty.skip_binder()
+                    }).collect()
+            };
         };
-        let variant_data = id.variant_data(db.upcast());
-        let field_types = db.field_types(id);
-        let fields: Vec<_> = variant_data.fields().iter().map(|(idx, _)| idx).collect();
-        let tys = fields.into_iter().map(move |idx| {
-            let ty: rustc_type_ir::Binder<DbInterner, Ty> =
-                field_types[idx].clone().to_nextsolver(ir);
-            let ty = convert_binder_to_early_binder(ty);
-            ty.skip_binder()
-        });
+        let field_tys = |id: VariantId| {
+            vec![]
+        };
+        let tys: Vec<_> = match self.0.id {
+            hir_def::AdtId::StructId(id) => {
+                field_tys(id.into())
+            }
+            hir_def::AdtId::UnionId(id) => {
+                field_tys(id.into())
+            }
+            hir_def::AdtId::EnumId(id) => {
+                db
+                    .enum_data(id)
+                    .variants
+                    .iter()
+                    .flat_map(|&(variant_id, _)| field_tys(variant_id.into()))
+                    .collect()
+            }
+        };
+
         rustc_type_ir::EarlyBinder::bind(tys)
     }
 

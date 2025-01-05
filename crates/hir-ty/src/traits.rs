@@ -148,6 +148,7 @@ pub(crate) fn trait_solve_query(
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
     let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
+    dbg!(&u_canonical);
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
@@ -186,7 +187,6 @@ fn solve(
         } else {
             None
         };
-        dbg!(&goal);
         let solution = if is_chalk_print() {
             let logging_db =
                 LoggingRustIrDatabaseLoggingOnDrop(LoggingRustIrDatabase::new(context));
