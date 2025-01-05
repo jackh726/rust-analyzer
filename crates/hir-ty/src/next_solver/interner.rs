@@ -924,6 +924,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::TypeAliasId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::ConstId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::ClosureId(it) => return it.lookup(self.db.upcast()).parent.as_generic_def_id(self.db.upcast()).unwrap(),
+            GenericDefId::OpaqueTyId(it) => todo!(),
             GenericDefId::AdtId(_)
             | GenericDefId::TraitId(_)
             | GenericDefId::ImplId(_)

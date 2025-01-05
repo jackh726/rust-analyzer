@@ -58,14 +58,13 @@ mod tests;
 
 use std::hash::Hash;
 
-use base_db::ra_salsa::InternValueTrivial;
 use chalk_ir::{
     fold::{Shift, TypeFoldable},
     interner::HasInterner,
     NoSolution,
 };
 use either::Either;
-use hir_def::{hir::ExprId, type_ref::Rawness, CallableDefId, GeneralConstId, TypeOrConstParamId};
+use hir_def::{type_ref::Rawness, CallableDefId, GeneralConstId, TypeOrConstParamId};
 use hir_expand::name::Name;
 use indexmap::{map::Entry, IndexMap};
 use intern::{sym, Symbol};
@@ -596,14 +595,6 @@ impl TypeFoldable<Interner> for CallableSig {
         })
     }
 }
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum ImplTraitId {
-    ReturnTypeImplTrait(hir_def::FunctionId, ImplTraitIdx),
-    TypeAliasImplTrait(hir_def::TypeAliasId, ImplTraitIdx),
-    AsyncBlockTypeImplTrait(hir_def::DefWithBodyId, ExprId),
-}
-impl InternValueTrivial for ImplTraitId {}
 
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub struct ImplTraits {

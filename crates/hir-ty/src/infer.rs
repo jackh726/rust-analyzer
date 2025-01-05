@@ -33,39 +33,18 @@ use chalk_ir::{
 };
 use either::Either;
 use hir_def::{
-    body::{Body, HygieneId},
-    builtin_type::{BuiltinInt, BuiltinType, BuiltinUint},
-    data::{ConstData, StaticData},
-    hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, PatId},
-    lang_item::{LangItem, LangItemTarget},
-    layout::Integer,
-    path::{ModPath, Path},
-    resolver::{HasResolver, ResolveValueResult, Resolver, TypeNs, ValueNs},
-    type_ref::{LifetimeRef, TypeRefId, TypesMap},
-    AdtId, AssocItemId, DefWithBodyId, FieldId, FunctionId, ImplId, ItemContainerId, Lookup,
-    TraitId, TupleFieldId, TupleId, TypeAliasId, VariantId,
+    body::{Body, HygieneId}, builtin_type::{BuiltinInt, BuiltinType, BuiltinUint}, data::{ConstData, StaticData}, hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, PatId}, lang_item::{LangItem, LangItemTarget}, layout::Integer, path::{ModPath, Path}, resolver::{HasResolver, ResolveValueResult, Resolver, TypeNs, ValueNs}, type_ref::{LifetimeRef, TypeRefId, TypesMap}, AdtId, AssocItemId, DefWithBodyId, FieldId, FunctionId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, TraitId, TupleFieldId, TupleId, TypeAliasId, VariantId
 };
 use hir_expand::name::Name;
 use indexmap::IndexSet;
 use intern::sym;
-use la_arena::{ArenaMap, Entry};
+use la_arena::{ArenaMap, Entry, Idx};
 use rustc_hash::{FxHashMap, FxHashSet};
 use stdx::{always, never};
 use triomphe::Arc;
 
 use crate::{
-    db::HirDatabase,
-    fold_tys,
-    generics::Generics,
-    infer::{coerce::CoerceMany, expr::ExprIsRead, unify::InferenceTable},
-    lower::ImplTraitLoweringMode,
-    mir::MirSpan,
-    to_assoc_type_id,
-    traits::FnTrait,
-    utils::{InTypeConstIdMetadata, UnevaluatedConstEvaluatorFolder},
-    AliasEq, AliasTy, Binders, ClosureId, Const, DomainGoal, GenericArg, Goal, ImplTraitId,
-    ImplTraitIdx, InEnvironment, Interner, Lifetime, OpaqueTyId, ParamLoweringMode, ProjectionTy,
-    Substitution, TraitEnvironment, Ty, TyBuilder, TyExt,
+    db::HirDatabase, fold_tys, generics::Generics, infer::{coerce::CoerceMany, expr::ExprIsRead, unify::InferenceTable}, lower::ImplTraitLoweringMode, mapping::from_opaque_ty_id, mir::MirSpan, to_assoc_type_id, traits::FnTrait, utils::{InTypeConstIdMetadata, UnevaluatedConstEvaluatorFolder}, AliasEq, AliasTy, Binders, ClosureId, Const, DomainGoal, GenericArg, Goal, ImplTraitIdx, InEnvironment, Interner, Lifetime, OpaqueTyId, ParamLoweringMode, ProjectionTy, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt
 };
 
 // This lint has a false positive here. See the link below for details.
@@ -980,7 +959,7 @@ impl<'a> InferenceContext<'a> {
                     _ => return ty,
                 };
                 let (impl_traits, idx) =
-                    match self.db.lookup_intern_impl_trait_id(opaque_ty_id.into()) {
+                    match self.db.lookup_intern_opaque_ty(from_opaque_ty_id(opaque_ty_id)) {
                         // We don't replace opaque types from other kind with inference vars
                         // because `insert_inference_vars_for_impl_traits` for each kinds
                         // and unreplaced opaque types of other kind are resolved while
@@ -988,7 +967,8 @@ impl<'a> InferenceContext<'a> {
                         // Moreover, calling `insert_inference_vars_for_impl_traits` with same
                         // `placeholders` for other kind may cause trouble because
                         // the substs for the bounds of each impl traits do not match
-                        ImplTraitId::ReturnTypeImplTrait(def, idx) => {
+                        OpaqueTyLoc::ReturnTypeImplTrait(def, idx) => {
+                            let idx = Idx::from_raw(idx);
                             if matches!(mode, ImplTraitReplacingMode::TypeAlias) {
                                 // RPITs don't have `tait_coercion_table`, so use inserted inference
                                 // vars for them.
@@ -999,7 +979,8 @@ impl<'a> InferenceContext<'a> {
                             }
                             (self.db.return_type_impl_traits(def), idx)
                         }
-                        ImplTraitId::TypeAliasImplTrait(def, idx) => {
+                        OpaqueTyLoc::TypeAliasImplTrait(def, idx) => {
+                            let idx = Idx::from_raw(idx);
                             if let ImplTraitReplacingMode::ReturnPosition(taits) = mode {
                                 // Gather TAITs while replacing RPITs because TAITs inside RPITs
                                 // may not visited while replacing TAITs
@@ -1075,8 +1056,8 @@ impl<'a> InferenceContext<'a> {
                 let ty = self.table.resolve_ty_shallow(ty);
 
                 if let TyKind::OpaqueType(id, _) = ty.kind(Interner) {
-                    if let ImplTraitId::TypeAliasImplTrait(alias_id, _) =
-                        self.db.lookup_intern_impl_trait_id((*id).into())
+                    if let OpaqueTyLoc::TypeAliasImplTrait(alias_id, _) =
+                        self.db.lookup_intern_opaque_ty(from_opaque_ty_id(*id))
                     {
                         let loc = self.db.lookup_intern_type_alias(alias_id);
                         match loc.container {
@@ -1160,8 +1141,8 @@ impl<'a> InferenceContext<'a> {
         let tait_coercion_table: FxHashMap<_, _> = taits
             .into_iter()
             .filter_map(|(id, ty)| {
-                if let ImplTraitId::TypeAliasImplTrait(alias_id, _) =
-                    self.db.lookup_intern_impl_trait_id(id.into())
+                if let OpaqueTyLoc::TypeAliasImplTrait(alias_id, _) =
+                    self.db.lookup_intern_opaque_ty(from_opaque_ty_id(id))
                 {
                     let subst = TyBuilder::placeholder_subst(self.db, alias_id);
                     let ty = self.insert_inference_vars_for_impl_trait(

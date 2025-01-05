@@ -5,6 +5,7 @@ use std::{iter, ops::ControlFlow, sync::Arc};
 
 use hir_expand::name::Name;
 use intern::sym;
+use la_arena::Idx;
 use span::Edition;
 use tracing::debug;
 
@@ -13,11 +14,7 @@ use chalk_solve::rust_ir::{self, OpaqueTyDatumBound, WellKnownTrait};
 
 use base_db::CrateId;
 use hir_def::{
-    data::adt::StructFlags,
-    hir::Movability,
-    lang_item::{LangItem, LangItemTarget},
-    AssocItemId, BlockId, CallableDefId, GenericDefId, HasModule, ItemContainerId, Lookup,
-    TypeAliasId, VariantId,
+    data::adt::StructFlags, hir::Movability, lang_item::{LangItem, LangItemTarget}, AssocItemId, BlockId, CallableDefId, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TypeAliasId, VariantId
 };
 
 use crate::{
@@ -26,7 +23,7 @@ use crate::{
     from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id,
     generics::generics,
     make_binders, make_single_type_binders,
-    mapping::{from_chalk, ToChalk, TypeAliasAsValue},
+    mapping::{from_chalk, from_opaque_ty_id, ToChalk, TypeAliasAsValue},
     method_resolution::{TraitImpls, TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS},
     to_assoc_type_id, to_chalk_trait_id,
     traits::ChalkContext,
@@ -261,35 +258,35 @@ impl chalk_solve::RustIrDatabase<Interner> for ChalkContext<'_> {
     }
 
     fn opaque_ty_data(&self, id: chalk_ir::OpaqueTyId<Interner>) -> Arc<OpaqueTyDatum> {
-        let full_id = self.db.lookup_intern_impl_trait_id(id.into());
+        let full_id = self.db.lookup_intern_opaque_ty(from_opaque_ty_id(id));
         let bound = match full_id {
-            crate::ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+            OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
                 let datas = self
                     .db
                     .return_type_impl_traits(func)
                     .expect("impl trait id without impl traits");
                 let (datas, binders) = (*datas).as_ref().into_value_and_skipped_binders();
-                let data = &datas.impl_traits[idx];
+                let data = &datas.impl_traits[Idx::from_raw(idx)];
                 let bound = OpaqueTyDatumBound {
                     bounds: make_single_type_binders(data.bounds.skip_binders().to_vec()),
                     where_clauses: chalk_ir::Binders::empty(Interner, vec![]),
                 };
                 chalk_ir::Binders::new(binders, bound)
             }
-            crate::ImplTraitId::TypeAliasImplTrait(alias, idx) => {
+            OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
                 let datas = self
                     .db
                     .type_alias_impl_traits(alias)
                     .expect("impl trait id without impl traits");
                 let (datas, binders) = (*datas).as_ref().into_value_and_skipped_binders();
-                let data = &datas.impl_traits[idx];
+                let data = &datas.impl_traits[Idx::from_raw(idx)];
                 let bound = OpaqueTyDatumBound {
                     bounds: make_single_type_binders(data.bounds.skip_binders().to_vec()),
                     where_clauses: chalk_ir::Binders::empty(Interner, vec![]),
                 };
                 chalk_ir::Binders::new(binders, bound)
             }
-            crate::ImplTraitId::AsyncBlockTypeImplTrait(..) => {
+            OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => {
                 if let Some((future_trait, future_output)) =
                     self.db
                         .lang_item(self.krate, LangItem::Future)

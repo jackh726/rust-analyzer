@@ -78,18 +78,6 @@ impl From<crate::db::InternedCallableDefId> for FnDefId {
     }
 }
 
-impl From<OpaqueTyId> for crate::db::InternedOpaqueTyId {
-    fn from(id: OpaqueTyId) -> Self {
-        InternKey::from_intern_id(id.0)
-    }
-}
-
-impl From<crate::db::InternedOpaqueTyId> for OpaqueTyId {
-    fn from(id: crate::db::InternedOpaqueTyId) -> Self {
-        chalk_ir::OpaqueTyId(id.as_intern_id())
-    }
-}
-
 impl From<chalk_ir::ClosureId<Interner>> for crate::db::InternedClosureId {
     fn from(id: chalk_ir::ClosureId<Interner>) -> Self {
         Self::from_intern_id(id.0)
@@ -127,6 +115,14 @@ pub fn to_assoc_type_id(id: TypeAliasId) -> AssocTypeId {
 }
 
 pub fn from_assoc_type_id(id: AssocTypeId) -> TypeAliasId {
+    ra_salsa::InternKey::from_intern_id(id.0)
+}
+
+pub fn to_opaque_ty_id(id: hir_def::OpaqueTyId) -> OpaqueTyId {
+    chalk_ir::OpaqueTyId(ra_salsa::InternKey::as_intern_id(&id))
+}
+
+pub fn from_opaque_ty_id(id: OpaqueTyId) -> hir_def::OpaqueTyId {
     ra_salsa::InternKey::from_intern_id(id.0)
 }
 

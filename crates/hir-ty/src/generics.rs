@@ -261,6 +261,7 @@ pub(crate) fn parent_generic_def(db: &dyn DefDatabase, def: GenericDefId) -> Opt
         GenericDefId::TypeAliasId(it) => it.lookup(db).container,
         GenericDefId::ConstId(it) => it.lookup(db).container,
         GenericDefId::ClosureId(it) => return it.lookup(db).parent.as_generic_def_id(db),
+        GenericDefId::OpaqueTyId(it) => todo!(),
         GenericDefId::AdtId(_)
         | GenericDefId::TraitId(_)
         | GenericDefId::ImplId(_)

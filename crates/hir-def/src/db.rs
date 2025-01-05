@@ -13,7 +13,7 @@ use crate::{
         adt::{EnumData, EnumVariantData, StructData, VariantData},
         ConstData, ExternCrateDeclData, FunctionData, ImplData, Macro2Data, MacroRulesData,
         ProcMacroData, StaticData, TraitAliasData, TraitData, TypeAliasData,
-    }, generics::GenericParams, import_map::ImportMap, item_tree::{AttrOwner, ItemTree, ItemTreeSourceMaps}, lang_item::{self, LangItem, LangItemTarget, LangItems}, nameres::{diagnostics::DefDiagnostics, DefMap}, type_ref::TypesSourceMap, visibility::{self, Visibility}, AttrDefId, BlockId, BlockLoc, ClosureId, ClosureLoc, ConstBlockId, ConstBlockLoc, ConstId, ConstLoc, DefWithBodyId, EnumId, EnumLoc, EnumVariantId, EnumVariantLoc, ExternBlockId, ExternBlockLoc, ExternCrateId, ExternCrateLoc, FunctionId, FunctionLoc, GenericDefId, ImplId, ImplLoc, InTypeConstId, InTypeConstLoc, LocalFieldId, Macro2Id, Macro2Loc, MacroId, MacroRulesId, MacroRulesLoc, MacroRulesLocFlags, ProcMacroId, ProcMacroLoc, StaticId, StaticLoc, StructId, StructLoc, TraitAliasId, TraitAliasLoc, TraitId, TraitLoc, TypeAliasId, TypeAliasLoc, UnionId, UnionLoc, UseId, UseLoc, VariantId
+    }, generics::GenericParams, import_map::ImportMap, item_tree::{AttrOwner, ItemTree, ItemTreeSourceMaps}, lang_item::{self, LangItem, LangItemTarget, LangItems}, nameres::{diagnostics::DefDiagnostics, DefMap}, type_ref::TypesSourceMap, visibility::{self, Visibility}, AttrDefId, BlockId, BlockLoc, ClosureId, ClosureLoc, ConstBlockId, ConstBlockLoc, ConstId, ConstLoc, DefWithBodyId, EnumId, EnumLoc, EnumVariantId, EnumVariantLoc, ExternBlockId, ExternBlockLoc, ExternCrateId, ExternCrateLoc, FunctionId, FunctionLoc, GenericDefId, ImplId, ImplLoc, InTypeConstId, InTypeConstLoc, LocalFieldId, Macro2Id, Macro2Loc, MacroId, MacroRulesId, MacroRulesLoc, MacroRulesLocFlags, OpaqueTyId, OpaqueTyLoc, ProcMacroId, ProcMacroLoc, StaticId, StaticLoc, StructId, StructLoc, TraitAliasId, TraitAliasLoc, TraitId, TraitLoc, TypeAliasId, TypeAliasLoc, UnionId, UnionLoc, UseId, UseLoc, VariantId
 };
 
 #[ra_salsa::query_group(InternDatabaseStorage)]
@@ -63,6 +63,8 @@ pub trait InternDatabase: SourceDatabase {
     fn intern_in_type_const(&self, id: InTypeConstLoc) -> InTypeConstId;
     #[ra_salsa::interned]
     fn intern_closure_def(&self, id: ClosureLoc) -> ClosureId;
+    #[ra_salsa::interned]
+    fn intern_opaque_ty(&self, id: OpaqueTyLoc) -> OpaqueTyId;
 }
 
 #[ra_salsa::query_group(DefDatabaseStorage)]

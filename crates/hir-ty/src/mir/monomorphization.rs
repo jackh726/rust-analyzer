@@ -14,16 +14,12 @@ use chalk_ir::{
     fold::{FallibleTypeFolder, TypeFoldable, TypeSuperFoldable},
     ConstData, DebruijnIndex,
 };
-use hir_def::DefWithBodyId;
+use hir_def::{DefWithBodyId, OpaqueTyLoc};
+use la_arena::Idx;
 use triomphe::Arc;
 
 use crate::{
-    consteval::{intern_const_scalar, unknown_const},
-    db::{HirDatabase, InternedClosure},
-    from_placeholder_idx,
-    generics::{generics, Generics},
-    infer::normalize,
-    ClosureId, Const, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty, TyKind,
+    consteval::{intern_const_scalar, unknown_const}, db::{HirDatabase, InternedClosure}, from_placeholder_idx, generics::{generics, Generics}, infer::normalize, mapping::from_opaque_ty_id, ClosureId, Const, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty, TyKind
 };
 
 use super::{MirBody, MirLowerError, Operand, Rvalue, StatementKind, TerminatorKind};
@@ -68,10 +64,11 @@ impl FallibleTypeFolder<Interner> for Filler<'_> {
                 .intern(Interner))
             }
             TyKind::OpaqueType(id, subst) => {
-                let impl_trait_id = self.db.lookup_intern_impl_trait_id((*id).into());
+                let impl_trait_id = self.db.lookup_intern_opaque_ty(from_opaque_ty_id(*id));
                 let subst = subst.clone().try_fold_with(self.as_dyn(), outer_binder)?;
                 match impl_trait_id {
-                    crate::ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let idx = Idx::from_raw(idx);
                         let infer = self.db.infer(func.into());
                         let filler = &mut Filler {
                             db: self.db,
@@ -82,10 +79,10 @@ impl FallibleTypeFolder<Interner> for Filler<'_> {
                         };
                         filler.try_fold_ty(infer.type_of_rpit[idx].clone(), outer_binder)
                     }
-                    crate::ImplTraitId::TypeAliasImplTrait(..) => {
+                    OpaqueTyLoc::TypeAliasImplTrait(..) => {
                         not_supported!("type alias impl trait");
                     }
-                    crate::ImplTraitId::AsyncBlockTypeImplTrait(_, _) => {
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(_, _) => {
                         not_supported!("async block impl trait");
                     }
                 }

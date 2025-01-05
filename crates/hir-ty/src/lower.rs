@@ -21,25 +21,13 @@ use chalk_ir::{
 
 use either::Either;
 use hir_def::{
-    builtin_type::BuiltinType,
-    data::adt::StructKind,
-    expander::Expander,
-    generics::{
+    builtin_type::BuiltinType, data::adt::StructKind, expander::Expander, generics::{
         GenericParamDataRef, TypeOrConstParamData, TypeParamProvenance, WherePredicate,
         WherePredicateTypeTarget,
-    },
-    lang_item::LangItem,
-    nameres::MacroSubNs,
-    path::{GenericArg, GenericArgs, ModPath, Path, PathKind, PathSegment, PathSegments},
-    resolver::{HasResolver, LifetimeNs, Resolver, TypeNs},
-    type_ref::{
+    }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, GenericArgs, ModPath, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    },
-    AdtId, AssocItemId, CallableDefId, ConstId, ConstParamId, DefWithBodyId, EnumId, EnumVariantId,
-    FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, InTypeConstLoc, ItemContainerId,
-    LocalFieldId, Lookup, StaticId, StructId, TraitId, TypeAliasId, TypeOrConstParamId,
-    TypeOwnerId, UnionId, VariantId,
+    }, AdtId, AssocItemId, CallableDefId, ConstId, ConstParamId, DefWithBodyId, EnumId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, InTypeConstLoc, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StaticId, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, UnionId, VariantId
 };
 use hir_expand::{name::Name, ExpandResult};
 use la_arena::{Arena, ArenaMap};
@@ -60,13 +48,13 @@ use crate::{
     error_lifetime,
     generics::{generics, trait_self_param_idx, Generics},
     make_binders,
-    mapping::{from_chalk_trait_id, lt_to_placeholder_idx, ToChalk},
+    mapping::{from_chalk_trait_id, lt_to_placeholder_idx, to_opaque_ty_id, ToChalk},
     static_lifetime, to_assoc_type_id, to_chalk_trait_id, to_placeholder_idx,
     utils::{
         all_super_trait_refs, associated_type_by_name_including_super_traits, InTypeConstIdMetadata,
     },
     AliasEq, AliasTy, Binders, BoundVar, CallableSig, Const, ConstScalar, DebruijnIndex, DynTy,
-    FnAbi, FnPointer, FnSig, FnSubst, ImplTrait, ImplTraitId, ImplTraits, Interner, Lifetime,
+    FnAbi, FnPointer, FnSig, FnSubst, ImplTrait, ImplTraits, Interner, Lifetime,
     LifetimeData, LifetimeOutlives, ParamKind, PolyFnSig, ProjectionTy, QuantifiedWhereClause,
     QuantifiedWhereClauses, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder,
     TyKind, WhereClause,
@@ -343,15 +331,15 @@ impl<'a> TyLoweringContext<'a> {
                             });
                         self.impl_trait_mode.opaque_type_data[idx] = actual_opaque_type_data;
 
-                        let impl_trait_id = origin.either(
-                            |f| ImplTraitId::ReturnTypeImplTrait(f, idx),
-                            |a| ImplTraitId::TypeAliasImplTrait(a, idx),
+                        let opaque_ty = origin.either(
+                            |f| OpaqueTyLoc::ReturnTypeImplTrait(f, idx.into_raw()),
+                            |a| OpaqueTyLoc::TypeAliasImplTrait(a, idx.into_raw()),
                         );
-                        let opaque_ty_id = self.db.intern_impl_trait_id(impl_trait_id).into();
+                        let opaque_ty_id = self.db.intern_opaque_ty(opaque_ty);
                         let generics =
                             generics(self.db.upcast(), origin.either(|f| f.into(), |a| a.into()));
                         let parameters = generics.bound_vars_subst(self.db, self.in_binders);
-                        TyKind::OpaqueType(opaque_ty_id, parameters).intern(Interner)
+                        TyKind::OpaqueType(to_opaque_ty_id(opaque_ty_id), parameters).intern(Interner)
                     }
                     ImplTraitLoweringMode::Param => {
                         let idx = self.impl_trait_mode.param_and_variable_counter;

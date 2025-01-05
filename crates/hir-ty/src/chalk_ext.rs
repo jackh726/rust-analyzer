@@ -4,19 +4,12 @@ use chalk_ir::{
     cast::Cast, FloatTy, IntTy, Mutability, Scalar, TyVariableKind, TypeOutlives, UintTy,
 };
 use hir_def::{
-    builtin_type::{BuiltinFloat, BuiltinInt, BuiltinType, BuiltinUint},
-    generics::TypeOrConstParamData,
-    lang_item::LangItem,
-    type_ref::Rawness,
-    DefWithBodyId, FunctionId, GenericDefId, HasModule, ItemContainerId, Lookup, TraitId,
+    builtin_type::{BuiltinFloat, BuiltinInt, BuiltinType, BuiltinUint}, generics::TypeOrConstParamData, lang_item::LangItem, type_ref::Rawness, DefWithBodyId, FunctionId, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TraitId
 };
+use la_arena::Idx;
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id,
-    from_placeholder_idx, generics::generics, to_chalk_trait_id, utils::ClosureSubst, AdtId,
-    AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId,
-    DynTy, FnPointer, ImplTraitId, InEnvironment, Interner, Lifetime, ProjectionTy,
-    QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause,
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, mapping::from_opaque_ty_id, to_chalk_trait_id, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId, DynTy, FnPointer, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
 };
 
 pub trait TyExt {
@@ -248,8 +241,8 @@ impl TyExt for Ty {
     fn impl_trait_bounds(&self, db: &dyn HirDatabase) -> Option<Vec<QuantifiedWhereClause>> {
         match self.kind(Interner) {
             TyKind::OpaqueType(opaque_ty_id, subst) => {
-                match db.lookup_intern_impl_trait_id((*opaque_ty_id).into()) {
-                    ImplTraitId::AsyncBlockTypeImplTrait(def, _expr) => {
+                match db.lookup_intern_opaque_ty(from_opaque_ty_id(*opaque_ty_id)) {
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(def, _expr) => {
                         let krate = def.module(db.upcast()).krate();
                         if let Some(future_trait) =
                             db.lang_item(krate, LangItem::Future).and_then(|item| item.as_trait())
@@ -269,14 +262,16 @@ impl TyExt for Ty {
                             None
                         }
                     }
-                    ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let idx = Idx::from_raw(idx);
                         db.return_type_impl_traits(func).map(|it| {
                             let data =
                                 (*it).as_ref().map(|rpit| rpit.impl_traits[idx].bounds.clone());
                             data.substitute(Interner, &subst).into_value_and_skipped_binders().0
                         })
                     }
-                    ImplTraitId::TypeAliasImplTrait(alias, idx) => {
+                    OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
+                        let idx = Idx::from_raw(idx);
                         db.type_alias_impl_traits(alias).map(|it| {
                             let data =
                                 (*it).as_ref().map(|rpit| rpit.impl_traits[idx].bounds.clone());
@@ -286,16 +281,18 @@ impl TyExt for Ty {
                 }
             }
             TyKind::Alias(AliasTy::Opaque(opaque_ty)) => {
-                let predicates = match db.lookup_intern_impl_trait_id(opaque_ty.opaque_ty_id.into())
+                let predicates = match db.lookup_intern_opaque_ty(from_opaque_ty_id(opaque_ty.opaque_ty_id))
                 {
-                    ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let idx = Idx::from_raw(idx);
                         db.return_type_impl_traits(func).map(|it| {
                             let data =
                                 (*it).as_ref().map(|rpit| rpit.impl_traits[idx].bounds.clone());
                             data.substitute(Interner, &opaque_ty.substitution)
                         })
                     }
-                    ImplTraitId::TypeAliasImplTrait(alias, idx) => {
+                    OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
+                        let idx = Idx::from_raw(idx);
                         db.type_alias_impl_traits(alias).map(|it| {
                             let data =
                                 (*it).as_ref().map(|rpit| rpit.impl_traits[idx].bounds.clone());
@@ -303,7 +300,7 @@ impl TyExt for Ty {
                         })
                     }
                     // It always has an parameter for Future::Output type.
-                    ImplTraitId::AsyncBlockTypeImplTrait(..) => unreachable!(),
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => unreachable!(),
                 };
 
                 predicates.map(|it| it.into_value_and_skipped_binders().0)

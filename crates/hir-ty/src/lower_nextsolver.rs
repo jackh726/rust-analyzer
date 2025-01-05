@@ -15,42 +15,27 @@ use base_db::CrateId;
 
 use either::Either;
 use hir_def::{
-    builtin_type::BuiltinType,
-    data::adt::StructKind,
-    expander::Expander,
-    generics::{
-        GenericParamDataRef, TypeOrConstParamData, TypeParamProvenance, WherePredicate,
+    expander::Expander, generics::{
+        GenericParamDataRef, TypeParamProvenance, WherePredicate,
         WherePredicateTypeTarget,
-    },
-    lang_item::LangItem,
-    nameres::MacroSubNs,
-    path::{GenericArg, ModPath, Path, PathKind, PathSegment, PathSegments},
-    resolver::{HasResolver, LifetimeNs, Resolver, TypeNs},
-    type_ref::{
+    }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    },
-    AdtId, AssocItemId, CallableDefId, ConstId, ConstParamId, DefWithBodyId, EnumId, EnumVariantId,
-    FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, InTypeConstLoc, ItemContainerId,
-    LocalFieldId, Lookup, StaticId, StructId, TraitId, TypeAliasId, TypeOrConstParamId,
-    TypeOwnerId, UnionId, VariantId,
+    }, AssocItemId, GenericDefId, GenericParamId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId
 };
 use hir_expand::{name::Name, ExpandResult};
-use la_arena::{Arena, ArenaMap};
+use la_arena::Arena;
 use rustc_ast_ir::Mutability;
 use rustc_hash::FxHashSet;
 use rustc_pattern_analysis::Captures;
-use rustc_type_ir::{fold::{shift_vars, TypeFoldable}, inherent::{BoundExistentialPredicates as _, Const as _, GenericArg as _, IntoKind as _, PlaceholderLike as _, Region as _, Safety as _, SliceLike, Ty as _}, outlives, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self, Bound}, UniverseIndex};
+use rustc_type_ir::{fold::{shift_vars, TypeFoldable}, inherent::{Const as _, GenericArg as _, IntoKind as _, PlaceholderLike as _, Region as _, SliceLike, Ty as _}, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self}, UniverseIndex};
 use smallvec::SmallVec;
-use stdx::{impl_from, never};
+use stdx::never;
 use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, consteval::{
-        intern_const_ref, intern_const_scalar, path_to_const,
-        unknown_const_as_generic,
-    }, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, mapping::{from_chalk_trait_id, lt_to_placeholder_idx, ToChalk}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicate, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, ErrorGuaranteed, GenericArgs, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ImplTrait, ImplTraitId, OpaqueTyId, ParamKind, ParamLoweringMode, TraitRefExt, TyDefId, ValueTyDefId
+    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, ErrorGuaranteed, GenericArgs, Placeholder, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ImplTrait, ParamKind, ParamLoweringMode, TyDefId, ValueTyDefId
 };
 
 #[derive(Debug, Default)]
@@ -310,11 +295,11 @@ impl<'a> TyLoweringContext<'a> {
                         // FIXME: need to copy `ImplTrait` and `ImplTraits` for next solver
                         //self.impl_trait_mode.opaque_type_data[idx] = actual_opaque_type_data;
 
-                        let impl_trait_id = origin.either(
-                            |f| ImplTraitId::ReturnTypeImplTrait(f, idx),
-                            |a| ImplTraitId::TypeAliasImplTrait(a, idx),
+                        let opaque_ty_loc = origin.either(
+                            |f| OpaqueTyLoc::ReturnTypeImplTrait(f, idx.into_raw()),
+                            |a| OpaqueTyLoc::TypeAliasImplTrait(a, idx.into_raw()),
                         );
-                        let opaque_ty_id: OpaqueTyId = self.db.intern_impl_trait_id(impl_trait_id).into();
+                        let opaque_ty_id = self.db.intern_opaque_ty(opaque_ty_loc);
                         /*
                         let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
                         let args = GenericArgs::for_item(fake_ir, opaque_ty_id.into(), |param, _| match param.kind {
@@ -1525,7 +1510,7 @@ fn named_associated_type_shorthand_candidates(
 
                 let args = GenericArgs::new_from_iter((starting_idx..).zip(params).map(|(idx, kind)| match kind {
                     ParamKind::Type => Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var: BoundVar::from_usize(idx), kind: BoundTyKind::Anon }).into(),
-                    ParamKind::Const(ty) => {
+                    ParamKind::Const(_) => {
                         Const::new_bound(DbInterner, DebruijnIndex::ZERO, BoundVar::from_usize(idx)).into()
                     }
                     ParamKind::Lifetime => {
@@ -1662,7 +1647,7 @@ pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Binde
     let generics = generics(db.upcast(), impl_id.into());
     let mut ctx = TyLoweringContext::new(db, &resolver, &impl_data.types_map, impl_id.into())
         .with_type_param_mode(ParamLoweringMode::Variable);
-    make_binders(db, &generics, ctx.lower_ty(impl_data.self_ty))
+    make_binders(&generics, ctx.lower_ty(impl_data.self_ty))
 }
 
 
@@ -1828,14 +1813,13 @@ pub(crate) fn make_single_type_binders<T: rustc_type_ir::visit::TypeVisitable<Db
 }
 
 pub(crate) fn make_binders<T: rustc_type_ir::visit::TypeVisitable<DbInterner>>(
-    db: &dyn HirDatabase,
     generics: &Generics,
     value: T,
 ) -> Binder<T> {
     Binder::bind_with_vars(
         value,
         BoundVarKinds::new_from_iter(generics.iter_id().map(|x| match x {
-            hir_def::GenericParamId::ConstParamId(id) => {
+            hir_def::GenericParamId::ConstParamId(_) => {
                 BoundVarKind::Const
             }
             hir_def::GenericParamId::TypeParamId(_) => {

@@ -9,8 +9,7 @@ use hir_def::{
         BackendRepr, FieldsShape, Float, Integer, LayoutCalculator, LayoutCalculatorError,
         LayoutData, Primitive, ReprOptions, Scalar, Size, StructKind, TargetDataLayout,
         WrappingRange,
-    },
-    LocalFieldId, StructId,
+    }, LocalFieldId, OpaqueTyLoc, StructId
 };
 use la_arena::{Idx, RawIdx};
 use rustc_abi::AddressSpace;
@@ -19,12 +18,7 @@ use rustc_index::{IndexSlice, IndexVec};
 use triomphe::Arc;
 
 use crate::{
-    consteval::try_const_usize,
-    db::{HirDatabase, InternedClosure},
-    infer::normalize,
-    layout::adt::struct_variant_idx,
-    utils::ClosureSubst,
-    Interner, ProjectionTy, Substitution, TraitEnvironment, Ty,
+    consteval::try_const_usize, db::{HirDatabase, InternedClosure}, infer::normalize, layout::adt::struct_variant_idx, mapping::from_opaque_ty_id, utils::ClosureSubst, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty
 };
 
 pub use self::{
@@ -393,16 +387,16 @@ pub fn layout_of_ty_query(
             Layout::scalar(dl, ptr)
         }
         TyKind::OpaqueType(opaque_ty_id, _) => {
-            let impl_trait_id = db.lookup_intern_impl_trait_id((*opaque_ty_id).into());
+            let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(*opaque_ty_id));
             match impl_trait_id {
-                crate::ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
                     let infer = db.infer(func.into());
-                    return db.layout_of_ty(infer.type_of_rpit[idx].clone(), trait_env);
+                    return db.layout_of_ty(infer.type_of_rpit[Idx::from_raw(idx)].clone(), trait_env);
                 }
-                crate::ImplTraitId::TypeAliasImplTrait(..) => {
+                OpaqueTyLoc::TypeAliasImplTrait(..) => {
                     return Err(LayoutError::NotImplemented);
                 }
-                crate::ImplTraitId::AsyncBlockTypeImplTrait(_, _) => {
+                OpaqueTyLoc::AsyncBlockTypeImplTrait(_, _) => {
                     return Err(LayoutError::NotImplemented)
                 }
             }

@@ -11,11 +11,7 @@ use hir_def::{
     hir::{
         ArithOp, Array, AsmOperand, AsmOptions, BinaryOp, ClosureKind, Expr, ExprId, ExprOrPatId,
         LabelId, Literal, Pat, PatId, Statement, UnaryOp,
-    },
-    lang_item::{LangItem, LangItemTarget},
-    path::{GenericArg, GenericArgs, Path},
-    resolver::ValueNs,
-    BlockId, FieldId, GenericDefId, GenericParamId, ItemContainerId, Lookup, TupleFieldId, TupleId,
+    }, lang_item::{LangItem, LangItemTarget}, path::{GenericArg, GenericArgs, Path}, resolver::ValueNs, BlockId, FieldId, GenericDefId, GenericParamId, ItemContainerId, Lookup, OpaqueTyLoc, TupleFieldId, TupleId
 };
 use hir_expand::name::Name;
 use intern::sym;
@@ -38,7 +34,7 @@ use crate::{
     lower::{
         const_or_path_to_chalk, generic_arg_to_chalk, lower_to_chalk_mutability, ParamLoweringMode,
     },
-    mapping::{from_chalk, ToChalk},
+    mapping::{from_chalk, to_opaque_ty_id, ToChalk},
     method_resolution::{self, VisibleFromModule},
     primitive::{self, UintTy},
     static_lifetime, to_chalk_trait_id,
@@ -1272,9 +1268,9 @@ impl InferenceContext<'_> {
     ) -> Ty {
         // Use the first type parameter as the output type of future.
         // existential type AsyncBlockImplTrait<InnerType>: Future<Output = InnerType>
-        let impl_trait_id = crate::ImplTraitId::AsyncBlockTypeImplTrait(self.owner, tgt_expr);
-        let opaque_ty_id = self.db.intern_impl_trait_id(impl_trait_id).into();
-        TyKind::OpaqueType(opaque_ty_id, Substitution::from1(Interner, inner_ty)).intern(Interner)
+        let impl_trait_id = OpaqueTyLoc::AsyncBlockTypeImplTrait(self.owner, tgt_expr);
+        let opaque_ty_id = self.db.intern_opaque_ty(impl_trait_id).into();
+        TyKind::OpaqueType(to_opaque_ty_id(opaque_ty_id), Substitution::from1(Interner, inner_ty)).intern(Interner)
     }
 
     pub(crate) fn write_fn_trait_method_resolution(

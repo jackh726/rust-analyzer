@@ -11,25 +11,14 @@ use base_db::CrateId;
 use chalk_ir::{BoundVar, Safety, TyKind};
 use either::Either;
 use hir_def::{
-    data::adt::VariantData,
-    db::DefDatabase,
-    find_path::{self, PrefixKind},
-    generics::{TypeOrConstParamData, TypeParamProvenance},
-    item_scope::ItemInNs,
-    lang_item::{LangItem, LangItemTarget},
-    nameres::DefMap,
-    path::{Path, PathKind},
-    type_ref::{
+    data::adt::VariantData, db::DefDatabase, find_path::{self, PrefixKind}, generics::{TypeOrConstParamData, TypeParamProvenance}, item_scope::ItemInNs, lang_item::{LangItem, LangItemTarget}, nameres::DefMap, path::{Path, PathKind}, type_ref::{
         TraitBoundModifier, TypeBound, TypeRef, TypeRefId, TypesMap, TypesSourceMap, UseArgRef,
-    },
-    visibility::Visibility,
-    GenericDefId, HasModule, ImportPathConfig, ItemContainerId, LocalFieldId, Lookup, ModuleDefId,
-    ModuleId, TraitId,
+    }, visibility::Visibility, GenericDefId, HasModule, ImportPathConfig, ItemContainerId, LocalFieldId, Lookup, ModuleDefId, ModuleId, OpaqueTyLoc, TraitId
 };
 use hir_expand::name::Name;
 use intern::{sym, Internable, Interned};
 use itertools::Itertools;
-use la_arena::ArenaMap;
+use la_arena::{ArenaMap, Idx};
 use rustc_apfloat::{
     ieee::{Half as f16, Quad as f128},
     Float,
@@ -46,12 +35,12 @@ use crate::{
     generics::generics,
     layout::Layout,
     lt_from_placeholder_idx,
-    mapping::from_chalk,
+    mapping::{from_chalk, from_opaque_ty_id},
     mir::pad16,
     primitive, to_assoc_type_id,
     utils::{self, detect_variant_from_bytes, ClosureSubst},
     AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, ConcreteConst, Const,
-    ConstScalar, ConstValue, DomainGoal, FnAbi, GenericArg, ImplTraitId, Interner, Lifetime,
+    ConstScalar, ConstValue, DomainGoal, FnAbi, GenericArg, Interner, Lifetime,
     LifetimeData, LifetimeOutlives, MemoryMap, Mutability, OpaqueTy, ProjectionTy, ProjectionTyExt,
     QuantifiedWhereClause, Scalar, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty,
     TyExt, WhereClause,
@@ -928,8 +917,9 @@ impl HirDisplay for Ty {
                         substitution: parameters,
                     }))
                     | TyKind::OpaqueType(opaque_ty_id, parameters) => {
-                        let impl_trait_id = db.lookup_intern_impl_trait_id((*opaque_ty_id).into());
-                        if let ImplTraitId::ReturnTypeImplTrait(func, idx) = impl_trait_id {
+                        let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(*opaque_ty_id));
+                        if let OpaqueTyLoc::ReturnTypeImplTrait(func, idx) = impl_trait_id {
+                            let idx = Idx::from_raw(idx);
                             let datas = db
                                 .return_type_impl_traits(func)
                                 .expect("impl trait id without data");
@@ -1155,9 +1145,10 @@ impl HirDisplay for Ty {
                         DisplaySourceCodeError::OpaqueType,
                     ));
                 }
-                let impl_trait_id = db.lookup_intern_impl_trait_id((*opaque_ty_id).into());
+                let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(*opaque_ty_id));
                 match impl_trait_id {
-                    ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let idx = Idx::from_raw(idx);
                         let datas =
                             db.return_type_impl_traits(func).expect("impl trait id without data");
                         let data =
@@ -1173,7 +1164,8 @@ impl HirDisplay for Ty {
                         )?;
                         // FIXME: it would maybe be good to distinguish this from the alias type (when debug printing), and to show the substitution
                     }
-                    ImplTraitId::TypeAliasImplTrait(alias, idx) => {
+                    OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
+                        let idx = Idx::from_raw(idx);
                         let datas =
                             db.type_alias_impl_traits(alias).expect("impl trait id without data");
                         let data = (*datas).as_ref().map(|it| it.impl_traits[idx].bounds.clone());
@@ -1187,7 +1179,7 @@ impl HirDisplay for Ty {
                             SizedByDefault::Sized { anchor: krate },
                         )?;
                     }
-                    ImplTraitId::AsyncBlockTypeImplTrait(body, ..) => {
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(body, ..) => {
                         let future_trait = db
                             .lang_item(body.module(db.upcast()).krate(), LangItem::Future)
                             .and_then(LangItemTarget::as_trait);
@@ -1345,9 +1337,10 @@ impl HirDisplay for Ty {
                         DisplaySourceCodeError::OpaqueType,
                     ));
                 }
-                let impl_trait_id = db.lookup_intern_impl_trait_id(opaque_ty.opaque_ty_id.into());
+                let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(opaque_ty.opaque_ty_id));
                 match impl_trait_id {
-                    ImplTraitId::ReturnTypeImplTrait(func, idx) => {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let idx = Idx::from_raw(idx);
                         let datas =
                             db.return_type_impl_traits(func).expect("impl trait id without data");
                         let data =
@@ -1362,7 +1355,8 @@ impl HirDisplay for Ty {
                             SizedByDefault::Sized { anchor: krate },
                         )?;
                     }
-                    ImplTraitId::TypeAliasImplTrait(alias, idx) => {
+                    OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
+                        let idx = Idx::from_raw(idx);
                         let datas =
                             db.type_alias_impl_traits(alias).expect("impl trait id without data");
                         let data =
@@ -1377,7 +1371,7 @@ impl HirDisplay for Ty {
                             SizedByDefault::Sized { anchor: krate },
                         )?;
                     }
-                    ImplTraitId::AsyncBlockTypeImplTrait(..) => {
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => {
                         write!(f, "{{async block}}")?;
                     }
                 };

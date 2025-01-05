@@ -25,7 +25,7 @@ use crate::{
     lower::{GenericDefaults, GenericPredicates},
     method_resolution::{InherentImpls, TraitImpls, TyFingerprint},
     mir::{BorrowckResult, MirBody, MirLowerError},
-    Binders, ClosureId, Const, FnDefId, ImplTraitId, ImplTraits, InferenceResult, Interner,
+    Binders, ClosureId, Const, FnDefId, ImplTraits, InferenceResult, Interner,
     PolyFnSig, Substitution, TraitEnvironment, TraitRef, Ty, TyDefId, ValueTyDefId,
 };
 use hir_expand::name::Name;
@@ -205,8 +205,6 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     #[ra_salsa::interned]
     fn intern_lifetime_param_id(&self, param_id: LifetimeParamId) -> InternedLifetimeParamId;
     #[ra_salsa::interned]
-    fn intern_impl_trait_id(&self, id: ImplTraitId) -> InternedOpaqueTyId;
-    #[ra_salsa::interned]
     fn intern_closure(&self, id: InternedClosure) -> InternedClosureId;
     #[ra_salsa::interned]
     fn intern_coroutine(&self, id: InternedCoroutine) -> InternedCoroutineId;
@@ -295,10 +293,6 @@ impl_intern_key!(InternedLifetimeParamId);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InternedConstParamId(ra_salsa::InternId);
 impl_intern_key!(InternedConstParamId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InternedOpaqueTyId(ra_salsa::InternId);
-impl_intern_key!(InternedOpaqueTyId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InternedClosureId(ra_salsa::InternId);

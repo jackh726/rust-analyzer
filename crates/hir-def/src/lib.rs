@@ -84,7 +84,7 @@ use hir_expand::{
     MacroDefId, MacroDefKind,
 };
 use item_tree::ExternBlock;
-use la_arena::Idx;
+use la_arena::{Idx, RawIdx};
 use nameres::DefMap;
 use span::{AstIdNode, Edition, FileAstId, SyntaxContextId};
 use stdx::impl_from;
@@ -379,10 +379,24 @@ impl_intern!(ClosureId, ClosureLoc, intern_closure_def, lookup_intern_closure_de
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct ClosureLoc {
-    /// The parent of the anonymous const block.
+    /// The parent of the closure.
     pub parent: DefWithBodyId,
-    /// The root expression of this const block in the parent body.
+    /// The root expression of this closure in the parent body.
     pub root: hir::ExprId,
+}
+
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct OpaqueTyId(ra_salsa::InternId);
+impl_intern!(OpaqueTyId, OpaqueTyLoc, intern_opaque_ty, lookup_intern_opaque_ty);
+
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub enum OpaqueTyLoc {
+    // FIXME: we shouldn't be using a `RawIdx` here
+    ReturnTypeImplTrait(FunctionId, RawIdx),
+    TypeAliasImplTrait(TypeAliasId, RawIdx),
+    AsyncBlockTypeImplTrait(DefWithBodyId, hir::ExprId),
 }
 
 /// A `ModuleId` that is always a crate's root module.
@@ -753,6 +767,7 @@ impl From<GenericDefId> for TypeOwnerId {
             GenericDefId::ImplId(it) => it.into(),
             GenericDefId::ConstId(it) => it.into(),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::OpaqueTyId(it) => todo!(),
         }
     }
 }
@@ -940,6 +955,7 @@ pub enum GenericDefId {
     // consts can have type parameters from their parents (i.e. associated consts of traits)
     ConstId(ConstId),
     ClosureId(ClosureId),
+    OpaqueTyId(OpaqueTyId),
 }
 impl_from!(
     FunctionId,
@@ -949,7 +965,8 @@ impl_from!(
     TypeAliasId,
     ImplId,
     ConstId,
-    ClosureId
+    ClosureId,
+    OpaqueTyId
     for GenericDefId
 );
 
@@ -981,6 +998,7 @@ impl GenericDefId {
             GenericDefId::ImplId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ConstId(it) => (it.lookup(db).id.file_id(), None),
             GenericDefId::ClosureId(it) => (todo!(), None),
+            GenericDefId::OpaqueTyId(it) => (todo!(), None),
         }
     }
 
@@ -1363,6 +1381,7 @@ impl HasModule for GenericDefId {
             GenericDefId::ImplId(it) => it.module(db),
             GenericDefId::ConstId(it) => it.module(db),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::OpaqueTyId(it) => todo!(),
         }
     }
 }

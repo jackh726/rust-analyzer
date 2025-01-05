@@ -9,22 +9,13 @@ use chalk_ir::{
 };
 use chalk_solve::rust_ir::InlineBound;
 use hir_def::{
-    lang_item::LangItem, AssocItemId, ConstId, FunctionId, GenericDefId, HasModule, TraitId,
-    TypeAliasId,
+    lang_item::LangItem, AssocItemId, ConstId, FunctionId, GenericDefId, HasModule, OpaqueTyLoc, TraitId, TypeAliasId
 };
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 
 use crate::{
-    all_super_traits,
-    db::HirDatabase,
-    from_assoc_type_id, from_chalk_trait_id,
-    generics::{generics, trait_self_param_idx},
-    lower::callable_item_sig,
-    to_assoc_type_id, to_chalk_trait_id,
-    utils::elaborate_clause_supertraits,
-    AliasEq, AliasTy, Binders, BoundVar, CallableSig, DomainGoal, GoalData, ImplTraitId, Interner,
-    OpaqueTyId, ProjectionTyExt, Solution, Substitution, TraitRef, Ty, TyKind, WhereClause,
+    all_super_traits, db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, generics::{generics, trait_self_param_idx}, lower::callable_item_sig, mapping::from_opaque_ty_id, to_assoc_type_id, to_chalk_trait_id, utils::elaborate_clause_supertraits, AliasEq, AliasTy, Binders, BoundVar, CallableSig, DomainGoal, GoalData, Interner, OpaqueTyId, ProjectionTyExt, Solution, Substitution, TraitRef, Ty, TyKind, WhereClause
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -605,8 +596,8 @@ fn contains_illegal_impl_trait_in_trait(
     // Since we haven't implemented RPITIT in proper way like rustc yet,
     // just check whether `ret` contains RPIT for now
     for opaque_ty in visitor.0 {
-        let impl_trait_id = db.lookup_intern_impl_trait_id(opaque_ty.into());
-        if matches!(impl_trait_id, ImplTraitId::ReturnTypeImplTrait(..)) {
+        let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(opaque_ty));
+        if matches!(impl_trait_id, OpaqueTyLoc::ReturnTypeImplTrait(..)) {
             return Some(MethodViolationCode::ReferencesImplTraitInTrait);
         }
     }

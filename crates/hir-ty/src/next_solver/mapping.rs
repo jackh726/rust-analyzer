@@ -7,7 +7,7 @@ use rustc_type_ir::{
 };
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, next_solver::{
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, mapping::from_opaque_ty_id, next_solver::{
         interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
         Binder, ClauseKind, TraitPredicate,
     }, Interner
@@ -180,11 +180,10 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
                 ty.to_nextsolver(ir),
                 mutability.to_nextsolver(ir),
             ),
-            chalk_ir::TyKind::OpaqueType(_, _) => {
-                //let impl_trait_id = db.lookup_intern_impl_trait_id(id);
-                //let alias_ty = rustc_type_ir::AliasTy::new(DbInterner, def_id.into(), substitution.to_nextsolver(ir));
-                //rustc_type_ir::TyKind::Alias(rustc_type_ir::AliasTyKind::Opaque, alias_ty)
-                todo!("Needs GenericDefId::ImplTraitId")
+            chalk_ir::TyKind::OpaqueType(def_id, substitution) => {
+                let args: GenericArgs = substitution.to_nextsolver(ir);
+                let alias_ty = rustc_type_ir::AliasTy::new(ir, from_opaque_ty_id(*def_id).into(), args);
+                rustc_type_ir::TyKind::Alias(rustc_type_ir::AliasTyKind::Opaque, alias_ty)
             }
             chalk_ir::TyKind::FnDef(fn_def_id, substitution) => {
                 let id: FunctionId = ra_salsa::InternKey::from_intern_id(fn_def_id.0);
