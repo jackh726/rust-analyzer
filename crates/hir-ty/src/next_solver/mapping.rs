@@ -415,7 +415,7 @@ impl ChalkToNextSolver<GenericArg> for chalk_ir::GenericArg<Interner> {
         match self.data(Interner) {
             chalk_ir::GenericArgData::Ty(ty) => ty.to_nextsolver(ir).into(),
             chalk_ir::GenericArgData::Lifetime(lifetime) => lifetime.to_nextsolver(ir).into(),
-            chalk_ir::GenericArgData::Const(_) => todo!(),
+            chalk_ir::GenericArgData::Const(const_) => const_.to_nextsolver(ir).into(),
         }
     }
 }
