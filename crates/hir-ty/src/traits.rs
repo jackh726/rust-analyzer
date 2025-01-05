@@ -14,8 +14,8 @@ use hir_def::{
 };
 use hir_expand::name::Name;
 use intern::sym;
-use rustc_next_trait_solver::solve::SolverDelegateEvalExt;
-use rustc_type_ir::{inherent::Span, InferCtxtLike, TypingMode};
+use rustc_next_trait_solver::solve::{HasChanged, SolverDelegateEvalExt};
+use rustc_type_ir::{inherent::Span, solve::Certainty, InferCtxtLike, TypingMode};
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
@@ -214,10 +214,15 @@ fn solve_nextsolver(
     krate: CrateId,
     block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
-) -> Result<(rustc_next_trait_solver::solve::HasChanged, rustc_type_ir::solve::Certainty), rustc_type_ir::solve::NoSolution> {
+) -> Result<(HasChanged, Certainty), rustc_type_ir::solve::NoSolution> {
     crate::next_solver::tls::with_db(db, || {
         // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
         let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
+
+        match goal.canonical.value.goal.data(Interner) {
+            GoalData::All(goals) if goals.is_empty(Interner) => return Ok((HasChanged::No, Certainty::Yes)),
+            _ => {}
+        }
 
         let goal = goal.canonical.to_nextsolver(context.cx());
         dbg!(&goal);
