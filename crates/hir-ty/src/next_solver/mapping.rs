@@ -3,20 +3,18 @@ use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
 use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ProjectionPredicate, RustIr, UniverseIndex
+    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
-    db::HirDatabase,
-    next_solver::{
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, next_solver::{
         interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
         Binder, ClauseKind, TraitPredicate,
-    },
-    Interner,
+    }, Interner
 };
 
 use super::{
-    BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, Placeholder, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
+    BoundExistentialPredicate, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, DbIr, EarlyParamRegion, ErrorGuaranteed, ExistentialPredicate, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy, Placeholder, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind, Region, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf
 };
 
 pub fn to_placeholder_idx<T: Clone + std::fmt::Debug>(db: &dyn HirDatabase, id: TypeOrConstParamId, map: impl Fn(BoundVar) -> T) -> Placeholder<T> {
@@ -221,7 +219,7 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
                 ))
             }
             chalk_ir::TyKind::Dyn(dyn_ty) => {
-                let bounds = dyn_ty.bounds.to_nextsolver(ir);
+                let bounds = dyn_ty.bounds.to_nextsolver(ir).skip_binder();
                 let region = dyn_ty.lifetime.to_nextsolver(ir);
                 let kind = rustc_type_ir::DynKind::Dyn;
                 rustc_type_ir::TyKind::Dynamic(bounds, region, kind)
@@ -336,11 +334,44 @@ impl ChalkToNextSolver<Const> for chalk_ir::Const<Interner> {
     }
 }
 
-impl ChalkToNextSolver<BoundExistentialPredicates>
-    for chalk_ir::Binders<chalk_ir::QuantifiedWhereClauses<Interner>>
-{
+impl ChalkToNextSolver<BoundExistentialPredicates> for chalk_ir::QuantifiedWhereClauses<Interner> {
     fn to_nextsolver(&self, ir: DbIr<'_>) -> BoundExistentialPredicates {
-        todo!()
+        BoundExistentialPredicates::new_from_iter(self.iter(Interner).filter_map(|pred| {
+            pred.to_nextsolver(ir).transpose()
+        }))
+    }
+}
+
+impl ChalkToNextSolver<Option<ExistentialPredicate>> for chalk_ir::WhereClause<Interner> {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> Option<ExistentialPredicate> {
+        match self {
+            chalk_ir::WhereClause::Implemented(trait_ref) => {
+                let trait_id = from_chalk_trait_id(trait_ref.trait_id);
+                if ir.db.trait_data(trait_id).is_auto {
+                    Some(ExistentialPredicate::AutoTrait(GenericDefId::TraitId(trait_id)))
+                } else {
+                    let def_id = GenericDefId::TraitId(trait_id);
+                    let args = GenericArgs::new_from_iter(trait_ref.substitution.iter(Interner).skip(1).map(|a| a.to_nextsolver(ir)));
+                    let trait_ref = ExistentialTraitRef::new_from_args(ir, def_id, args);
+                    Some(ExistentialPredicate::Trait(trait_ref))
+                }
+            }
+            chalk_ir::WhereClause::AliasEq(alias_eq) => {
+                let (def_id, args) = match &alias_eq.alias {
+                    chalk_ir::AliasTy::Projection(projection) => {
+                        let id = from_assoc_type_id(projection.associated_ty_id);
+                        let args = GenericArgs::new_from_iter(projection.substitution.iter(Interner).skip(1).map(|a| a.to_nextsolver(ir)));
+                        (GenericDefId::TypeAliasId(id), args)
+                    }
+                    chalk_ir::AliasTy::Opaque(_) => todo!(),
+                };
+                let term = alias_eq.ty.to_nextsolver(ir).into();
+                let projection = ExistentialProjection::new_from_args(ir, def_id, args, term);
+                Some(ExistentialPredicate::Projection((projection)))
+            }
+            chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => None,
+            chalk_ir::WhereClause::TypeOutlives(type_outlives) => None,
+        }
     }
 }
 
