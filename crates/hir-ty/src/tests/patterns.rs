@@ -704,7 +704,7 @@ fn main() {
 fn match_ergonomics_in_closure_params() {
     check_infer(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 fn foo<T, U, F: FnOnce(T) -> U>(t: T, f: F) -> U { loop {} }
 
 fn test() {

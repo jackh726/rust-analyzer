@@ -448,7 +448,7 @@ fn main() {
 fn closure_layout_in_rpit() {
     check_pass(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 
 fn f<F: Fn()>(x: F) {
     fn g(x: impl Fn()) -> impl FnOnce() {

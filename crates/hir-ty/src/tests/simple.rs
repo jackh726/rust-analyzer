@@ -2171,7 +2171,7 @@ async fn bar() -> Result<(), ()> {
 fn async_block_early_return() {
     check_infer(
         r#"
-//- minicore: future, result, fn
+//- minicore: future, result, fn, sized
 fn test<I, E, F: FnMut() -> Fut, Fut: core::future::Future<Output = Result<I, E>>>(f: F) {}
 
 fn main() {
@@ -2897,7 +2897,7 @@ fn f() {
 fn closure_kind_with_predicates() {
     check_types(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 #![feature(unboxed_closures)]
 
 struct X<T: FnOnce()>(T);

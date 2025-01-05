@@ -838,7 +838,7 @@ fn issue_4966() {
 fn issue_6628() {
     check_infer(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 struct S<T>();
 impl<T> S<T> {
     fn f(&self, _t: T) {}

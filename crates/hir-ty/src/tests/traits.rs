@@ -1915,7 +1915,7 @@ fn test<F: FnOnce(u32, u64) -> u128>(f: F) {
 fn fn_ptr_and_item() {
     check_infer_with_mismatches(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 
 trait Foo<T> {
     fn foo(&self) -> T;
@@ -2026,7 +2026,7 @@ fn test() {
 fn closure_1() {
     check_infer_with_mismatches(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 enum Option<T> { Some(T), None }
 impl<T> Option<T> {
     fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Option<U> { loop {} }
@@ -2106,7 +2106,7 @@ fn test<F: FnOnce(u32) -> u64>(f: F) {
 fn closure_as_argument_inference_order() {
     check_infer_with_mismatches(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 fn foo1<T, U, F: FnOnce(T) -> U>(x: T, f: F) -> U { loop {} }
 fn foo2<T, U, F: FnOnce(T) -> U>(f: F, x: T) -> U { loop {} }
 
@@ -2628,7 +2628,7 @@ fn test() -> impl Trait<i32> {
 fn assoc_types_from_bounds() {
     check_infer(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 trait T {
     type O;
 }
