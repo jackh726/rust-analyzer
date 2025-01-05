@@ -1272,6 +1272,17 @@ impl HasModule for TypeAliasId {
 }
 // endregion: manual-assoc-has-module-impls
 
+impl HasModule for OpaqueTyId {
+    #[inline]
+    fn module(&self, db: &dyn DefDatabase) -> ModuleId {
+        match self.lookup(db) {
+            OpaqueTyLoc::ReturnTypeImplTrait(function_id, _) => function_id.module(db),
+            OpaqueTyLoc::TypeAliasImplTrait(type_alias_id, _) => type_alias_id.module(db),
+            OpaqueTyLoc::AsyncBlockTypeImplTrait(def_with_body_id, _) => def_with_body_id.module(db),
+        }
+    }
+}
+
 impl HasModule for EnumVariantId {
     #[inline]
     fn module(&self, db: &dyn DefDatabase) -> ModuleId {
@@ -1381,7 +1392,7 @@ impl HasModule for GenericDefId {
             GenericDefId::ImplId(it) => it.module(db),
             GenericDefId::ConstId(it) => it.module(db),
             GenericDefId::ClosureId(it) => todo!(),
-            GenericDefId::OpaqueTyId(it) => todo!(),
+            GenericDefId::OpaqueTyId(it) => it.module(db),
         }
     }
 }

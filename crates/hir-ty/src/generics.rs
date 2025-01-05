@@ -261,7 +261,11 @@ pub(crate) fn parent_generic_def(db: &dyn DefDatabase, def: GenericDefId) -> Opt
         GenericDefId::TypeAliasId(it) => it.lookup(db).container,
         GenericDefId::ConstId(it) => it.lookup(db).container,
         GenericDefId::ClosureId(it) => return it.lookup(db).parent.as_generic_def_id(db),
-        GenericDefId::OpaqueTyId(it) => todo!(),
+        GenericDefId::OpaqueTyId(it) => return match it.lookup(db) {
+            hir_def::OpaqueTyLoc::ReturnTypeImplTrait(function_id, _) => Some(function_id.into()),
+            hir_def::OpaqueTyLoc::TypeAliasImplTrait(_, _) => None,
+            hir_def::OpaqueTyLoc::AsyncBlockTypeImplTrait(def_with_body_id, _) => def_with_body_id.as_generic_def_id(db),
+        },
         GenericDefId::AdtId(_)
         | GenericDefId::TraitId(_)
         | GenericDefId::ImplId(_)
