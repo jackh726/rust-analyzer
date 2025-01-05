@@ -857,8 +857,11 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         alias: rustc_type_ir::AliasTerm<Self::Interner>,
     ) -> rustc_type_ir::AliasTermKind {
-        // FIXME
-        AliasTermKind::ProjectionTy
+        match alias.def_id {
+            GenericDefId::OpaqueTyId(_) => AliasTermKind::OpaqueTy,
+            GenericDefId::TypeAliasId(_) => AliasTermKind::ProjectionTy,
+            _ => todo!(),
+        }
     }
 
     fn trait_ref_and_own_args_for_alias(
