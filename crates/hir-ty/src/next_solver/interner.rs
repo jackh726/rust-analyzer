@@ -1498,15 +1498,18 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        // FIXME
-        false
+        matches!(trait_def_id, GenericDefId::TraitAliasId(_))
     }
 
     fn trait_is_dyn_compatible(
         self,
         trait_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        let trait_ = match trait_def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => unreachable!(),
+        };
+        crate::dyn_compatibility::dyn_compatibility(self.db, trait_).is_none()
     }
 
     fn trait_is_fundamental(
