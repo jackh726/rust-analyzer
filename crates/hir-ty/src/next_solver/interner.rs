@@ -4,7 +4,7 @@ use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::data::adt::StructFlags;
 use hir_def::lang_item::LangItem;
-use hir_def::ItemContainerId;
+use hir_def::{CallableDefId, ItemContainerId};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use hir_def::Lookup;
 use intern::{impl_internable, Interned};
@@ -29,7 +29,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::TyLoweringContext;
+use crate::lower_nextsolver::{callable_item_sig, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -972,7 +972,17 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         rustc_type_ir::Binder<Self::Interner, rustc_type_ir::FnSig<Self::Interner>>,
     > {
-        todo!()
+        let id = match def_id {
+            GenericDefId::FunctionId(id) => CallableDefId::FunctionId(id),
+            GenericDefId::AdtId(id) => {
+                match id {
+                    AdtId::StructId(id) => CallableDefId::StructId(id),
+                    _ => todo!(),
+                }
+            }
+            _ => unreachable!()
+        };
+        callable_item_sig(self.db, id)
     }
 
     fn coroutine_movability(
@@ -1017,7 +1027,7 @@ impl<'cx> RustIr for DbIr<'cx> {
                 let resolver = hir_def::resolver::HasResolver::resolver(type_alias, db.upcast());
                 let mut ctx =
                     TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into())
-                        .with_type_param_mode(crate::lower::ParamLoweringMode::Variable);
+                        .with_type_param_mode(crate::lower_nextsolver::ParamLoweringMode::Variable);
             
                 let trait_args = GenericArgs::for_item(self, trait_.into(), |param, _| Ty::new_param(param.index(), param.name.clone()).into());
                 let item_args = GenericArgs::for_item(self, def_id, |param, _| Ty::new_param(param.index(), param.name.clone()).into());

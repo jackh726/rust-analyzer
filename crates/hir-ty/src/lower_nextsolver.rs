@@ -21,7 +21,7 @@ use hir_def::{
     }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    }, AssocItemId, GenericDefId, GenericParamId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId
+    }, AdtId, AssocItemId, CallableDefId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId
 };
 use hir_expand::{name::Name, ExpandResult};
 use la_arena::Arena;
@@ -35,7 +35,7 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, ErrorGuaranteed, GenericArgs, Placeholder, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ImplTrait, ParamKind, ParamLoweringMode, TyDefId, ValueTyDefId
+    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, ErrorGuaranteed, GenericArgs, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ImplTrait, ParamKind, TyDefId, ValueTyDefId
 };
 
 #[derive(Debug, Default)]
@@ -91,6 +91,12 @@ pub struct TyLoweringContext<'a> {
     expander: Option<Expander>,
     /// Tracks types with explicit `?Sized` bounds.
     pub(crate) unsized_types: FxHashSet<Ty>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ParamLoweringMode {
+    Placeholder,
+    Variable,
 }
 
 impl<'a> TyLoweringContext<'a> {
@@ -1880,4 +1886,92 @@ pub(crate) fn lower_generic_arg<'a, T>(
         (GenericArg::Type(_), ParamKind::Lifetime) => Region::error().into(),
         (GenericArg::Const(_), ParamKind::Lifetime) => Region::error().into(),
     }
+}
+
+/// Build the signature of a callable item (function, struct or enum variant).
+pub(crate) fn callable_item_sig(db: &dyn HirDatabase, def: CallableDefId) -> EarlyBinder<PolyFnSig> {
+    match def {
+        CallableDefId::FunctionId(f) => fn_sig_for_fn(db, f),
+        CallableDefId::StructId(s) => fn_sig_for_struct_constructor(db, s),
+        CallableDefId::EnumVariantId(e) => fn_sig_for_enum_variant_constructor(db, e),
+    }
+}
+
+fn fn_sig_for_fn(db: &dyn HirDatabase, def: FunctionId) -> EarlyBinder<PolyFnSig> {
+    let data = db.function_data(def);
+    let resolver = def.resolver(db.upcast());
+    let mut ctx_params = TyLoweringContext::new(db, &resolver, &data.types_map, def.into())
+        .with_impl_trait_mode(ImplTraitLoweringMode::Variable)
+        .with_type_param_mode(ParamLoweringMode::Variable);
+    let params = data.params.iter().map(|&tr| ctx_params.lower_ty(tr));
+    let mut ctx_ret = TyLoweringContext::new(db, &resolver, &data.types_map, def.into())
+        .with_impl_trait_mode(ImplTraitLoweringMode::Opaque)
+        .with_type_param_mode(ParamLoweringMode::Variable);
+    let ret = ctx_ret.lower_ty(data.ret_type);
+    let generics = generics(db.upcast(), def.into());
+
+    let inputs_and_output = Tys::new_from_iter(params.chain(Some(ret)));
+    EarlyBinder::bind(make_binders(&generics, FnSig {
+        abi: data.abi.as_ref().map_or(FnAbi::Rust, FnAbi::from_symbol),
+        c_variadic: data.is_varargs(),
+        safety: if data.is_unsafe() { Safety::Unsafe } else { Safety::Safe },
+        inputs_and_output,
+    }))
+}
+
+fn type_for_adt(db: &dyn HirDatabase, adt: AdtId) -> EarlyBinder<Ty> {
+    let generics = generics(db.upcast(), adt.into());
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    let args = generics.bound_vars_subst(db, chalk_ir::DebruijnIndex::INNERMOST).to_nextsolver(fake_ir);
+    let ty = Ty::new_adt(DbInterner, AdtDef::new(adt.into(), db), args);
+    convert_binder_to_early_binder(make_binders(&generics, ty))
+}
+
+
+fn fn_sig_for_struct_constructor(db: &dyn HirDatabase, def: StructId) -> EarlyBinder<PolyFnSig> {
+    let struct_data = db.struct_data(def);
+    let fields = struct_data.variant_data.fields();
+    let resolver = def.resolver(db.upcast());
+    let mut ctx = TyLoweringContext::new(
+        db,
+        &resolver,
+        struct_data.variant_data.types_map(),
+        AdtId::from(def).into(),
+    )
+    .with_type_param_mode(ParamLoweringMode::Variable);
+    let generics = generics(db.upcast(), def.into());
+    let params = fields.iter().map(|(_, field)| convert_binder_to_early_binder(make_binders(&generics, ctx.lower_ty(field.type_ref))).skip_binder());
+    let ret = type_for_adt(db, def.into()).skip_binder();
+
+    let inputs_and_output = Tys::new_from_iter(params.chain(Some(ret)));
+    EarlyBinder::bind(Binder::dummy(FnSig {
+        abi: FnAbi::RustCall,
+        c_variadic: false,
+        safety: Safety::Safe,
+        inputs_and_output,
+    }))
+}
+
+fn fn_sig_for_enum_variant_constructor(db: &dyn HirDatabase, def: EnumVariantId) -> EarlyBinder<PolyFnSig> {
+    let var_data = db.enum_variant_data(def);
+    let fields = var_data.variant_data.fields();
+    let resolver = def.resolver(db.upcast());
+    let mut ctx = TyLoweringContext::new(
+        db,
+        &resolver,
+        var_data.variant_data.types_map(),
+        DefWithBodyId::VariantId(def).into(),
+    )
+    .with_type_param_mode(ParamLoweringMode::Variable);
+    let generics = generics(db.upcast(), def.lookup(db.upcast()).parent.into());
+    let params = fields.iter().map(|(_, field)| convert_binder_to_early_binder(make_binders(&generics, ctx.lower_ty(field.type_ref))).skip_binder());
+    let ret = type_for_adt(db, def.lookup(db.upcast()).parent.into()).skip_binder();
+
+    let inputs_and_output = Tys::new_from_iter(params.chain(Some(ret)));
+    EarlyBinder::bind(Binder::dummy(FnSig {
+        abi: FnAbi::RustCall,
+        c_variadic: false,
+        safety: Safety::Safe,
+        inputs_and_output,
+    }))
 }

@@ -31,6 +31,7 @@ pub use ty::*;
 
 
 pub type Binder<T> = rustc_type_ir::Binder<DbInterner, T>;
+pub type EarlyBinder<T> = rustc_type_ir::EarlyBinder<DbInterner, T>;
 pub type Canonical<T> = rustc_type_ir::Canonical<DbInterner, T>;
 pub type CanonicalVarValues = rustc_type_ir::CanonicalVarValues<DbInterner>;
 pub type CanonicalVarInfo = rustc_type_ir::CanonicalVarInfo<DbInterner>;
