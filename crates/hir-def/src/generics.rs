@@ -428,7 +428,16 @@ impl GenericParams {
             GenericDefId::TraitAliasId(id) => id_to_generics(db, id, enabled_params),
             GenericDefId::TypeAliasId(id) => id_to_generics(db, id, enabled_params),
             GenericDefId::ImplId(id) => id_to_generics(db, id, enabled_params),
-            GenericDefId::OpaqueTyId(id) => todo!(),
+            // FIXME: these *do* have params
+            GenericDefId::OpaqueTyId(id) => (
+                Arc::new(GenericParams {
+                    type_or_consts: Default::default(),
+                    lifetimes: Default::default(),
+                    where_predicates: Default::default(),
+                    types_map: Default::default(),
+                }),
+                None,
+            ),
             GenericDefId::ConstId(_) | GenericDefId::ClosureId(_) => (
                 Arc::new(GenericParams {
                     type_or_consts: Default::default(),

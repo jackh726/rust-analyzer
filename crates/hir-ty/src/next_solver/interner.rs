@@ -810,6 +810,10 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::AdtId(def_id) => {
                 HirDatabase::adt_variance(self.db, chalk_ir::AdtId(def_id)).to_nextsolver(self)
             }
+            GenericDefId::OpaqueTyId(def_id) => {
+                // FIXME: track variances
+                VariancesOf::new_from_iter([])
+            }
             _ => todo!(),
         }
     }
@@ -999,48 +1003,53 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
     > {
-        let type_alias = match def_id {
-            GenericDefId::TypeAliasId(id) => id,
+        match def_id {
+            GenericDefId::TypeAliasId(type_alias) => {
+                let trait_ = match type_alias.lookup(self.db.upcast()).container {
+                    ItemContainerId::TraitId(t) => t,
+                    _ => panic!("associated type not in trait"),
+                };
+            
+                let db = self.db;
+                // Lower bounds -- we could/should maybe move this to a separate query in `lower`
+                let type_alias_data = db.type_alias_data(type_alias);
+                let generic_params = generics(db.upcast(), type_alias.into());
+                let resolver = hir_def::resolver::HasResolver::resolver(type_alias, db.upcast());
+                let mut ctx =
+                    TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into())
+                        .with_type_param_mode(crate::lower::ParamLoweringMode::Variable);
+            
+                let trait_args = GenericArgs::for_item(self, trait_.into(), |param, _| Ty::new_param(param.index(), param.name.clone()).into());
+                let item_args = GenericArgs::for_item(self, def_id, |param, _| Ty::new_param(param.index(), param.name.clone()).into());
+                let self_ty = Ty::new_projection_from_args(self, def_id, item_args);
+            
+                let mut bounds = Vec::new();
+                for bound in &type_alias_data.bounds {
+                    ctx.lower_type_bound(bound, self_ty.clone(), false).for_each(|pred| {
+                        bounds.push(pred);
+                    });
+                }
+            
+                if !ctx.unsized_types.contains(&self_ty) {
+                    let sized_trait = ctx
+                        .db
+                        .lang_item(self.krate, LangItem::Sized);
+                    let sized_bound = sized_trait.map(|trait_id| {
+                        let trait_ref = TraitRef::new_from_args(self, trait_id.as_trait().unwrap().into(), GenericArgs::new_from_iter([self_ty.clone().into()]));
+                        Clause(Predicate::new(Binder::dummy(rustc_type_ir::PredicateKind::Clause(rustc_type_ir::ClauseKind::Trait(TraitPredicate { trait_ref, polarity: rustc_type_ir::PredicatePolarity::Positive })))))
+                    });
+                    bounds.extend(sized_bound);
+                    bounds.shrink_to_fit();
+                }
+        
+                rustc_type_ir::EarlyBinder::bind(bounds)
+            }
+            GenericDefId::OpaqueTyId(id) => {
+                // FIXME: get real bounds
+                rustc_type_ir::EarlyBinder::bind(vec![])
+            }
             _ => panic!("Unexpected GeneridDefId"),
-        };
-        let trait_ = match type_alias.lookup(self.db.upcast()).container {
-            ItemContainerId::TraitId(t) => t,
-            _ => panic!("associated type not in trait"),
-        };
-    
-        let db = self.db;
-        // Lower bounds -- we could/should maybe move this to a separate query in `lower`
-        let type_alias_data = db.type_alias_data(type_alias);
-        let generic_params = generics(db.upcast(), type_alias.into());
-        let resolver = hir_def::resolver::HasResolver::resolver(type_alias, db.upcast());
-        let mut ctx =
-            TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into())
-                .with_type_param_mode(crate::lower::ParamLoweringMode::Variable);
-    
-        let trait_args = GenericArgs::for_item(self, trait_.into(), |param, _| Ty::new_param(param.index(), param.name.clone()).into());
-        let item_args = GenericArgs::for_item(self, def_id, |param, _| Ty::new_param(param.index(), param.name.clone()).into());
-        let self_ty = Ty::new_projection_from_args(self, def_id, item_args);
-    
-        let mut bounds = Vec::new();
-        for bound in &type_alias_data.bounds {
-            ctx.lower_type_bound(bound, self_ty.clone(), false).for_each(|pred| {
-                bounds.push(pred);
-            });
         }
-    
-        if !ctx.unsized_types.contains(&self_ty) {
-            let sized_trait = ctx
-                .db
-                .lang_item(self.krate, LangItem::Sized);
-            let sized_bound = sized_trait.map(|trait_id| {
-                let trait_ref = TraitRef::new_from_args(self, trait_id.as_trait().unwrap().into(), GenericArgs::new_from_iter([self_ty.clone().into()]));
-                Clause(Predicate::new(Binder::dummy(rustc_type_ir::PredicateKind::Clause(rustc_type_ir::ClauseKind::Trait(TraitPredicate { trait_ref, polarity: rustc_type_ir::PredicatePolarity::Positive })))))
-            });
-            bounds.extend(sized_bound);
-            bounds.shrink_to_fit();
-        }
-
-        rustc_type_ir::EarlyBinder::bind(bounds)
     }
 
     #[tracing::instrument(level = "debug", skip(self), ret)]
