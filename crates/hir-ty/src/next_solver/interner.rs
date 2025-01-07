@@ -265,7 +265,7 @@ pub struct AdtFlags {
     is_anonymous: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdtDefData {
     pub id: AdtId,
     pub variants: Vec<(VariantIdx, VariantDef)>,
@@ -273,37 +273,9 @@ pub struct AdtDefData {
     pub repr: ReprOptions,
 }
 
-impl PartialEq for AdtDefData {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        // There should be only one `AdtDefData` for each `def_id`, therefore
-        // it is fine to implement `PartialEq` only based on `def_id`.
-        //
-        // Below, we exhaustively destructure `self` and `other` so that if the
-        // definition of `AdtDefData` changes, a compile-error will be produced,
-        // reminding us to revisit this assumption.
-
-        let Self { id: self_def_id, variants: _, flags: _, repr: _ } = self;
-        let Self { id: other_def_id, variants: _, flags: _, repr: _ } = other;
-
-        let res = self_def_id == other_def_id;
-
-        // Double check that implicit assumption detailed above.
-        if cfg!(debug_assertions) && res {
-            let deep = self.flags == other.flags
-                && self.repr == other.repr
-                && self.variants == other.variants;
-            assert!(deep, "AdtDefData for the same def-id has differing data");
-        }
-
-        res
-    }
-}
-
-impl Eq for AdtDefData {}
-
-/// There should be only one AdtDef for each `did`, therefore
-/// it is fine to implement `Hash` only based on `did`.
+// We're gonna cheat a little bit and implement `Hash` on only the `DefId` and
+// accept there might be collisions for def ids from different crates (or across
+// different tests, oh my).
 impl std::hash::Hash for AdtDefData {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
