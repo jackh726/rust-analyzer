@@ -18,6 +18,7 @@ mod region;
 mod solver;
 mod ty;
 pub mod util;
+pub mod walk;
 
 pub use consts::*;
 pub use generic_arg::*;

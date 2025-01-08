@@ -2,12 +2,13 @@
 
 use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
-use hir_def::data::adt::StructFlags;
+use hir_def::data::adt::{FieldData, StructFlags};
 use hir_def::lang_item::LangItem;
-use hir_def::{CallableDefId, ItemContainerId};
+use hir_def::{CallableDefId, EnumVariantId, ItemContainerId, StructId, UnionId};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use hir_def::Lookup;
 use intern::{impl_internable, Interned};
+use la_arena::Idx;
 use rustc_abi::{ReprFlags, ReprOptions};
 use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, SliceLike};
 use rustc_type_ir::{AliasTermKind, EarlyBinder, InferTy, TraitPredicate, TraitRef};
@@ -224,8 +225,52 @@ interned_vec!(VariancesOf, Variance, nofold);
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantIdx(usize);
 
+// FIXME: could/should store actual data?
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct VariantDef;
+pub enum VariantDef {
+    Struct(StructId),
+    Union(UnionId),
+    Enum(EnumVariantId),
+}
+
+impl VariantDef {
+    pub fn id(&self) -> VariantId {
+        match self {
+            VariantDef::Struct(struct_id) => VariantId::StructId(*struct_id),
+            VariantDef::Union(union_id) => VariantId::UnionId(*union_id),
+            VariantDef::Enum(enum_variant_id) => VariantId::EnumVariantId(*enum_variant_id),
+        }
+    }
+
+    pub fn fields(&self, db: &dyn HirDatabase) -> Vec<(Idx<FieldData>, FieldData)> {
+        match self {
+            VariantDef::Struct(it) => {
+                db.struct_data(*it)
+                    .variant_data
+                    .fields()
+                    .iter()
+                    .map(|(id, data)| (id, data.clone()))
+                    .collect()
+            }
+            VariantDef::Union(it) => {
+                db.union_data(*it)
+                    .variant_data
+                    .fields()
+                    .iter()
+                    .map(|(id, data)| (id, data.clone()))
+                    .collect()
+            }
+            VariantDef::Enum(it) => {
+                db.enum_variant_data(*it)
+                    .variant_data
+                    .fields()
+                    .iter()
+                    .map(|(id, data)| (id, data.clone()))
+                    .collect()
+            }
+        }
+    }
+}
 
 /*
 /// Definition of a variant -- a struct's fields or an enum variant.
@@ -307,7 +352,7 @@ impl AdtDef {
                     is_anonymous: false,
                 };
 
-                let variants = vec![(VariantIdx(0), VariantDef)];
+                let variants = vec![(VariantIdx(0), VariantDef::Struct(struct_id))];
 
                 (flags, variants)
             }
@@ -329,7 +374,7 @@ impl AdtDef {
                     is_anonymous: false,
                 };
 
-                let variants = vec![(VariantIdx(0), VariantDef)];
+                let variants = vec![(VariantIdx(0), VariantDef::Union(union_id))];
 
                 (flags, variants)
             }
@@ -356,7 +401,7 @@ impl AdtDef {
                     .iter()
                     .enumerate()
                     .map(|(idx, v)| (VariantIdx(idx), v))
-                    .map(|(idx, v)| (idx, VariantDef))
+                    .map(|(idx, v)| (idx, VariantDef::Enum(v.0)))
                     .collect();
 
                 (flags, variants)
@@ -383,6 +428,13 @@ impl AdtDef {
     pub fn repr(self) -> ReprOptions {
         self.0.repr
     }
+
+    /// Asserts this is a struct or union and returns its unique variant.
+    pub fn non_enum_variant(self) -> VariantDef {
+        assert!(self.0.flags.is_struct || self.0.flags.is_union);
+        self.0.variants[0].1.clone()
+    }
+    
 }
 
 impl inherent::AdtDef<DbInterner> for AdtDef {
@@ -538,7 +590,7 @@ impl inherent::Features<DbInterner> for Features {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct UnsizingParams(BitSet<u32>);
+pub struct UnsizingParams(pub(crate) BitSet<u32>);
 
 impl std::ops::Deref for UnsizingParams {
     type Target = BitSet<u32>;
@@ -1574,7 +1626,55 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         adt_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> <Self::Interner as rustc_type_ir::Interner>::UnsizingParams {
-        todo!()
+        let id = match adt_def_id {
+            GenericDefId::AdtId(id) => id,
+            _ => unreachable!(),
+        };
+        let def = AdtDef::new(id, self.db);
+        let num_params = self.generics_of(adt_def_id).count();
+    
+        let maybe_unsizing_param_idx = |arg: GenericArg| match arg.kind() {
+            GenericArgKind::Type(ty) => match ty.kind() {
+                rustc_type_ir::TyKind::Param(p) => Some(p.index),
+                _ => None
+            }
+            GenericArgKind::Lifetime(_) => None,
+            GenericArgKind::Const(ct) => match ct.kind() {
+                rustc_type_ir::ConstKind::Param(p) => Some(p.index),
+                _ => None,
+            }
+        };
+    
+        // The last field of the structure has to exist and contain type/const parameters.
+        let variant = def.non_enum_variant();
+        let fields = variant.fields(self.db);
+        let Some((tail_field, prefix_fields)) = fields.split_last() else {
+            return UnsizingParams(BitSet::new_empty(num_params));
+        };
+    
+        let field_types = self.db.field_types(variant.id());
+        let ty_for_field = |idx| {
+            convert_binder_to_early_binder(field_types[idx].to_nextsolver(self))
+        };
+        let mut unsizing_params = BitSet::new_empty(num_params);
+        let ty = ty_for_field(tail_field.0);
+        for arg in ty.instantiate_identity().walk() {
+            if let Some(i) = maybe_unsizing_param_idx(arg) {
+                unsizing_params.insert(i);
+            }
+        }
+    
+        // Ensure none of the other fields mention the parameters used
+        // in unsizing.
+        for field in prefix_fields {
+            for arg in ty_for_field(field.0).instantiate_identity().walk() {
+                if let Some(i) = maybe_unsizing_param_idx(arg) {
+                    unsizing_params.remove(i);
+                }
+            }
+        }
+    
+        UnsizingParams(unsizing_params)
     }
 
     fn find_const_ty_from_env(

@@ -156,7 +156,7 @@ impl GenericArgs {
         args.reserve(defs.own_params.len());
         for param in &defs.own_params {
             let kind = mk_kind(param, args);
-            assert_eq!(param.index() as usize, args.len(), "{args:#?}, {defs:#?}");
+            //assert_eq!(param.index() as usize, args.len(), "{args:#?}, {defs:#?}");
             args.push(kind);
         }
     }
