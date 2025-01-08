@@ -16,6 +16,7 @@ use crate::lower_nextsolver::generic_predicates_for_param_query;
 
 use super::TraitRef;
 
+// FIXME: use rustc_type_ir's elaborate
 
 /// Returns an iterator over the whole super trait hierarchy (including the
 /// trait itself).

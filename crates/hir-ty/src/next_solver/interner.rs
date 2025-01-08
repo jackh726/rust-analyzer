@@ -1438,7 +1438,13 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::DefId> {
-        [todo!()]
+        let trait_ = match def_id {
+           GenericDefId::TraitId(id)  => id,
+           _ => unreachable!(),
+        };
+        let trait_data = self.db.trait_data(trait_);
+        let associated_ty_ids: Vec<_> = trait_data.associated_types().map(|id| id.into()).collect();
+        associated_ty_ids
     }
 
     fn for_each_relevant_impl(
@@ -1548,7 +1554,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::TraitId(id) => id,
             _ => unreachable!(),
         };
-        crate::dyn_compatibility::dyn_compatibility(self.db, trait_).is_none()
+        dbg!(crate::dyn_compatibility::dyn_compatibility(self.db, trait_)).is_none()
     }
 
     fn trait_is_fundamental(

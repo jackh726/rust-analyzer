@@ -2717,7 +2717,7 @@ impl<F: core::ops::Deref<Target = impl Bar>> Foo<F> {
 fn dyn_trait_through_chalk() {
     check_types(
         r#"
-//- minicore: deref
+//- minicore: deref, unsize, dispatch_from_dyn
 struct Box<T: ?Sized> {}
 impl<T: ?Sized> core::ops::Deref for Box<T> {
     type Target = T;
