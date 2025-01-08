@@ -834,9 +834,9 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::AdtId(def_id) => {
                 HirDatabase::adt_variance(self.db, chalk_ir::AdtId(def_id)).to_nextsolver(self)
             }
-            GenericDefId::OpaqueTyId(def_id) => {
+            GenericDefId::OpaqueTyId(_def_id) => {
                 // FIXME: track variances
-                VariancesOf::new_from_iter([])
+                VariancesOf::new_from_iter((0..self.generics_of(def_id).count()).map(|_| Variance::Invariant))
             }
             _ => todo!(),
         }
@@ -1156,14 +1156,6 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        match def_id {
-            GenericDefId::TraitId(trait_) => {
-                dbg!(self.db.trait_data(trait_).name.as_str());
-            }
-            _ => {
-                dbg!(def_id);
-            }
-        }
         generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
             dbg!(p);
             dbg!(def_id);
