@@ -10,7 +10,7 @@ use hir_def::Lookup;
 use intern::{impl_internable, Interned};
 use la_arena::Idx;
 use rustc_abi::{ReprFlags, ReprOptions};
-use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, SliceLike};
+use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, SliceLike, Span as _};
 use rustc_type_ir::{AliasTermKind, EarlyBinder, InferTy, TraitPredicate, TraitRef};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
@@ -30,7 +30,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{callable_item_sig, TyLoweringContext};
+use crate::lower_nextsolver::{self, callable_item_sig, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -1156,13 +1156,19 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
+        dbg!(def_id);
+        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+            dbg!(p);
+            dbg!(def_id);
+            true
+        }).iter().cloned().map(|p| (p, Span::dummy())).collect();
+        dbg!(&predicates);
         generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
             dbg!(p);
             dbg!(def_id);
             true
         });
-        // FIXME
-        rustc_type_ir::EarlyBinder::bind([])
+        rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
     fn const_conditions(

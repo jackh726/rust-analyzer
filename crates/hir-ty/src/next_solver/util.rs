@@ -436,5 +436,5 @@ pub fn apply_args_to_binder<T: TypeFoldable<DbInterner>>(b: Binder<T>, args: Gen
         regions,
         consts,
     });
-    instantiate.fold_binder(b).skip_binder()
+    dbg!(b.skip_binder().fold_with(&mut instantiate))
 }

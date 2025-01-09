@@ -3,7 +3,7 @@ use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
 use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
+    elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
@@ -590,6 +590,9 @@ impl ChalkToNextSolver<ParamEnv> for chalk_ir::Environment<Interner> {
         let clauses = Clauses::new_from_iter(self.clauses().iter(Interner).map(|c| {
             c.to_nextsolver(ir)
         }));
+        dbg!(&clauses);
+        let clauses = Clauses::new_from_iter(elaborate::elaborate(ir, clauses.iter()));
+        dbg!(&clauses);
         ParamEnv {
             reveal: rustc_type_ir::solve::Reveal::UserFacing,
             clauses,
