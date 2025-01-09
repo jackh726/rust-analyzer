@@ -3205,7 +3205,7 @@ fn foo() {
 fn infer_dyn_fn_output() {
     check_types(
         r#"
-//- minicore: fn
+//- minicore: fn, dispatch_from_dyn
 fn foo() {
     let f: &dyn Fn() -> i32;
     f();

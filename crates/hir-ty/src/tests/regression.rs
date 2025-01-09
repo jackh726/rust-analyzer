@@ -1495,7 +1495,7 @@ fn regression_11688_2() {
 fn regression_11688_3() {
     check_types(
         r#"
-        //- minicore: iterator
+        //- minicore: iterator, dispatch_from_dyn
         struct Ar<T, const N: u8>(T);
         fn f<const LEN: usize, T, const BASE: u8>(
             num_zeros: usize,
@@ -1514,6 +1514,7 @@ fn regression_11688_3() {
 fn regression_11688_4() {
     check_types(
         r#"
+        //- minicore: dispatch_from_dyn
         trait Bar<const C: usize> {
             fn baz(&self) -> [i32; C];
         }
