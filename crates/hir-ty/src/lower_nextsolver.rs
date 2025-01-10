@@ -224,7 +224,7 @@ impl<'a> TyLoweringContext<'a> {
     pub fn lower_ty_ext(&mut self, type_ref_id: TypeRefId) -> (Ty, Option<TypeNs>) {
         let mut res = None;
         let type_ref = &self.types_map[type_ref_id];
-        let ty = match dbg!(type_ref) {
+        let ty = match type_ref {
             TypeRef::Never => Ty::new(TyKind::Never),
             TypeRef::Tuple(inner) => {
                 let inner_tys = inner.iter().map(|&tr| self.lower_ty(tr));
@@ -778,7 +778,7 @@ impl<'a> TyLoweringContext<'a> {
             ),
             Some(i) => (path.segments().get(i - 1).unwrap(), path.segments().skip(i)),
         };
-        self.lower_partly_resolved_path(dbg!(resolution), dbg!(resolved_segment), remaining_segments, false)
+        self.lower_partly_resolved_path(resolution, resolved_segment, remaining_segments, false)
     }
 
     fn select_associated_type(&mut self, res: Option<TypeNs>, segment: PathSegment<'_>) -> Ty {
@@ -1161,7 +1161,7 @@ impl<'a> TyLoweringContext<'a> {
                         }
                     }
                 };
-                Either::Left(self.lower_type_bound(dbg!(bound), dbg!(self_ty), ignore_bindings))
+                Either::Left(self.lower_type_bound(bound, self_ty, ignore_bindings))
             }
             WherePredicate::Lifetime { bound, target } => Either::Right(iter::once(
                 Clause(Predicate::new(Binder::dummy(rustc_type_ir::PredicateKind::Clause(rustc_type_ir::ClauseKind::RegionOutlives(OutlivesPredicate(self.lower_lifetime(bound), self.lower_lifetime(target))))))

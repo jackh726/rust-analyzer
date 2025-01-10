@@ -1127,21 +1127,14 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        match def_id {
-            GenericDefId::TraitId(trait_) => {
-                dbg!(self.db.trait_data(trait_).name.as_str());
-            }
-            _ => {
-                dbg!(def_id);
-            }
-        }
-        generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+        dbg!(def_id);
+        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
             dbg!(p);
             dbg!(def_id);
             true
-        });
-        // FIXME
-        rustc_type_ir::EarlyBinder::bind([])
+        }).iter().cloned().map(|p| (p, Span::dummy())).collect();
+        dbg!(&predicates);
+        rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
     fn explicit_implied_predicates_of(
@@ -1163,11 +1156,6 @@ impl<'cx> RustIr for DbIr<'cx> {
             true
         }).iter().cloned().map(|p| (p, Span::dummy())).collect();
         dbg!(&predicates);
-        generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
-            dbg!(p);
-            dbg!(def_id);
-            true
-        });
         rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
