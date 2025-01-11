@@ -1228,7 +1228,7 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        false
     }
 
     fn require_lang_item(
