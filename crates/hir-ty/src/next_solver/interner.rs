@@ -1051,8 +1051,7 @@ impl<'cx> RustIr for DbIr<'cx> {
                 let generic_params = generics(db.upcast(), type_alias.into());
                 let resolver = hir_def::resolver::HasResolver::resolver(type_alias, db.upcast());
                 let mut ctx =
-                    TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into())
-                        .with_type_param_mode(crate::lower_nextsolver::ParamLoweringMode::Variable);
+                    TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into());
             
                 let trait_args = GenericArgs::for_item(self, trait_.into(), |param, _| Ty::new_param(param.index(), param.name.clone()).into());
                 let item_args = GenericArgs::for_item(self, def_id, |param, _| Ty::new_param(param.index(), param.name.clone()).into());
