@@ -1365,7 +1365,9 @@ impl<'a> TyLoweringContext<'a> {
 
     fn lower_dyn_trait(&mut self, bounds: &[TypeBound]) -> Ty {
         let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-        let self_ty = Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var: BoundVar::ZERO, kind: BoundTyKind::Anon });
+        // FIXME: we should never create non-existential predicates in the first place
+        // For now, use an error type so we don't run into dummy binder issues
+        let self_ty = Ty::new_error(DbInterner, ErrorGuaranteed);
         // INVARIANT: The principal trait bound, if present, must come first. Others may be in any
         // order but should be in the same order for the same set but possibly different order of
         // bounds in the input.
