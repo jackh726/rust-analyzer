@@ -1,5 +1,5 @@
 use base_db::ra_salsa::{self, InternKey};
-use chalk_ir::{interner::HasInterner, CanonicalVarKinds};
+use chalk_ir::{fold::Shift, interner::HasInterner, CanonicalVarKinds};
 use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
@@ -517,8 +517,24 @@ impl ChalkToNextSolver<Canonical<Goal<DbInterner, Predicate>>>
                 }
             },
         ));
-        match self.value.goal.data(Interner) {
-            chalk_ir::GoalData::Quantified(quantifier_kind, binders) => todo!(),
+        Canonical {
+            max_universe: UniverseIndex::ROOT,
+            value: Goal::new(ir.interner(), param_env, self.value.goal.to_nextsolver(ir)),
+            variables,
+        }
+    }
+}
+
+impl ChalkToNextSolver<Predicate> for chalk_ir::Goal<Interner> {
+    fn to_nextsolver(&self, ir: DbIr<'_>) -> Predicate {
+        match self.data(Interner) {
+            chalk_ir::GoalData::Quantified(quantifier_kind, binders) => {
+                if !binders.binders.is_empty(Interner) {
+                    todo!()
+                }
+                let (val, _) = binders.clone().into_value_and_skipped_binders();
+                val.shifted_out(Interner).unwrap().to_nextsolver(ir)
+            }
             chalk_ir::GoalData::Implies(program_clauses, goal) => todo!(),
             chalk_ir::GoalData::All(goals) => todo!(),
             chalk_ir::GoalData::Not(goal) => todo!(),
@@ -535,11 +551,7 @@ impl ChalkToNextSolver<Canonical<Goal<DbInterner, Predicate>>>
                             shift_vars(DbInterner, PredicateKind::Clause(ClauseKind::Trait(predicate)), 1),
                             BoundVarKinds::new_from_iter([]),
                         );
-                        Canonical {
-                            max_universe: UniverseIndex::ROOT,
-                            value: Goal::new(ir.interner(), param_env, Predicate::new(pred_kind)),
-                            variables,
-                        }
+                        Predicate::new(pred_kind)
                         
                     }
                     chalk_ir::WhereClause::AliasEq(alias_eq) => {
@@ -559,11 +571,7 @@ impl ChalkToNextSolver<Canonical<Goal<DbInterner, Predicate>>>
                             shift_vars(DbInterner, PredicateKind::Clause(ClauseKind::Projection(predicate)), 1),
                             BoundVarKinds::new_from_iter([]),
                         );
-                        Canonical {
-                            max_universe: UniverseIndex::ROOT,
-                            value: Goal::new(ir.interner(), param_env, Predicate::new(pred_kind)),
-                            variables,
-                        }
+                        Predicate::new(pred_kind)
                     }
                     chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
                     chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),

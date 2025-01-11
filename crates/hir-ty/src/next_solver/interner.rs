@@ -4,14 +4,14 @@ use base_db::{ra_salsa::InternKey, CrateId};
 use chalk_ir::{ProgramClauseImplication, SeparatorTraitRef};
 use hir_def::data::adt::{FieldData, StructFlags};
 use hir_def::lang_item::LangItem;
-use hir_def::{CallableDefId, EnumVariantId, ItemContainerId, StructId, UnionId};
+use hir_def::{CallableDefId, EnumVariantId, ItemContainerId, OpaqueTyLoc, StructId, UnionId};
 use hir_def::{hir::PatId, AdtId, BlockId, GenericDefId, TypeAliasId, VariantId};
 use hir_def::Lookup;
-use intern::{impl_internable, Interned};
+use intern::{impl_internable, sym, Interned};
 use la_arena::Idx;
 use rustc_abi::{ReprFlags, ReprOptions};
-use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, SliceLike, Span as _};
-use rustc_type_ir::{AliasTermKind, EarlyBinder, InferTy, TraitPredicate, TraitRef};
+use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, IrGenericArgs, SliceLike, Span as _};
+use rustc_type_ir::{AliasTerm, AliasTermKind, AliasTy, EarlyBinder, InferTy, ProjectionPredicate, TraitPredicate, TraitRef};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use std::ops::ControlFlow;
@@ -30,7 +30,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{self, callable_item_sig, TyLoweringContext};
+use crate::lower_nextsolver::{self, callable_item_sig, return_type_impl_traits, type_alias_impl_traits, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -38,6 +38,7 @@ use crate::{db::HirDatabase, interner::InternedWrapper, ConstScalar, FnAbi, Inte
 
 use super::generics::generics;
 use super::util::sized_constraint_for_ty;
+use super::ClauseKind;
 use super::{
     abi::Safety,
     fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
@@ -1079,8 +1080,60 @@ impl<'cx> RustIr for DbIr<'cx> {
                 rustc_type_ir::EarlyBinder::bind(bounds)
             }
             GenericDefId::OpaqueTyId(id) => {
-                // FIXME: get real bounds
-                rustc_type_ir::EarlyBinder::bind(vec![])
+                let full_id = self.db.lookup_intern_opaque_ty(id);
+                match full_id {
+                    OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                        let datas = return_type_impl_traits(self.db, func).expect("impl trait id without impl traits");
+                        let datas = (*datas).as_ref().skip_binder();
+                        let data = &datas.impl_traits[Idx::from_raw(idx)];
+                        EarlyBinder::bind(data.predicates.clone())
+                    }
+                    OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
+                        let datas = type_alias_impl_traits(self.db, alias).expect("impl trait id without impl traits");
+                        let datas = (*datas).as_ref().skip_binder();
+                        let data = &datas.impl_traits[Idx::from_raw(idx)];
+                        EarlyBinder::bind(data.predicates.clone())
+                    }
+                    OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => {
+                        if let Some((future_trait, future_output)) =
+                            self.db
+                                .lang_item(self.krate, LangItem::Future)
+                                .and_then(|item| item.as_trait())
+                                .and_then(|trait_| {
+                                    let alias = self.db.trait_data(trait_).associated_type_by_name(
+                                        &hir_expand::name::Name::new_symbol_root(sym::Output.clone()),
+                                    )?;
+                                    Some((trait_, alias))
+                                })
+                        {
+                            let args = GenericArgs::identity_for_item(self, def_id);
+                            let mut predicates = vec![];
+
+                            let item_ty = Ty::new_alias(DbInterner, rustc_type_ir::AliasTyKind::Opaque, AliasTy::new_from_args(self, def_id, args));
+
+                            let kind = PredicateKind::Clause(ClauseKind::Trait(TraitPredicate {
+                                polarity: rustc_type_ir::PredicatePolarity::Positive,
+                                trait_ref: TraitRef::new_from_args(self, future_trait.into(), GenericArgs::new_from_iter([item_ty.clone().into()])),
+                            }));
+                            predicates.push(Clause(Predicate::new(Binder::bind_with_vars(kind, BoundVarKinds::new_from_iter([BoundVarKind::Ty(BoundTyKind::Anon)])))));
+                            let sized_trait = self
+                                .db
+                                .lang_item(self.krate, LangItem::Sized)
+                                .and_then(|item| item.as_trait());
+                            if let Some(sized_trait_) = sized_trait {
+                                let kind = PredicateKind::Clause(ClauseKind::Trait(TraitPredicate {
+                                    polarity: rustc_type_ir::PredicatePolarity::Positive,
+                                    trait_ref: TraitRef::new_from_args(self, sized_trait_.into(), GenericArgs::new_from_iter([item_ty.clone().into()])),
+                                }));
+                                predicates.push(Clause(Predicate::new(Binder::bind_with_vars(kind, BoundVarKinds::new_from_iter([BoundVarKind::Ty(BoundTyKind::Anon)])))));
+                            }
+                            EarlyBinder::bind(predicates)
+                        } else {
+                            // If failed to find Symbol’s value as variable is void: Future::Output, return empty bounds as fallback.
+                            EarlyBinder::bind(vec![])
+                        }
+                    }
+                }
             }
             _ => panic!("Unexpected GeneridDefId"),
         }

@@ -51,7 +51,7 @@ use crate::{
 // against snapshots of the expected results using expect. Use
 // `env UPDATE_EXPECT=1 cargo test -p hir_ty` to update the snapshots.
 
-fn setup_tracing() -> Option<tracing::subscriber::DefaultGuard> {
+pub(crate) fn setup_tracing() -> Option<tracing::subscriber::DefaultGuard> {
     static ENABLE: LazyLock<bool> = LazyLock::new(|| env::var("CHALK_DEBUG").is_ok());
     if !*ENABLE {
         return None;

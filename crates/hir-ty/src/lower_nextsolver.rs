@@ -25,19 +25,31 @@ use hir_def::{
 };
 use hir_expand::{name::Name, ExpandResult};
 use intern::sym;
-use la_arena::Arena;
+use la_arena::{Arena, Idx};
 use rustc_ast_ir::Mutability;
 use rustc_hash::FxHashSet;
 use rustc_pattern_analysis::Captures;
-use rustc_type_ir::{fold::{shift_vars, TypeFoldable}, inherent::{Const as _, GenericArg as _, IntoKind as _, PlaceholderLike as _, Region as _, SliceLike, Ty as _}, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self}, UniverseIndex};
+use rustc_type_ir::{fold::{shift_vars, TypeFoldable}, inherent::{Const as _, GenericArg as _, IntoKind as _, IrGenericArgs, PlaceholderLike as _, Region as _, SliceLike, Ty as _}, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self}, UniverseIndex};
 use smallvec::SmallVec;
 use stdx::never;
 use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ImplTrait, ParamKind, TyDefId, ValueTyDefId
+    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyDefId, ValueTyDefId
 };
+
+#[derive(PartialEq, Eq, Debug, Hash)]
+pub struct ImplTraits {
+    pub(crate) impl_traits: Arena<ImplTrait>,
+}
+
+#[derive(PartialEq, Eq, Debug, Hash)]
+pub struct ImplTrait {
+    pub(crate) predicates: Vec<Clause>,
+}
+
+pub type ImplTraitIdx = Idx<ImplTrait>;
 
 #[derive(Debug, Default)]
 struct ImplTraitLoweringState {
@@ -285,8 +297,15 @@ impl<'a> TyLoweringContext<'a> {
                         // place even if we encounter more opaque types while
                         // lowering the bounds
                         let idx = self.impl_trait_mode.opaque_type_data.alloc(ImplTrait {
-                            bounds: crate::make_single_type_binders(Vec::default()),
+                            predicates: Vec::default(),
                         });
+
+                        let opaque_ty_loc = origin.either(
+                            |f| OpaqueTyLoc::ReturnTypeImplTrait(f, idx.into_raw()),
+                            |a| OpaqueTyLoc::TypeAliasImplTrait(a, idx.into_raw()),
+                        );
+                        let opaque_ty_id = self.db.intern_opaque_ty(opaque_ty_loc);
+
                         // We don't want to lower the bounds inside the binders
                         // we're currently in, because they don't end up inside
                         // those binders. E.g. when we have `impl Trait<impl
@@ -298,26 +317,13 @@ impl<'a> TyLoweringContext<'a> {
                         // away instead of two.
                         let actual_opaque_type_data = self
                             .with_debruijn(DebruijnIndex::ZERO, |ctx| {
-                                ctx.lower_impl_trait(bounds, self.resolver.krate())
+                                ctx.lower_impl_trait(opaque_ty_id.into(), bounds, self.resolver.krate())
                             });
-                        // FIXME: need to copy `ImplTrait` and `ImplTraits` for next solver
-                        //self.impl_trait_mode.opaque_type_data[idx] = actual_opaque_type_data;
+                        self.impl_trait_mode.opaque_type_data[idx] = actual_opaque_type_data;
 
-                        let opaque_ty_loc = origin.either(
-                            |f| OpaqueTyLoc::ReturnTypeImplTrait(f, idx.into_raw()),
-                            |a| OpaqueTyLoc::TypeAliasImplTrait(a, idx.into_raw()),
-                        );
-                        let opaque_ty_id = self.db.intern_opaque_ty(opaque_ty_loc);
-                        /*
                         let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-                        let args = GenericArgs::for_item(fake_ir, opaque_ty_id.into(), |param, _| match param.kind {
-                            crate::next_solver::generics::GenericParamDefKind::Type => Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var: BoundVar::from_u32(param.index()), kind: BoundTyKind::Anon }).into(),
-                            crate::next_solver::generics::GenericParamDefKind::Lifetime => Region::new_bound(DbInterner, DebruijnIndex::ZERO, BoundRegion { var: BoundVar::from_u32(param.index()), kind: BoundRegionKind::Anon }).into(),
-                            crate::next_solver::generics::GenericParamDefKind::Const => Const::new_bound(DbInterner, DebruijnIndex::ZERO, BoundVar::from_u32(param.index())).into(),
-                        });
+                        let args = GenericArgs::identity_for_item(fake_ir, opaque_ty_id.into());
                         Ty::new_alias(DbInterner, AliasTyKind::Opaque, AliasTy::new_from_args(fake_ir, opaque_ty_id.into(), args))
-                        */
-                        todo!()
                     }
                     ImplTraitLoweringMode::Param => {
                         let idx = self.impl_trait_mode.param_and_variable_counter;
@@ -1480,10 +1486,11 @@ impl<'a> TyLoweringContext<'a> {
         }
     }
 
-    fn lower_impl_trait(&mut self, bounds: &[TypeBound], krate: CrateId) -> Vec<Clause> {
+    fn lower_impl_trait(&mut self, def_id: GenericDefId, bounds: &[TypeBound], krate: CrateId) -> ImplTrait {
         let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
         cov_mark::hit!(lower_rpit);
-        let self_ty = Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var: BoundVar::ZERO, kind: BoundTyKind::Anon });
+        let args = GenericArgs::identity_for_item(fake_ir, def_id);
+        let self_ty = Ty::new_alias(DbInterner, rustc_type_ir::AliasTyKind::Opaque, AliasTy::new_from_args(fake_ir, def_id, args));
         let predicates = self.with_shifted_in(DebruijnIndex::from_u32(1), |ctx| {
             let mut predicates = Vec::new();
             for b in bounds {
@@ -1503,7 +1510,9 @@ impl<'a> TyLoweringContext<'a> {
             predicates.shrink_to_fit();
             predicates
         });
-        predicates
+        ImplTrait {
+            predicates,
+        }
     }
 
     pub fn lower_lifetime(&self, lifetime: &LifetimeRef) -> Region {
@@ -1742,6 +1751,46 @@ pub(crate) fn impl_trait_query(db: &dyn HirDatabase, impl_id: ImplId) -> Option<
     let target_trait = impl_data.target_trait.as_ref()?;
     let trait_ref = ctx.lower_trait_ref(target_trait, self_ty.clone().skip_binder())?;
     Some(Binder::bind_with_vars(trait_ref, self_ty.bound_vars()))
+}
+
+pub(crate) fn return_type_impl_traits(
+    db: &dyn HirDatabase,
+    def: hir_def::FunctionId,
+) -> Option<Arc<EarlyBinder<ImplTraits>>> {
+    // FIXME unify with fn_sig_for_fn instead of doing lowering twice, maybe
+    let data = db.function_data(def);
+    let resolver = def.resolver(db.upcast());
+    let mut ctx_ret = TyLoweringContext::new(db, &resolver, &data.types_map, def.into())
+        .with_impl_trait_mode(ImplTraitLoweringMode::Opaque)
+        .with_type_param_mode(ParamLoweringMode::Param);
+    let _ret = ctx_ret.lower_ty(data.ret_type);
+    let return_type_impl_traits =
+        ImplTraits { impl_traits: ctx_ret.impl_trait_mode.opaque_type_data };
+    if return_type_impl_traits.impl_traits.is_empty() {
+        None
+    } else {
+        Some(Arc::new(EarlyBinder::bind(return_type_impl_traits)))
+    }
+}
+
+pub(crate) fn type_alias_impl_traits(
+    db: &dyn HirDatabase,
+    def: hir_def::TypeAliasId,
+) -> Option<Arc<EarlyBinder<ImplTraits>>> {
+    let data = db.type_alias_data(def);
+    let resolver = def.resolver(db.upcast());
+    let mut ctx = TyLoweringContext::new(db, &resolver, &data.types_map, def.into())
+        .with_impl_trait_mode(ImplTraitLoweringMode::Opaque)
+        .with_type_param_mode(ParamLoweringMode::Param);
+    if let Some(type_ref) = data.type_ref {
+        let _ty = ctx.lower_ty(type_ref);
+    }
+    let type_alias_impl_traits = ImplTraits { impl_traits: ctx.impl_trait_mode.opaque_type_data };
+    if type_alias_impl_traits.impl_traits.is_empty() {
+        None
+    } else {
+        Some(Arc::new(EarlyBinder::bind(type_alias_impl_traits)))
+    }
 }
 
 pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Binder<Ty> {
