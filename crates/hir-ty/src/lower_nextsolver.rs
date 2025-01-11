@@ -108,7 +108,6 @@ pub struct TyLoweringContext<'a> {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ParamLoweringMode {
-    Placeholder,
     Variable,
     Param,
 }
@@ -131,7 +130,7 @@ impl<'a> TyLoweringContext<'a> {
         owner: Option<TypeOwnerId>,
     ) -> Self {
         let impl_trait_mode = ImplTraitLoweringState::new(ImplTraitLoweringMode::Disallowed);
-        let type_param_mode = ParamLoweringMode::Placeholder;
+        let type_param_mode = ParamLoweringMode::Param;
         let in_binders = DebruijnIndex::ZERO;
         Self {
             db,
@@ -574,11 +573,6 @@ impl<'a> TyLoweringContext<'a> {
                 return (Ty::new_error(DbInterner, ErrorGuaranteed), None);
             }
             TypeNs::GenericParam(param_id) => match self.type_param_mode {
-                ParamLoweringMode::Placeholder => {
-                    let interned_id = self.db.intern_type_or_const_param_id(param_id.into());
-                    let idx = base_db::ra_salsa::InternKey::as_intern_id(&interned_id).as_usize();
-                    Ty::new_placeholder(Placeholder::new(UniverseIndex::ROOT, BoundVar::from_usize(idx)))
-                }
                 ParamLoweringMode::Variable => {
                     let idx = match self
                         .generics()
@@ -617,25 +611,6 @@ impl<'a> TyLoweringContext<'a> {
                 let generics = self.generics().expect("impl should have generic param scope");
 
                 match self.type_param_mode {
-                    ParamLoweringMode::Placeholder => {
-                        // `def` can be either impl itself or item within, and we need impl itself
-                        // now.
-                        let generics = generics.parent_or_self();
-                        let subst = generics.placeholder_subst(self.db);
-
-                        // FIXME: use db query
-                        let self_ty = impl_self_ty_query(self.db, impl_id);
-                        let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-                        let types = &mut |ty: BoundTy| { subst.at(crate::Interner, ty.var.index()).assert_ty_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let regions = &mut |region: BoundRegion| { subst.at(crate::Interner, region.var.index()).assert_lifetime_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let consts = &mut |const_: BoundVar| { subst.at(crate::Interner, const_.index()).assert_const_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let mut instantiate = BoundVarReplacer::new(DbInterner, FnMutDelegate {
-                            types,
-                            regions,
-                            consts,
-                        });
-                        self_ty.fold_with(&mut instantiate).skip_binder()
-                    }
                     ParamLoweringMode::Variable => {
                         let starting_from = match generics.def() {
                             GenericDefId::ImplId(_) => 0,
@@ -725,11 +700,6 @@ impl<'a> TyLoweringContext<'a> {
             TypeNs::AdtSelfType(adt) => {
                 let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
                 let args = match self.type_param_mode {
-                    ParamLoweringMode::Placeholder => GenericArgs::for_item(fake_ir, adt.into(), |param, _| match param.kind {
-                        crate::next_solver::generics::GenericParamDefKind::Type => Ty::new_placeholder(Placeholder { universe: UniverseIndex::ROOT, bound: BoundTy { var: BoundVar::from_u32(param.index()), kind: BoundTyKind::Anon } }).into(),
-                        crate::next_solver::generics::GenericParamDefKind::Lifetime => Region::new_placeholder(Placeholder { universe: UniverseIndex::ROOT, bound: BoundRegion { var: BoundVar::from_u32(param.index()), kind: BoundRegionKind::Anon } }).into(),
-                        crate::next_solver::generics::GenericParamDefKind::Const => Const::new_placeholder(Placeholder { universe: UniverseIndex::ROOT, bound: BoundVar::from_u32(param.index()) }).into(),
-                    }),
                     ParamLoweringMode::Variable => GenericArgs::for_item(fake_ir, adt.into(), |param, _| match param.kind {
                         crate::next_solver::generics::GenericParamDefKind::Type => Ty::new_bound(DbInterner, DebruijnIndex::ZERO, BoundTy { var: BoundVar::from_u32(param.index()), kind: BoundTyKind::Anon }).into(),
                         crate::next_solver::generics::GenericParamDefKind::Lifetime => Region::new_bound(DbInterner, DebruijnIndex::ZERO, BoundRegion { var: BoundVar::from_u32(param.index()), kind: BoundRegionKind::Anon }).into(),
@@ -805,21 +775,6 @@ impl<'a> TyLoweringContext<'a> {
 
                 let parent_subst = t.args.clone();
                 let parent_subst = match self.type_param_mode {
-                    ParamLoweringMode::Placeholder => {
-                        // if we're lowering to placeholders, we have to put them in now.
-                        let subst = generics.placeholder_subst(self.db);
-
-                        let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-                        let types = &mut |ty: BoundTy| { subst.at(crate::Interner, ty.var.index()).assert_ty_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let regions = &mut |region: BoundRegion| { subst.at(crate::Interner, region.var.index()).assert_lifetime_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let consts = &mut |const_: BoundVar| { subst.at(crate::Interner, const_.index()).assert_const_ref(crate::Interner).to_nextsolver(fake_ir) };
-                        let mut instantiate = BoundVarReplacer::new(DbInterner, FnMutDelegate {
-                            types,
-                            regions,
-                            consts,
-                        });
-                        parent_subst.fold_with(&mut instantiate)
-                    }
                     ParamLoweringMode::Variable => {
                         // We need to shift in the bound vars, since
                         // `named_associated_type_shorthand_candidates` does not do that.
@@ -1149,9 +1104,6 @@ impl<'a> TyLoweringContext<'a> {
                     &WherePredicateTypeTarget::TypeOrConstParam(local_id) => {
                         let param_id = hir_def::TypeOrConstParamId { parent: def, local_id };
                         match self.type_param_mode {
-                            ParamLoweringMode::Placeholder => {
-                                Ty::new_placeholder(to_placeholder_idx(self.db, param_id, |var| BoundTy { var, kind: BoundTyKind::Anon }))
-                            }
                             ParamLoweringMode::Variable => {
                                 let idx = generics(self.db.upcast(), def)
                                     .type_or_const_param_idx(param_id)
@@ -1522,11 +1474,6 @@ impl<'a> TyLoweringContext<'a> {
             Some(resolution) => match resolution {
                 LifetimeNs::Static => Region::new_static(DbInterner),
                 LifetimeNs::LifetimeParam(id) => match self.type_param_mode {
-                    ParamLoweringMode::Placeholder => {
-                        let interned_id = self.db.intern_lifetime_param_id(id);
-                        let var = base_db::ra_salsa::InternKey::as_intern_id(&interned_id).as_usize();
-                        Region::new_placeholder(Placeholder::new(UniverseIndex::ROOT, rustc_type_ir::BoundVar::from_usize(var)))
-                    }
                     ParamLoweringMode::Variable => {
                         let generics = self.generics().expect("generics in scope");
                         let idx = match generics.lifetime_idx(id) {
