@@ -1273,7 +1273,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             rustc_type_ir::lang_items::TraitSolverLangItem::Unpin => LangItem::Unpin,
             rustc_type_ir::lang_items::TraitSolverLangItem::Unsize => LangItem::Unsize,
         };
-        let target = self.db.lang_item(self.krate, lang_item).unwrap();
+        let target = self.db.lang_item(self.krate, dbg!(lang_item)).unwrap();
         match target {
             hir_def::lang_item::LangItemTarget::EnumId(enum_id) => enum_id.into(),
             hir_def::lang_item::LangItemTarget::Function(function_id) => function_id.into(),

@@ -2002,7 +2002,7 @@ fn enum_variant_as_function() {
 fn function_traits() {
     check_number(
         r#"
-    //- minicore: fn
+    //- minicore: fn, sized
     fn add2(x: u8) -> u8 {
         x + 2
     }

@@ -2189,7 +2189,7 @@ fn test() {
 fn fn_item_fn_trait() {
     check_types(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 struct S;
 
 fn foo() -> S { S }

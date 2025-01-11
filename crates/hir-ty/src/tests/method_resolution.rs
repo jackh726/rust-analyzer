@@ -1010,7 +1010,7 @@ fn main() {
 fn explicit_fn_once_call_fn_item() {
     check_types(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 fn foo() {}
 fn test() { foo.call_once(); }
           //^^^^^^^^^^^^^^^ ()
