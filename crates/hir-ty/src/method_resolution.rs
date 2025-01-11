@@ -855,12 +855,12 @@ fn find_matching_impl(
                 return None;
             }
 
-            let wcs = crate::chalk_db::convert_where_clauses(db, impl_.into(), &impl_substs)
+            for goal in crate::chalk_db::convert_where_clauses(db, impl_.into(), &impl_substs)
                 .into_iter()
-                .map(|b| b.cast(Interner));
-            let goal = crate::Goal::all(Interner, wcs);
-            table.try_obligation(goal.clone())?;
-            table.register_obligation(goal);
+                .map(|b| -> Goal { b.cast(Interner) }) {
+                    table.try_obligation(goal.clone())?;
+                    table.register_obligation(goal);
+            }
             Some((impl_data, table.resolve_completely(impl_substs)))
         })
     })
