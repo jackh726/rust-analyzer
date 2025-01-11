@@ -900,7 +900,7 @@ impl core::ops::Index<usize> for StructMut {
 
     fn index(&self, index: usize) -> &Self::Output { &() }
 }
-impl core::ops::IndexMut for StructMut {
+impl core::ops::IndexMut<usize> for StructMut {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output { &mut () }
 }
 fn test() {

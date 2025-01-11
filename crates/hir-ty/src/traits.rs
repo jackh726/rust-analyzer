@@ -152,7 +152,8 @@ pub(crate) fn trait_solve_query(
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
-        (Some(Solution::Unique(_)), Err(_)) => panic!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n", chalk_res, next_solver_res),
+        (Some(Solution::Unique(_)), Err(_)) => panic!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
+        (None, Ok(_)) => panic!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
         _ => {}
     }
     chalk_res
