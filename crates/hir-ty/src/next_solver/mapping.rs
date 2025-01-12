@@ -222,7 +222,42 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
                 ))
             }
             chalk_ir::TyKind::Dyn(dyn_ty) => {
-                let bounds = dyn_ty.bounds.to_nextsolver(ir).skip_binder();
+                // exists<type> { for<...> ^1.0: ... }
+                let bounds = BoundExistentialPredicates::new_from_iter(dyn_ty.bounds.skip_binders().iter(Interner).filter_map(|pred| {
+                    // for<...> ^1.0: ...
+                    let (val, binders) = pred.clone().into_value_and_skipped_binders();
+                    let bound_vars = binders.to_nextsolver(ir);
+                    let clause = match val {
+                        chalk_ir::WhereClause::Implemented(trait_ref) => {
+                            let trait_id = from_chalk_trait_id(trait_ref.trait_id);
+                            if ir.db.trait_data(trait_id).is_auto {
+                                ExistentialPredicate::AutoTrait(GenericDefId::TraitId(trait_id))
+                            } else {
+                                let def_id = GenericDefId::TraitId(trait_id);
+                                let args = GenericArgs::new_from_iter(trait_ref.substitution.iter(Interner).skip(1).map(|a| a.clone().shifted_out(Interner).unwrap()).map(|a| a.to_nextsolver(ir)));
+                                let trait_ref = ExistentialTraitRef::new_from_args(ir, def_id, args);
+                                ExistentialPredicate::Trait(trait_ref)
+                            }
+                        }
+                        chalk_ir::WhereClause::AliasEq(alias_eq) => {
+                            let (def_id, args) = match &alias_eq.alias {
+                                chalk_ir::AliasTy::Projection(projection) => {
+                                    let id = from_assoc_type_id(projection.associated_ty_id);
+                                    let args = GenericArgs::new_from_iter(projection.substitution.iter(Interner).skip(1).map(|a| a.clone().shifted_out(Interner).unwrap()).map(|a| a.to_nextsolver(ir)));
+                                    (GenericDefId::TypeAliasId(id), args)
+                                }
+                                chalk_ir::AliasTy::Opaque(_) => todo!(),
+                            };
+                            let term = alias_eq.ty.clone().shifted_out(Interner).unwrap().to_nextsolver(ir).into();
+                            let projection = ExistentialProjection::new_from_args(ir, def_id, args, term);
+                            ExistentialPredicate::Projection((projection))
+                        }
+                        chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => return None,
+                        chalk_ir::WhereClause::TypeOutlives(type_outlives) => return None,
+                    };
+
+                    Some(Binder::bind_with_vars(clause, bound_vars))
+                }));
                 let region = dyn_ty.lifetime.to_nextsolver(ir);
                 let kind = rustc_type_ir::DynKind::Dyn;
                 rustc_type_ir::TyKind::Dynamic(bounds, region, kind)
@@ -334,47 +369,6 @@ impl ChalkToNextSolver<Const> for chalk_ir::Const<Interner> {
                 ValueConst::new(concrete_const.interned.clone()),
             ),
         })
-    }
-}
-
-impl ChalkToNextSolver<BoundExistentialPredicates> for chalk_ir::QuantifiedWhereClauses<Interner> {
-    fn to_nextsolver(&self, ir: DbIr<'_>) -> BoundExistentialPredicates {
-        BoundExistentialPredicates::new_from_iter(self.iter(Interner).filter_map(|pred| {
-            pred.to_nextsolver(ir).transpose()
-        }))
-    }
-}
-
-impl ChalkToNextSolver<Option<ExistentialPredicate>> for chalk_ir::WhereClause<Interner> {
-    fn to_nextsolver(&self, ir: DbIr<'_>) -> Option<ExistentialPredicate> {
-        match self {
-            chalk_ir::WhereClause::Implemented(trait_ref) => {
-                let trait_id = from_chalk_trait_id(trait_ref.trait_id);
-                if ir.db.trait_data(trait_id).is_auto {
-                    Some(ExistentialPredicate::AutoTrait(GenericDefId::TraitId(trait_id)))
-                } else {
-                    let def_id = GenericDefId::TraitId(trait_id);
-                    let args = GenericArgs::new_from_iter(trait_ref.substitution.iter(Interner).skip(1).map(|a| a.to_nextsolver(ir)));
-                    let trait_ref = ExistentialTraitRef::new_from_args(ir, def_id, args);
-                    Some(ExistentialPredicate::Trait(trait_ref))
-                }
-            }
-            chalk_ir::WhereClause::AliasEq(alias_eq) => {
-                let (def_id, args) = match &alias_eq.alias {
-                    chalk_ir::AliasTy::Projection(projection) => {
-                        let id = from_assoc_type_id(projection.associated_ty_id);
-                        let args = GenericArgs::new_from_iter(projection.substitution.iter(Interner).skip(1).map(|a| a.to_nextsolver(ir)));
-                        (GenericDefId::TypeAliasId(id), args)
-                    }
-                    chalk_ir::AliasTy::Opaque(_) => todo!(),
-                };
-                let term = alias_eq.ty.to_nextsolver(ir).into();
-                let projection = ExistentialProjection::new_from_args(ir, def_id, args, term);
-                Some(ExistentialPredicate::Projection((projection)))
-            }
-            chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => None,
-            chalk_ir::WhereClause::TypeOutlives(type_outlives) => None,
-        }
     }
 }
 
