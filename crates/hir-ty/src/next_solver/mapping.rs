@@ -1,13 +1,13 @@
 use base_db::ra_salsa::{self, InternKey};
 use chalk_ir::{fold::Shift, interner::HasInterner, CanonicalVarKinds};
-use hir_def::{ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
+use hir_def::{CallableDefId, ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
     elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, mapping::from_opaque_ty_id, next_solver::{
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, mapping::{from_opaque_ty_id, ToChalk}, next_solver::{
         interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
         Binder, ClauseKind, TraitPredicate,
     }, Interner
@@ -186,7 +186,11 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
                 rustc_type_ir::TyKind::Alias(rustc_type_ir::AliasTyKind::Opaque, alias_ty)
             }
             chalk_ir::TyKind::FnDef(fn_def_id, substitution) => {
-                let id: FunctionId = ra_salsa::InternKey::from_intern_id(fn_def_id.0);
+                let def_id = CallableDefId::from_chalk(ir.db, *fn_def_id);
+                let id = match def_id {
+                    CallableDefId::FunctionId(id) => id,
+                    _ => todo!()
+                };
                 rustc_type_ir::TyKind::FnDef(id.into(), substitution.to_nextsolver(ir))
             }
             chalk_ir::TyKind::Str => rustc_type_ir::TyKind::Str,
