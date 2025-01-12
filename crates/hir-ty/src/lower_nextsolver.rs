@@ -672,9 +672,9 @@ impl<'a> TyLoweringContext<'a> {
             TyDefId::AdtId(it) => Some(it.into()),
             TyDefId::TypeAliasId(it) => Some(it.into()),
         };
-        let substs = self.substs_from_path_segment(segment, generic_def, infer_args, None);
-        let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-        apply_args_to_binder(self.db.ty(typeable).to_nextsolver(fake_ir), substs, self.db)
+        let args = self.substs_from_path_segment(segment, generic_def, infer_args, None);
+        let ty = ty_query(self.db, typeable);
+        ty.instantiate(DbInterner, args)
     }
 
     /// Collect generic arguments from a path into a `Substs`. See also
