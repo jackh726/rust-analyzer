@@ -6,9 +6,7 @@
 //!
 //! This usually involves resolving names, collecting generic arguments etc.
 use std::{
-    cell::OnceCell,
-    iter, mem,
-    ops::{self, Not as _},
+    cell::OnceCell, collections::HashSet, iter, mem, ops::{self, Not as _}
 };
 
 use base_db::CrateId;
@@ -559,7 +557,13 @@ impl<'a> TyLoweringContext<'a> {
                         Ty::new_error(DbInterner, ErrorGuaranteed)
                     }
                     Some(idx) => {
-                        Ty::new_param(idx as u32, sym::MISSING_NAME.clone())
+                        let (pidx, param) = generics.iter().nth(idx).unwrap();
+                        assert_eq!(pidx, param_id.into());
+                        let p = match param {
+                            GenericParamDataRef::TypeParamData(p) => p,
+                            _ => unreachable!(),
+                        };
+                        Ty::new_param(idx as u32, p.name.as_ref().map_or_else(|| sym::MISSING_NAME.clone(), |p| p.symbol().clone()))
                     },
                 }
             }
@@ -1446,7 +1450,7 @@ fn unknown_const(ty: Ty) -> Const {
 }
 
 
-pub(crate) fn impl_trait_query(db: &dyn HirDatabase, impl_id: ImplId) -> Option<Binder<TraitRef>> {
+pub(crate) fn impl_trait_query(db: &dyn HirDatabase, impl_id: ImplId) -> Option<EarlyBinder<TraitRef>> {
     let impl_data = db.impl_data(impl_id);
     let resolver = impl_id.resolver(db.upcast());
     let mut ctx = TyLoweringContext::new(db, &resolver, &impl_data.types_map, impl_id.into());
@@ -1455,7 +1459,7 @@ pub(crate) fn impl_trait_query(db: &dyn HirDatabase, impl_id: ImplId) -> Option<
     let target_trait = impl_data.target_trait.as_ref()?;
     let trait_ref = ctx.lower_trait_ref(target_trait, self_ty.clone())?;
     assert!(!trait_ref.has_escaping_bound_vars());
-    Some(Binder::dummy(trait_ref))
+    Some(EarlyBinder::bind(trait_ref))
 }
 
 pub(crate) fn return_type_impl_traits(
@@ -1527,18 +1531,22 @@ fn type_for_type_alias(db: &dyn HirDatabase, t: TypeAliasId) -> EarlyBinder<Ty> 
 }
 
 pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> EarlyBinder<Ty> {
+    // HACK HACK HACK delete pls
+    static REENTRANT_MAP: std::sync::OnceLock<std::sync::Mutex<HashSet<ImplId>>> = std::sync::OnceLock::new();
+    let new = REENTRANT_MAP.get_or_init(|| std::sync::Mutex::new(HashSet::new())).lock().unwrap().insert(impl_id);
+    if !new {
+        REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
+        return EarlyBinder::bind(Ty::new_error(DbInterner, ErrorGuaranteed));
+    }
+
     let impl_data = db.impl_data(impl_id);
     let resolver = impl_id.resolver(db.upcast());
     let mut ctx = TyLoweringContext::new(db, &resolver, &impl_data.types_map, impl_id.into());
     let ty = ctx.lower_ty(impl_data.self_ty);
     assert!(!ty.has_escaping_bound_vars());
+    REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
     EarlyBinder::bind(ty)
 }
-
-// `generic_predicates_for_param` hits cycles for some tests (anything with minicore's `Try`). In salsa, this query cycle
-// is recovered. We're just gonna...cheat. This could be wrong, it's a big hack and it's going away. Just don't want to
-// have to ignore a bunch of tests or disable functionality.
-static REENTRANT_QUERY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// This query exists only to be used when resolving short-hand associated types
 /// like `T::Item`.
@@ -1554,6 +1562,11 @@ pub(crate) fn generic_predicates_for_param_query(
     param_id: TypeOrConstParamId,
     assoc_name: Option<Name>,
 ) -> GenericPredicates {
+    // `generic_predicates_for_param` hits cycles for some tests (anything with minicore's `Try`). In salsa, this query cycle
+    // is recovered. We're just gonna...cheat. This could be wrong, it's a big hack and it's going away. Just don't want to
+    // have to ignore a bunch of tests or disable functionality.
+    static REENTRANT_QUERY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
     if REENTRANT_QUERY.swap(true, std::sync::atomic::Ordering::AcqRel) {
         return GenericPredicates(None);
     }
@@ -1564,7 +1577,6 @@ pub(crate) fn generic_predicates_for_param_query(
     } else {
         TyLoweringContext::new(db, &resolver, TypesMap::EMPTY, def.into())
     };
-    let generics = generics(db.upcast(), def);
 
     // we have to filter out all other predicates *first*, before attempting to lower them
     let predicate = |pred: &_, def: &_, ctx: &mut TyLoweringContext<'_>| match pred {

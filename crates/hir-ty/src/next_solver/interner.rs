@@ -30,7 +30,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{self, callable_item_sig, return_type_impl_traits, ty_query, type_alias_impl_traits, TyLoweringContext};
+use crate::lower_nextsolver::{self, callable_item_sig, impl_trait_query, return_type_impl_traits, ty_query, type_alias_impl_traits, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -1557,11 +1557,10 @@ impl<'cx> RustIr for DbIr<'cx> {
 
         let db = self.db;
 
-        let trait_ref = db
-            .impl_trait(impl_id)
+        let trait_ref = impl_trait_query(db, impl_id)
             // ImplIds for impls where the trait ref can't be resolved should never reach trait solving
             .expect("invalid impl passed to trait solver");
-        convert_binder_to_early_binder(trait_ref.to_nextsolver(self))
+        trait_ref
     }
 
     fn impl_polarity(
