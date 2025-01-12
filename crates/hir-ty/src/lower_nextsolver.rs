@@ -36,7 +36,7 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyDefId, ValueTyDefId
+    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, infer::at, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
 };
 
 #[derive(PartialEq, Eq, Debug, Hash)]
@@ -1493,6 +1493,36 @@ pub(crate) fn type_alias_impl_traits(
         None
     } else {
         Some(Arc::new(EarlyBinder::bind(type_alias_impl_traits)))
+    }
+}
+
+/// Build the declared type of an item. This depends on the namespace; e.g. for
+/// `struct Foo(usize)`, we have two types: The type of the struct itself, and
+/// the constructor function `(usize) -> Foo` which lives in the values
+/// namespace.
+pub(crate) fn ty_query(db: &dyn HirDatabase, def: TyDefId) -> EarlyBinder<Ty> {
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    match def {
+        TyDefId::BuiltinType(it) => EarlyBinder::bind(TyBuilder::builtin(it).to_nextsolver(fake_ir)),
+        TyDefId::AdtId(it) => {
+            EarlyBinder::bind(Ty::new_adt(DbInterner, AdtDef::new(it, db), GenericArgs::identity_for_item(fake_ir, it.into())))
+        }
+        TyDefId::TypeAliasId(it) => type_for_type_alias(db, it),
+    }
+}
+
+fn type_for_type_alias(db: &dyn HirDatabase, t: TypeAliasId) -> EarlyBinder<Ty> {
+    let resolver = t.resolver(db.upcast());
+    let type_alias_data = db.type_alias_data(t);
+    let mut ctx = TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, t.into())
+        .with_impl_trait_mode(ImplTraitLoweringMode::Opaque);
+    if type_alias_data.is_extern {
+        EarlyBinder::bind(Ty::new_foreign(DbInterner, t.into()))
+    } else {
+        EarlyBinder::bind(type_alias_data
+            .type_ref
+            .map(|type_ref| ctx.lower_ty(type_ref))
+            .unwrap_or_else(|| Ty::new_error(DbInterner, ErrorGuaranteed)))
     }
 }
 

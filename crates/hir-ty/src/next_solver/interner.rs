@@ -30,7 +30,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{self, callable_item_sig, return_type_impl_traits, type_alias_impl_traits, TyLoweringContext};
+use crate::lower_nextsolver::{self, callable_item_sig, return_type_impl_traits, ty_query, type_alias_impl_traits, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -859,8 +859,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             }
             _ => todo!()
         };
-        let ty = self.db.ty(def_id);
-        convert_binder_to_early_binder(ty.to_nextsolver(self))
+        ty_query(self.db, def_id)
     }
 
     fn adt_def(

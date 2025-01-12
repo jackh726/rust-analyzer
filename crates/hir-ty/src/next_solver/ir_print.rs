@@ -130,14 +130,36 @@ impl IrPrint<ty::ExistentialTraitRef<Self>> for DbInterner {
         t: &ty::ExistentialTraitRef<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let trait_ = match t.def_id {
+                        hir_def::GenericDefId::TraitId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("ExistentialTraitRef({:?}[{:?}])", db.trait_data(trait_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("ExistentialTraitRef({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 
     fn print_debug(
         t: &ty::ExistentialTraitRef<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let trait_ = match t.def_id {
+                        hir_def::GenericDefId::TraitId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("ExistentialTraitRef({:?}[{:?}])", db.trait_data(trait_).name.as_str(), t.args))
+                }
+                None => fmt.write_str(&format!("ExistentialTraitRef({:?}[{:?}])", t.def_id, t.args)),
+            }
+        })
     }
 }
 impl IrPrint<ty::ExistentialProjection<Self>> for DbInterner {
@@ -145,14 +167,36 @@ impl IrPrint<ty::ExistentialProjection<Self>> for DbInterner {
         t: &ty::ExistentialProjection<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let id = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("ExistentialProjection(({:?}[{:?}]) -> {:?})", db.type_alias_data(id).name.as_str(), t.args, t.term))
+                }
+                None => fmt.write_str(&format!("ExistentialProjection(({:?}[{:?}]) -> {:?})", t.def_id, t.args, t.term)),
+            }
+        })
     }
 
     fn print_debug(
         t: &ty::ExistentialProjection<Self>,
         fmt: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        fmt.write_str(&format!("TODO: {:?}", type_name_of_val(t)))
+        crate::next_solver::tls::with_opt_db_out_of_thin_air(|db| {
+            match db {
+                Some(db) => {
+                    let id = match t.def_id {
+                        hir_def::GenericDefId::TypeAliasId(id) => id,
+                        _ => panic!("Expected trait."),
+                    };
+                    fmt.write_str(&format!("ExistentialProjection(({:?}[{:?}]) -> {:?})", db.type_alias_data(id).name.as_str(), t.args, t.term))
+                }
+                None => fmt.write_str(&format!("ExistentialProjection(({:?}[{:?}]) -> {:?})", t.def_id, t.args, t.term)),
+            }
+        })
     }
 }
 impl IrPrint<ty::ProjectionPredicate<Self>> for DbInterner {
