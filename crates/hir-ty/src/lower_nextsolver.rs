@@ -19,11 +19,11 @@ use hir_def::{
     }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    }, AdtId, AssocItemId, CallableDefId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId
+    }, AdtId, AssocItemId, CallableDefId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, VariantId
 };
 use hir_expand::{name::Name, ExpandResult};
 use intern::sym;
-use la_arena::{Arena, Idx};
+use la_arena::{Arena, ArenaMap, Idx};
 use rustc_ast_ir::Mutability;
 use rustc_hash::FxHashSet;
 use rustc_pattern_analysis::Captures;
@@ -1546,6 +1546,27 @@ pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Early
     assert!(!ty.has_escaping_bound_vars());
     REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
     EarlyBinder::bind(ty)
+}
+
+/// Build the type of all specific fields of a struct or enum variant.
+pub(crate) fn field_types_query(
+    db: &dyn HirDatabase,
+    variant_id: VariantId,
+) -> Arc<ArenaMap<LocalFieldId, EarlyBinder<Ty>>> {
+    let var_data = variant_id.variant_data(db.upcast());
+    let (resolver, def): (_, GenericDefId) = match variant_id {
+        VariantId::StructId(it) => (it.resolver(db.upcast()), it.into()),
+        VariantId::UnionId(it) => (it.resolver(db.upcast()), it.into()),
+        VariantId::EnumVariantId(it) => {
+            (it.resolver(db.upcast()), it.lookup(db.upcast()).parent.into())
+        }
+    };
+    let mut res = ArenaMap::default();
+    let mut ctx = TyLoweringContext::new(db, &resolver, var_data.types_map(), def.into());
+    for (field_id, field_data) in var_data.fields().iter() {
+        res.insert(field_id, EarlyBinder::bind(ctx.lower_ty(field_data.type_ref)));
+    }
+    Arc::new(res)
 }
 
 /// This query exists only to be used when resolving short-hand associated types

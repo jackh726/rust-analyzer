@@ -25,14 +25,6 @@ pub fn to_placeholder_idx<T: Clone + std::fmt::Debug>(db: &dyn HirDatabase, id: 
     }
 }
 
-
-pub fn convert_binder_to_early_binder<T: rustc_type_ir::fold::TypeFoldable<DbInterner>>(
-    binder: rustc_type_ir::Binder<DbInterner, T>,
-) -> rustc_type_ir::EarlyBinder<DbInterner, T> {
-    let mut folder = BinderToEarlyBinder { debruijn: rustc_type_ir::DebruijnIndex::ZERO };
-    rustc_type_ir::EarlyBinder::bind(binder.skip_binder().fold_with(&mut folder))
-}
-
 struct BinderToEarlyBinder {
     debruijn: rustc_type_ir::DebruijnIndex,
 }

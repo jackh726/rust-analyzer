@@ -29,8 +29,8 @@ use rustc_type_ir::{
     UniverseIndex, Variance, WithCachedTypeInfo,
 };
 
-use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{self, callable_item_sig, impl_trait_query, return_type_impl_traits, ty_query, type_alias_impl_traits, TyLoweringContext};
+use crate::lower::{generic_predicates_filtered_by};
+use crate::lower_nextsolver::{self, callable_item_sig, field_types_query, generic_predicates_query, generic_predicates_without_parent_query, impl_trait_query, return_type_impl_traits, ty_query, type_alias_impl_traits, TyLoweringContext};
 use crate::method_resolution::{TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS};
 use crate::next_solver::util::for_trait_impls;
 use crate::next_solver::FxIndexMap;
@@ -43,7 +43,7 @@ use super::{
     abi::Safety,
     fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
     generics::Generics,
-    mapping::{convert_binder_to_early_binder, ChalkToNextSolver},
+    mapping::ChalkToNextSolver,
     region::{
         BoundRegion, BoundRegionKind, EarlyParamRegion, LateParamRegion, PlaceholderRegion, Region,
     },
@@ -469,11 +469,10 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
         let id: VariantId = struct_id.into();
         let variant_data = &id.variant_data(db.upcast());
         let Some((last_idx, _)) = variant_data.fields().iter().last() else { return None };
-        let field_types = db.field_types(id);
+        let field_types = field_types_query(ir.db, id);
 
-        let last_ty: rustc_type_ir::Binder<DbInterner, Ty> =
-            field_types[last_idx].clone().to_nextsolver(ir);
-        Some(convert_binder_to_early_binder(last_ty))
+        let last_ty = field_types[last_idx].clone();
+        Some(last_ty)
     }
 
     fn all_field_tys(
@@ -487,18 +486,15 @@ impl<'cx> inherent::IrAdtDef<DbInterner, DbIr<'cx>> for AdtDef {
         // FIXME: this is disabled just to match the behavior with chalk right now
         let field_tys = |id: VariantId| {
             let variant_data = id.variant_data(db.upcast());
-            let field_types = db.field_types(id);
             let fields = if variant_data.fields().is_empty() {
                 vec![]
             } else {
-                let field_types = db.field_types(id);
+                let field_types = field_types_query(ir.db, id);
                 variant_data
                     .fields()
                     .iter()
                     .map(|(idx, _)| {
-                        let ty: rustc_type_ir::Binder<DbInterner, Ty> =
-                            field_types[idx].clone().to_nextsolver(ir);
-                        let ty = convert_binder_to_early_binder(ty);
+                        let ty = field_types[idx].clone();
                         ty.skip_binder()
                     }).collect()
             };
@@ -1145,11 +1141,9 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
     > {
-        let predicates = self.db.generic_predicates(def_id);
-        rustc_type_ir::EarlyBinder::bind(predicates.iter().map(|p| {
-            let bound_predicate_kind = convert_binder_to_early_binder(p.to_nextsolver(self)).skip_binder();
-            Clause(Predicate::new(bound_predicate_kind))
-        }).collect::<Vec<_>>().into_iter())
+        let predicates = generic_predicates_query(self.db, def_id);
+        let predicates: Vec<_> = predicates.iter().cloned().collect();
+        EarlyBinder::bind(predicates.into_iter())
     }
 
     fn own_predicates_of(
@@ -1159,11 +1153,9 @@ impl<'cx> RustIr for DbIr<'cx> {
         Self::Interner,
         impl IntoIterator<Item = <Self::Interner as rustc_type_ir::Interner>::Clause>,
     > {
-        let predicates = self.db.generic_predicates_without_parent(def_id);
-        rustc_type_ir::EarlyBinder::bind(predicates.iter().map(|p| {
-            let bound_predicate_kind = convert_binder_to_early_binder(p.to_nextsolver(self)).skip_binder();
-            Clause(Predicate::new(bound_predicate_kind))
-        }).collect::<Vec<_>>().into_iter())
+        let predicates = generic_predicates_without_parent_query(self.db, def_id);
+        let predicates: Vec<_> = predicates.iter().cloned().collect();
+        EarlyBinder::bind(predicates.into_iter())
     }
 
     fn explicit_super_predicates_of(
@@ -1694,12 +1686,9 @@ impl<'cx> RustIr for DbIr<'cx> {
             return UnsizingParams(BitSet::new_empty(num_params));
         };
     
-        let field_types = self.db.field_types(variant.id());
-        let ty_for_field = |idx| {
-            convert_binder_to_early_binder(field_types[idx].to_nextsolver(self))
-        };
+        let field_types = field_types_query(self.db, variant.id());
         let mut unsizing_params = BitSet::new_empty(num_params);
-        let ty = ty_for_field(tail_field.0);
+        let ty = field_types[tail_field.0].clone();
         for arg in ty.instantiate_identity().walk() {
             if let Some(i) = maybe_unsizing_param_idx(arg) {
                 unsizing_params.insert(i);
@@ -1709,7 +1698,7 @@ impl<'cx> RustIr for DbIr<'cx> {
         // Ensure none of the other fields mention the parameters used
         // in unsizing.
         for field in prefix_fields {
-            for arg in ty_for_field(field.0).instantiate_identity().walk() {
+            for arg in field_types[field.0].clone().instantiate_identity().walk() {
                 if let Some(i) = maybe_unsizing_param_idx(arg) {
                     unsizing_params.remove(i);
                 }
