@@ -27,14 +27,14 @@ use la_arena::{Arena, Idx};
 use rustc_ast_ir::Mutability;
 use rustc_hash::FxHashSet;
 use rustc_pattern_analysis::Captures;
-use rustc_type_ir::{fold::{shift_vars, TypeFoldable}, inherent::{Const as _, GenericArg as _, IntoKind as _, IrGenericArgs, PlaceholderLike as _, Region as _, SliceLike, Ty as _}, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self}, UniverseIndex};
+use rustc_type_ir::{inherent::{GenericArg as _, IntoKind as _, IrGenericArgs, PlaceholderLike as _, Region as _, SliceLike, Ty as _}, visit::TypeVisitableExt, AliasTerm, AliasTyKind, BoundVar, ConstKind, DebruijnIndex, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig, OutlivesPredicate, ProjectionPredicate, TyKind::{self}, UniverseIndex};
 use smallvec::SmallVec;
 use stdx::never;
 use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, fold::{BoundVarReplacer, FnMutDelegate}, infer::at, mapping::{convert_binder_to_early_binder, to_placeholder_idx, ChalkToNextSolver}, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
+    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
 };
 
 #[derive(PartialEq, Eq, Debug, Hash)]
@@ -1768,15 +1768,6 @@ fn implicitly_sized_clauses<'a, 'subst: 'a>(
     )
 }
 
-pub(crate) fn make_single_type_binders<T: rustc_type_ir::visit::TypeVisitable<DbInterner>>(
-    value: T,
-) -> Binder<T> {
-    Binder::bind_with_vars(
-        value,
-        BoundVarKinds::new_from_iter([BoundVarKind::Ty(BoundTyKind::Anon)]),
-    )
-}
-
 pub(crate) fn make_binders<T: rustc_type_ir::visit::TypeVisitable<DbInterner>>(
     generics: &Generics,
     value: T,
@@ -1877,13 +1868,11 @@ fn fn_sig_for_fn(db: &dyn HirDatabase, def: FunctionId) -> EarlyBinder<PolyFnSig
 }
 
 fn type_for_adt(db: &dyn HirDatabase, adt: AdtId) -> EarlyBinder<Ty> {
-    let generics = generics(db.upcast(), adt.into());
     let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let args = generics.bound_vars_subst(db, chalk_ir::DebruijnIndex::INNERMOST).to_nextsolver(fake_ir);
+    let args = GenericArgs::identity_for_item(fake_ir, adt.into());
     let ty = Ty::new_adt(DbInterner, AdtDef::new(adt.into(), db), args);
-    convert_binder_to_early_binder(make_binders(&generics, ty))
+    EarlyBinder::bind(ty)
 }
-
 
 fn fn_sig_for_struct_constructor(db: &dyn HirDatabase, def: StructId) -> EarlyBinder<PolyFnSig> {
     let struct_data = db.struct_data(def);
@@ -1895,8 +1884,7 @@ fn fn_sig_for_struct_constructor(db: &dyn HirDatabase, def: StructId) -> EarlyBi
         struct_data.variant_data.types_map(),
         AdtId::from(def).into(),
     );
-    let generics = generics(db.upcast(), def.into());
-    let params = fields.iter().map(|(_, field)| convert_binder_to_early_binder(make_binders(&generics, ctx.lower_ty(field.type_ref))).skip_binder());
+    let params = fields.iter().map(|(_, field)| ctx.lower_ty(field.type_ref));
     let ret = type_for_adt(db, def.into()).skip_binder();
 
     let inputs_and_output = Tys::new_from_iter(params.chain(Some(ret)));
@@ -1918,8 +1906,7 @@ fn fn_sig_for_enum_variant_constructor(db: &dyn HirDatabase, def: EnumVariantId)
         var_data.variant_data.types_map(),
         DefWithBodyId::VariantId(def).into(),
     );
-    let generics = generics(db.upcast(), def.lookup(db.upcast()).parent.into());
-    let params = fields.iter().map(|(_, field)| convert_binder_to_early_binder(make_binders(&generics, ctx.lower_ty(field.type_ref))).skip_binder());
+    let params = fields.iter().map(|(_, field)| ctx.lower_ty(field.type_ref));
     let ret = type_for_adt(db, def.lookup(db.upcast()).parent.into()).skip_binder();
 
     let inputs_and_output = Tys::new_from_iter(params.chain(Some(ret)));
