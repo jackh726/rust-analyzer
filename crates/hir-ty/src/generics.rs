@@ -266,6 +266,7 @@ pub(crate) fn parent_generic_def(db: &dyn DefDatabase, def: GenericDefId) -> Opt
             hir_def::OpaqueTyLoc::TypeAliasImplTrait(_, _) => None,
             hir_def::OpaqueTyLoc::AsyncBlockTypeImplTrait(def_with_body_id, _) => def_with_body_id.as_generic_def_id(db),
         },
+        GenericDefId::Ctor(..) => todo!(),
         GenericDefId::AdtId(_)
         | GenericDefId::TraitId(_)
         | GenericDefId::ImplId(_)

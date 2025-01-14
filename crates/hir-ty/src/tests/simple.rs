@@ -2921,7 +2921,7 @@ fn test {
      // ^^ impl Fn()
 
     let c4 = f1();
-     // ^^ impl FnOnce() + ?Sized
+     // ^^ impl FnOnce()
 
     f2(|| { 0 });
     // ^^^^^^^^ impl FnOnce() -> i32

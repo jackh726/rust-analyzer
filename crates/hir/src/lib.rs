@@ -73,7 +73,7 @@ use hir_ty::{
     method_resolution,
     mir::{interpret_mir, MutBorrowKind},
     primitive::UintTy,
-    traits::FnTrait,
+    traits::{next_trait_solve, FnTrait},
     AliasTy, CallableSig, Canonical, CanonicalVarKinds, Cast, ClosureId, GenericArg,
     GenericArgData, Interner, ParamKind, QuantifiedWhereClause, Scalar, Substitution,
     TraitEnvironment, TraitRefExt, Ty, TyBuilder, TyDefId, TyExt, TyKind, ValueTyDefId,
@@ -4619,7 +4619,7 @@ impl Type {
             binders: CanonicalVarKinds::empty(Interner),
         };
 
-        db.trait_solve(self.env.krate, self.env.block, goal).is_some()
+        !next_trait_solve(db, self.env.krate, self.env.block, goal).no_solution()
     }
 
     pub fn normalize_trait_assoc_type(

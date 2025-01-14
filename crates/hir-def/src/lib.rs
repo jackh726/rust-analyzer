@@ -768,6 +768,7 @@ impl From<GenericDefId> for TypeOwnerId {
             GenericDefId::ConstId(it) => it.into(),
             GenericDefId::ClosureId(it) => todo!(),
             GenericDefId::OpaqueTyId(it) => todo!(),
+            GenericDefId::Ctor(..) => todo!(),
         }
     }
 }
@@ -945,6 +946,12 @@ pub enum AssocItemId {
 impl_from!(FunctionId, ConstId, TypeAliasId for AssocItemId);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Ctor {
+    Struct(StructId),
+    Enum(EnumVariantId),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum GenericDefId {
     FunctionId(FunctionId),
     AdtId(AdtId),
@@ -956,6 +963,7 @@ pub enum GenericDefId {
     ConstId(ConstId),
     ClosureId(ClosureId),
     OpaqueTyId(OpaqueTyId),
+    Ctor(Ctor),
 }
 impl_from!(
     FunctionId,
@@ -997,8 +1005,9 @@ impl GenericDefId {
             GenericDefId::TraitAliasId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ImplId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ConstId(it) => (it.lookup(db).id.file_id(), None),
-            GenericDefId::ClosureId(it) => (todo!(), None),
-            GenericDefId::OpaqueTyId(it) => (todo!(), None),
+            GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::OpaqueTyId(it) => todo!(),
+            GenericDefId::Ctor(..) => todo!(),
         }
     }
 
@@ -1391,8 +1400,9 @@ impl HasModule for GenericDefId {
             GenericDefId::TypeAliasId(it) => it.module(db),
             GenericDefId::ImplId(it) => it.module(db),
             GenericDefId::ConstId(it) => it.module(db),
-            GenericDefId::ClosureId(it) => todo!(),
             GenericDefId::OpaqueTyId(it) => it.module(db),
+            GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::Ctor(..) => todo!(),
         }
     }
 }

@@ -1586,9 +1586,12 @@ pub(crate) fn generic_predicates_for_param_query(
     // `generic_predicates_for_param` hits cycles for some tests (anything with minicore's `Try`). In salsa, this query cycle
     // is recovered. We're just gonna...cheat. This could be wrong, it's a big hack and it's going away. Just don't want to
     // have to ignore a bunch of tests or disable functionality.
-    static REENTRANT_QUERY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-    if REENTRANT_QUERY.swap(true, std::sync::atomic::Ordering::AcqRel) {
+    // HACK HACK HACK delete pls
+    static REENTRANT_MAP: std::sync::OnceLock<std::sync::Mutex<HashSet<(GenericDefId, TypeOrConstParamId, Option<Name>)>>> = std::sync::OnceLock::new();
+    let map_key = (def.clone(), param_id.clone(), assoc_name.clone());
+    let new = REENTRANT_MAP.get_or_init(|| std::sync::Mutex::new(HashSet::new())).lock().unwrap().insert(map_key.clone());
+    if !new {
+        REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&map_key); });
         return GenericPredicates(None);
     }
     let resolver = def.resolver(db.upcast());
@@ -1669,7 +1672,7 @@ pub(crate) fn generic_predicates_for_param_query(
             predicates.extend(implicitly_sized_predicates);
         };
     }
-    REENTRANT_QUERY.swap(false,std::sync::atomic::Ordering::AcqRel);
+    REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&map_key); });
     GenericPredicates(predicates.is_empty().not().then(|| predicates.into()))
 }
 

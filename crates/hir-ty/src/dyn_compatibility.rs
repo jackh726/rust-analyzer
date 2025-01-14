@@ -15,7 +15,7 @@ use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 
 use crate::{
-    all_super_traits, db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, generics::{generics, trait_self_param_idx}, lower::callable_item_sig, mapping::from_opaque_ty_id, to_assoc_type_id, to_chalk_trait_id, utils::elaborate_clause_supertraits, AliasEq, AliasTy, Binders, BoundVar, CallableSig, DomainGoal, GoalData, Interner, OpaqueTyId, ProjectionTyExt, Solution, Substitution, TraitRef, Ty, TyKind, WhereClause
+    all_super_traits, db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, generics::{generics, trait_self_param_idx}, lower::callable_item_sig, mapping::from_opaque_ty_id, to_assoc_type_id, to_chalk_trait_id, traits::next_trait_solve, utils::elaborate_clause_supertraits, AliasEq, AliasTy, Binders, BoundVar, CallableSig, DomainGoal, GoalData, Interner, OpaqueTyId, ProjectionTyExt, Solution, Substitution, TraitRef, Ty, TyKind, WhereClause
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -540,9 +540,8 @@ fn receiver_is_dispatchable(
 
     let mut table = chalk_solve::infer::InferenceTable::<Interner>::new();
     let canonicalized = table.canonicalize(Interner, in_env);
-    let solution = db.trait_solve(krate, None, canonicalized.quantified);
 
-    matches!(solution, Some(Solution::Unique(_)))
+    next_trait_solve(db, krate, None, canonicalized.quantified).certain()
 }
 
 fn receiver_for_self_ty(db: &dyn HirDatabase, func: FunctionId, ty: Ty) -> Option<Ty> {

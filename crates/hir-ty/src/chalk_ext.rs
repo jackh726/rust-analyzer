@@ -9,7 +9,7 @@ use hir_def::{
 use la_arena::Idx;
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, mapping::from_opaque_ty_id, to_chalk_trait_id, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId, DynTy, FnPointer, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, mapping::from_opaque_ty_id, to_chalk_trait_id, traits::next_trait_solve, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId, DynTy, FnPointer, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
 };
 
 pub trait TyExt {
@@ -376,7 +376,7 @@ impl TyExt for Ty {
             value: InEnvironment::new(&env.env, trait_ref.cast(Interner)),
             binders: CanonicalVarKinds::empty(Interner),
         };
-        db.trait_solve(crate_id, None, goal).is_some()
+        !next_trait_solve(db, crate_id, None, goal).no_solution()
     }
 
     fn equals_ctor(&self, other: &Ty) -> bool {

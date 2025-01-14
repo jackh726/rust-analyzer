@@ -179,11 +179,12 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
             }
             chalk_ir::TyKind::FnDef(fn_def_id, substitution) => {
                 let def_id = CallableDefId::from_chalk(ir.db, *fn_def_id);
-                let id = match def_id {
-                    CallableDefId::FunctionId(id) => id,
-                    _ => todo!()
+                let id: GenericDefId = match def_id {
+                    CallableDefId::FunctionId(id) => id.into(),
+                    CallableDefId::StructId(id) => GenericDefId::Ctor(hir_def::Ctor::Struct(id)),
+                    CallableDefId::EnumVariantId(id) => GenericDefId::Ctor(hir_def::Ctor::Enum(id)),
                 };
-                rustc_type_ir::TyKind::FnDef(id.into(), substitution.to_nextsolver(ir))
+                rustc_type_ir::TyKind::FnDef(id, substitution.to_nextsolver(ir))
             }
             chalk_ir::TyKind::Str => rustc_type_ir::TyKind::Str,
             chalk_ir::TyKind::Never => rustc_type_ir::TyKind::Never,

@@ -955,7 +955,8 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::AdtId(_)
             | GenericDefId::TraitId(_)
             | GenericDefId::ImplId(_)
-            | GenericDefId::TraitAliasId(_) => panic!(),
+            | GenericDefId::TraitAliasId(_)
+            | GenericDefId::Ctor(..) => panic!(),
         };
     
         match container {

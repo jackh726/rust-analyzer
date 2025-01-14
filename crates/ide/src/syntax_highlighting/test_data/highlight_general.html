@@ -189,7 +189,7 @@ pre                 { color: #DCDCCC; background: #3F3F3F; font-size: 22px; padd
 
 <span class="keyword async">async</span> <span class="keyword">fn</span> <span class="function async declaration">learn_and_sing</span><span class="parenthesis">(</span><span class="parenthesis">)</span> <span class="brace">{</span>
     <span class="keyword">let</span> <span class="variable declaration">song</span> <span class="operator">=</span> <span class="unresolved_reference">learn_song</span><span class="parenthesis">(</span><span class="parenthesis">)</span><span class="operator">.</span><span class="keyword async control">await</span><span class="semicolon">;</span>
-    <span class="unresolved_reference">sing_song</span><span class="parenthesis">(</span><span class="variable consuming">song</span><span class="parenthesis">)</span><span class="operator">.</span><span class="keyword async control">await</span><span class="semicolon">;</span>
+    <span class="unresolved_reference">sing_song</span><span class="parenthesis">(</span><span class="variable">song</span><span class="parenthesis">)</span><span class="operator">.</span><span class="keyword async control">await</span><span class="semicolon">;</span>
 <span class="brace">}</span>
 
 <span class="keyword async">async</span> <span class="keyword">fn</span> <span class="function async declaration">async_main</span><span class="parenthesis">(</span><span class="parenthesis">)</span> <span class="brace">{</span>

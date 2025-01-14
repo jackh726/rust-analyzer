@@ -447,6 +447,7 @@ impl GenericParams {
                 }),
                 None,
             ),
+            GenericDefId::Ctor(..) => todo!(),
         }
     }
 }
