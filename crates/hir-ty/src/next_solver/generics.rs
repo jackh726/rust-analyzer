@@ -65,7 +65,7 @@ impl GenericParamDef {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum GenericParamDefKind {
     Lifetime,
     Type,
@@ -75,31 +75,5 @@ pub enum GenericParamDefKind {
 impl rustc_type_ir::inherent::GenericsOf<DbInterner> for Generics {
     fn count(&self) -> usize {
         self.parent_count + self.own_params.len()
-    }
-}
-
-impl GenericParamDef {
-    pub fn to_error(&self, interner: DbInterner) -> GenericArg {
-        match &self.kind {
-            GenericParamDefKind::Lifetime => Region::error().into(),
-            GenericParamDefKind::Type => Ty::new_error(interner, ErrorGuaranteed).into(),
-            GenericParamDefKind::Const => Const::error().into(),
-        }
-    }
-}
-
-impl DbInterner {
-    pub fn mk_param_from_def(self, param: &GenericParamDef) -> GenericArg {
-        match param.kind {
-            GenericParamDefKind::Lifetime => Region::new_early_param(EarlyParamRegion {
-                index: param.index,
-                name: param.name.clone(),
-            })
-            .into(),
-            GenericParamDefKind::Type => Ty::new_param(param.index, param.name.clone()).into(),
-            GenericParamDefKind::Const => {
-                Const::new_param(ParamConst { index: param.index, name: param.name.clone() }).into()
-            }
-        }
     }
 }

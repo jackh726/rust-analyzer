@@ -886,12 +886,12 @@ impl<'db> InferCtxt<'db> {
         self.next_region_var_in_universe(RegionVariableOrigin::Nll(origin), universe)
     }
 
-    pub fn var_for_def(&self, span: Span, param: &GenericParamDef) -> GenericArg {
-        match param.kind {
+    fn var_for_def(&self, span: Span, kind: GenericParamDefKind, name: &Symbol) -> GenericArg {
+        match kind {
             GenericParamDefKind::Lifetime => {
                 // Create a region inference variable for the given
                 // region parameter definition.
-                self.next_region_var(RegionParameterDefinition(span, param.name.clone())).into()
+                self.next_region_var(RegionParameterDefinition(span, name.clone())).into()
             }
             GenericParamDefKind::Type { .. } => {
                 // Create a type inference variable for the given
@@ -927,7 +927,7 @@ impl<'db> InferCtxt<'db> {
     /// Given a set of generics defined on a type or impl, returns the generic parameters mapping
     /// each type/region parameter to a fresh inference variable.
     pub fn fresh_args_for_item(&self, span: Span, def_id: GenericDefId) -> GenericArgs {
-        GenericArgs::for_item(self.ir, def_id, |param, _| self.var_for_def(span, param))
+        GenericArgs::for_item(self.ir, def_id, |name, index, kind, _| self.var_for_def(span, kind, name))
     }
 
     /// Returns `true` if errors have been reported since this infcx was

@@ -11,7 +11,7 @@ use intern::{impl_internable, sym, Interned};
 use la_arena::Idx;
 use rustc_abi::{ReprFlags, ReprOptions};
 use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, IrGenericArgs, SliceLike, Span as _};
-use rustc_type_ir::{AliasTerm, AliasTermKind, AliasTy, EarlyBinder, InferTy, ProjectionPredicate, TraitPredicate, TraitRef};
+use rustc_type_ir::{AliasTerm, AliasTermKind, AliasTy, EarlyBinder, ImplPolarity, InferTy, ProjectionPredicate, TraitPredicate, TraitRef};
 use smallvec::{smallvec, SmallVec};
 use std::fmt;
 use std::ops::ControlFlow;
@@ -897,11 +897,11 @@ impl<'cx> RustIr for DbIr<'cx> {
         <Self::Interner as rustc_type_ir::Interner>::GenericArgsSlice,
     ) {
         let trait_def_id = self.parent(def_id);
-        let trait_generics = self.generics_of(trait_def_id);
-        let trait_args = args.clone().iter().take(trait_generics.count());
-        let alias_args = GenericArgs::new_from_iter(args.as_slice()[trait_generics.count()..].iter().cloned());
+        let generics = self.generics_of(def_id);
+        let alias_args = GenericArgs::new_from_iter(args.clone().iter().take(generics.own_params.len()));
+        let trait_args = GenericArgs::new_from_iter(args.as_slice()[generics.own_params.len()..].iter().cloned());
         (
-            TraitRef::new_from_args(self, trait_def_id, GenericArgs::new_from_iter(trait_args)),
+            TraitRef::new_from_args(self, trait_def_id, trait_args),
             alias_args,
         )
     }
@@ -1049,8 +1049,8 @@ impl<'cx> RustIr for DbIr<'cx> {
                 let mut ctx =
                     TyLoweringContext::new(db, &resolver, &type_alias_data.types_map, type_alias.into());
             
-                let trait_args = GenericArgs::for_item(self, trait_.into(), |param, _| Ty::new_param(param.index(), param.name.clone()).into());
-                let item_args = GenericArgs::for_item(self, def_id, |param, _| Ty::new_param(param.index(), param.name.clone()).into());
+                let trait_args = GenericArgs::identity_for_item(self, trait_.into());
+                let item_args = GenericArgs::identity_for_item(self, def_id);
                 let self_ty = Ty::new_projection_from_args(self, def_id, item_args);
             
                 let mut bounds = Vec::new();
@@ -1560,8 +1560,16 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         impl_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> rustc_type_ir::ImplPolarity {
-        // FIXME
-        rustc_type_ir::ImplPolarity::Positive
+        let impl_id = match impl_def_id {
+            GenericDefId::ImplId(id) => id,
+            _ => unreachable!(),
+        };
+        let impl_data = self.db.impl_data(impl_id);
+        if impl_data.is_negative {
+            ImplPolarity::Negative
+        } else {
+            ImplPolarity::Positive
+        }
     }
 
     fn trait_is_auto(

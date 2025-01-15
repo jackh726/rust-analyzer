@@ -1,5 +1,5 @@
 use hir_def::GenericDefId;
-use intern::Interned;
+use intern::{Interned, Symbol};
 use rustc_type_ir::{
     fold::TypeFoldable, inherent::{GenericArg as _, GenericsOf, IntoKind, SliceLike, Ty as _}, relate::{Relate, VarianceDiagInfo}, visit::TypeVisitable, CollectAndApply, ConstVid, FnSig, FnSigTys, GenericArgKind, IntTy, Interner, RustIr, TermKind, TyKind, TyVid, Variance
 };
@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use crate::interner::InternedWrapper;
 
 use super::{
-    generics::{GenericParamDef, Generics}, interned_vec, Const, DbInterner, DbIr, ErrorGuaranteed, Region, Ty, Tys
+    generics::{GenericParamDef, GenericParamDefKind, Generics}, interned_vec, Const, DbInterner, DbIr, EarlyParamRegion, ErrorGuaranteed, ParamConst, Region, Ty, Tys
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -125,38 +125,41 @@ impl GenericArgs {
     /// replace defaults of generic parameters.
     pub fn for_item<F>(ir: DbIr<'_>, def_id: GenericDefId, mut mk_kind: F) -> GenericArgs
     where
-        F: FnMut(&GenericParamDef, &[GenericArg]) -> GenericArg,
+        F: FnMut(&Symbol, u32, GenericParamDefKind, &[GenericArg]) -> GenericArg,
     {
         let defs = ir.generics_of(def_id);
         let count = defs.count();
         let mut args = SmallVec::with_capacity(count);
-        Self::fill_item(&mut args, ir, defs, &mut mk_kind);
+        Self::fill_item(&mut args, ir, defs, 0, &mut mk_kind);
         ir.interner().mk_args(&args)
     }
 
-    pub fn fill_item<F>(
+    fn fill_item<F>(
         args: &mut SmallVec<[GenericArg; 8]>,
         ir: DbIr<'_>,
         defs: Generics,
+        start_idx: u32,
         mk_kind: &mut F,
     ) where
-        F: FnMut(&GenericParamDef, &[GenericArg]) -> GenericArg,
+        F: FnMut(&Symbol, u32, GenericParamDefKind, &[GenericArg]) -> GenericArg,
     {
+        let self_len = defs.own_params.len() as u32;
+        Self::fill_single(args, &defs, start_idx, mk_kind);
         if let Some(def_id) = defs.parent {
             let parent_defs = ir.generics_of(def_id);
-            Self::fill_item(args, ir, parent_defs, mk_kind);
+            Self::fill_item(args, ir, parent_defs, start_idx + self_len, mk_kind);
         }
-        Self::fill_single(args, defs, mk_kind);
     }
 
-    pub fn fill_single<F>(args: &mut SmallVec<[GenericArg; 8]>, defs: Generics, mk_kind: &mut F)
+    fn fill_single<F>(args: &mut SmallVec<[GenericArg; 8]>, defs: &Generics, start_idx: u32, mk_kind: &mut F)
     where
-        F: FnMut(&GenericParamDef, &[GenericArg]) -> GenericArg,
+        F: FnMut(&Symbol, u32, GenericParamDefKind, &[GenericArg]) -> GenericArg,
     {
         args.reserve(defs.own_params.len());
         for param in &defs.own_params {
-            let kind = mk_kind(param, args);
-            //assert_eq!(param.index() as usize, args.len(), "{args:#?}, {defs:#?}");
+            let idx = param.index() + start_idx;
+            assert_eq!(idx as usize, args.len(), "{args:#?}, {defs:#?}");
+            let kind = mk_kind(&param.name, idx, param.kind, args);
             args.push(kind);
         }
     }
@@ -259,6 +262,29 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
     }
 }
 
+pub fn mk_param(index: u32, name: &Symbol, kind: GenericParamDefKind) -> GenericArg {
+    let name = name.clone();
+    match kind {
+        GenericParamDefKind::Lifetime => Region::new_early_param(EarlyParamRegion {
+            index,
+            name,
+        })
+        .into(),
+        GenericParamDefKind::Type => Ty::new_param(index, name).into(),
+        GenericParamDefKind::Const => {
+            Const::new_param(ParamConst { index, name }).into()
+        }
+    }
+}
+
+pub fn error_for_param_kind(kind: GenericParamDefKind, interner: DbInterner) -> GenericArg {
+    match kind {
+        GenericParamDefKind::Lifetime => Region::error().into(),
+        GenericParamDefKind::Type => Ty::new_error(interner, ErrorGuaranteed).into(),
+        GenericParamDefKind::Const => Const::error().into(),
+    }
+}
+
 impl<'db> rustc_type_ir::inherent::IrGenericArgs<DbInterner, DbIr<'db>> for GenericArgs {
     fn rebase_onto(
         self,
@@ -274,7 +300,7 @@ impl<'db> rustc_type_ir::inherent::IrGenericArgs<DbInterner, DbIr<'db>> for Gene
         ir: DbIr<'db>,
         def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
     ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        Self::for_item(ir, def_id.into(), |param, _| ir.interner().mk_param_from_def(param))
+        Self::for_item(ir, def_id.into(), |name, index, kind, _| mk_param(index, name, kind))
     }
 
     fn extend_with_error(
@@ -282,11 +308,11 @@ impl<'db> rustc_type_ir::inherent::IrGenericArgs<DbInterner, DbIr<'db>> for Gene
         def_id: <DbInterner as rustc_type_ir::Interner>::DefId,
         original_args: &[<DbInterner as rustc_type_ir::Interner>::GenericArg],
     ) -> <DbInterner as rustc_type_ir::Interner>::GenericArgs {
-        Self::for_item(ir, def_id.into(), |def, _| {
-            if let Some(arg) = original_args.get(def.index() as usize) {
+        Self::for_item(ir, def_id.into(), |name, index, kind, _| {
+            if let Some(arg) = original_args.get(index as usize) {
                 arg.clone()
             } else {
-                def.to_error(ir.interner())
+                error_for_param_kind(kind, ir.interner())
             }
         })
     }

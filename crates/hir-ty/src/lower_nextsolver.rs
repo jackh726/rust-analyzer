@@ -573,12 +573,8 @@ impl<'a> TyLoweringContext<'a> {
                 self_ty.skip_binder()
             }
             TypeNs::AdtSelfType(adt) => {
-                let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-                let args = GenericArgs::for_item(fake_ir, adt.into(), |param, _| match param.kind {
-                    crate::next_solver::generics::GenericParamDefKind::Type => Ty::new_param(param.index(), param.name.clone()).into(),
-                    crate::next_solver::generics::GenericParamDefKind::Lifetime => Region::new_early_param(EarlyParamRegion { index: param.index(), name: param.name.clone() }).into(),
-                    crate::next_solver::generics::GenericParamDefKind::Const => Const::new_param(ParamConst { index: param.index(), name: param.name.clone() }).into(),
-                });
+                let fake_ir = crate::next_solver::DbIr::new(self.db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);   
+                let args = GenericArgs::identity_for_item(fake_ir, adt.into());
                 Ty::new_adt(DbInterner, AdtDef::new(adt.into(), self.db), args)
             }
 
@@ -1736,11 +1732,7 @@ where
     }
 
     let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let args = GenericArgs::for_item(fake_ir, def, |param, _| match param.kind {
-        crate::next_solver::generics::GenericParamDefKind::Type => Ty::new_param(param.index(), param.name.clone()).into(),
-        crate::next_solver::generics::GenericParamDefKind::Lifetime => Region::new_early_param(EarlyParamRegion { index: param.index(), name: param.name.clone() }).into(),
-        crate::next_solver::generics::GenericParamDefKind::Const => Const::new_param(ParamConst { index: param.index(), name: param.name.clone() }).into(),
-    });
+    let args = GenericArgs::identity_for_item(fake_ir, def);
     if args.len() > 0 {
         let explicitly_unsized_tys = ctx.unsized_types;
         if let Some(implicitly_sized_predicates) =

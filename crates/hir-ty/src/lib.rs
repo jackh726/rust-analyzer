@@ -73,7 +73,7 @@ use mir::{MirEvalError, VTableMap};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use span::Edition;
 use syntax::ast::{make, ConstArg};
-use traits::FnTrait;
+use traits::{next_trait_solve, FnTrait};
 use triomphe::Arc;
 
 use crate::{
@@ -918,7 +918,7 @@ pub fn callable_sig_from_fn_trait(
     let obligation =
         InEnvironment { goal: trait_ref.clone().cast(Interner), environment: trait_env.clone() };
     let canonical = table.canonicalize(obligation.clone());
-    if db.trait_solve(krate, block, canonical.cast(Interner)).is_some() {
+    if !next_trait_solve(db, krate, block, canonical.cast(Interner)).no_solution() {
         table.register_obligation(obligation.goal);
         let return_ty = table.normalize_projection_ty(projection);
         for fn_x in [FnTrait::Fn, FnTrait::FnMut, FnTrait::FnOnce] {
@@ -929,7 +929,7 @@ pub fn callable_sig_from_fn_trait(
                 environment: trait_env.clone(),
             };
             let canonical = table.canonicalize(obligation.clone());
-            if db.trait_solve(krate, block, canonical.cast(Interner)).is_some() {
+            if !next_trait_solve(db, krate, block, canonical.cast(Interner)).no_solution() {
                 let ret_ty = table.resolve_completely(return_ty);
                 let args_ty = table.resolve_completely(args_ty);
                 let params = args_ty
