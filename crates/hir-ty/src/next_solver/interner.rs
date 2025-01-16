@@ -10,6 +10,7 @@ use hir_def::Lookup;
 use intern::{impl_internable, sym, Interned};
 use la_arena::Idx;
 use rustc_abi::{ReprFlags, ReprOptions};
+use rustc_type_ir::elaborate::elaborate;
 use rustc_type_ir::inherent::{AdtDef as _, GenericsOf, IntoKind, IrGenericArgs, SliceLike, Span as _};
 use rustc_type_ir::{AliasTerm, AliasTermKind, AliasTy, EarlyBinder, ImplPolarity, InferTy, ProjectionPredicate, TraitPredicate, TraitRef};
 use smallvec::{smallvec, SmallVec};
@@ -1081,13 +1082,15 @@ impl<'cx> RustIr for DbIr<'cx> {
                         let datas = return_type_impl_traits(self.db, func).expect("impl trait id without impl traits");
                         let datas = (*datas).as_ref().skip_binder();
                         let data = &datas.impl_traits[Idx::from_raw(idx)];
-                        EarlyBinder::bind(data.predicates.clone())
+                        let predicates: Vec<Clause> = elaborate(self, data.predicates.clone()).collect();
+                        EarlyBinder::bind(dbg!(predicates))
                     }
                     OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
                         let datas = type_alias_impl_traits(self.db, alias).expect("impl trait id without impl traits");
                         let datas = (*datas).as_ref().skip_binder();
                         let data = &datas.impl_traits[Idx::from_raw(idx)];
-                        EarlyBinder::bind(data.predicates.clone())
+                        let predicates: Vec<Clause> = elaborate(self, data.predicates.clone()).collect();
+                        EarlyBinder::bind(dbg!(predicates))
                     }
                     OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => {
                         if let Some((future_trait, future_output)) =
