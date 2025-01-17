@@ -1,112 +1,24 @@
 //! Compute the binary representation of a type
 
-use std::fmt;
-
+use adt::layout_of_adt_query;
 use base_db::ra_salsa::Cycle;
-use chalk_ir::{AdtId, FloatTy, IntTy, TyKind, UintTy};
 use hir_def::{
     layout::{
         BackendRepr, FieldsShape, Float, Integer, LayoutCalculator, LayoutCalculatorError,
-        LayoutData, Primitive, ReprOptions, Scalar, Size, StructKind, TargetDataLayout,
+        Primitive, ReprOptions, Scalar, Size, StructKind, TargetDataLayout,
         WrappingRange,
-    }, LocalFieldId, OpaqueTyLoc, StructId
+    }, AdtId, LocalFieldId, OpaqueTyLoc, StructId
 };
-use la_arena::{Idx, RawIdx};
+use la_arena::Idx;
 use rustc_abi::AddressSpace;
 use rustc_index::{IndexSlice, IndexVec};
 
+use rustc_type_ir::{inherent::{IntoKind, SliceLike}, FloatTy, IntTy, TyKind, UintTy};
 use triomphe::Arc;
 
-use crate::{
-    consteval::try_const_usize, db::{HirDatabase, InternedClosure}, infer::normalize, layout::adt::struct_variant_idx, mapping::from_opaque_ty_id, utils::ClosureSubst, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty
-};
+use crate::{consteval_nextsolver::try_const_usize, db::HirDatabase, layout::{adt::struct_variant_idx, Layout, LayoutError, RustcEnumVariantIdx, RustcFieldIdx, Variants}, lower_nextsolver::field_types_query, next_solver::{DbInterner, GenericArgs, Ty}, TraitEnvironment};
 
-pub use self::{
-    adt::{layout_of_adt_query, layout_of_adt_recover},
-    target::target_data_layout_query,
-};
-
-pub(crate) mod adt;
-pub(crate) mod target;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RustcEnumVariantIdx(pub usize);
-
-impl rustc_index::Idx for RustcEnumVariantIdx {
-    fn new(idx: usize) -> Self {
-        RustcEnumVariantIdx(idx)
-    }
-
-    fn index(self) -> usize {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RustcFieldIdx(pub LocalFieldId);
-
-impl RustcFieldIdx {
-    pub fn new(idx: usize) -> Self {
-        RustcFieldIdx(Idx::from_raw(RawIdx::from(idx as u32)))
-    }
-}
-
-impl rustc_index::Idx for RustcFieldIdx {
-    fn new(idx: usize) -> Self {
-        RustcFieldIdx(Idx::from_raw(RawIdx::from(idx as u32)))
-    }
-
-    fn index(self) -> usize {
-        u32::from(self.0.into_raw()) as usize
-    }
-}
-
-pub type Layout = LayoutData<RustcFieldIdx, RustcEnumVariantIdx>;
-pub type TagEncoding = hir_def::layout::TagEncoding<RustcEnumVariantIdx>;
-pub type Variants = hir_def::layout::Variants<RustcFieldIdx, RustcEnumVariantIdx>;
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum LayoutError {
-    // FIXME: Remove more variants once they get added to LayoutCalculatorError
-    BadCalc(LayoutCalculatorError<()>),
-    HasErrorConst,
-    HasErrorType,
-    HasPlaceholder,
-    InvalidSimdType,
-    NotImplemented,
-    RecursiveTypeWithoutIndirection,
-    TargetLayoutNotAvailable,
-    Unknown,
-    UserReprTooSmall,
-}
-
-impl std::error::Error for LayoutError {}
-impl fmt::Display for LayoutError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LayoutError::BadCalc(err) => err.fallback_fmt(f),
-            LayoutError::HasErrorConst => write!(f, "type contains an unevaluatable const"),
-            LayoutError::HasErrorType => write!(f, "type contains an error"),
-            LayoutError::HasPlaceholder => write!(f, "type contains placeholders"),
-            LayoutError::InvalidSimdType => write!(f, "invalid simd type definition"),
-            LayoutError::NotImplemented => write!(f, "not implemented"),
-            LayoutError::RecursiveTypeWithoutIndirection => {
-                write!(f, "recursive type without indirection")
-            }
-            LayoutError::TargetLayoutNotAvailable => write!(f, "target layout not available"),
-            LayoutError::Unknown => write!(f, "unknown"),
-            LayoutError::UserReprTooSmall => {
-                write!(f, "the `#[repr]` hint is too small to hold the discriminants of the enum")
-            }
-        }
-    }
-}
-
-impl<F> From<LayoutCalculatorError<F>> for LayoutError {
-    fn from(err: LayoutCalculatorError<F>) -> Self {
-        LayoutError::BadCalc(err.without_payload())
-    }
-}
+mod adt;
 
 struct LayoutCx<'a> {
     calc: LayoutCalculator<&'a TargetDataLayout>,
@@ -122,11 +34,11 @@ impl<'a> LayoutCx<'a> {
 fn layout_of_simd_ty(
     db: &dyn HirDatabase,
     id: StructId,
-    subst: &Substitution,
+    args: &GenericArgs,
     env: Arc<TraitEnvironment>,
     dl: &TargetDataLayout,
 ) -> Result<Arc<Layout>, LayoutError> {
-    let fields = db.field_types(id.into());
+    let fields = field_types_query(db, id.into());
 
     // Supported SIMD vectors are homogeneous ADTs with at least one field:
     //
@@ -137,7 +49,7 @@ fn layout_of_simd_ty(
     // where T is a primitive scalar (integer/float/pointer).
 
     let f0_ty = match fields.iter().next() {
-        Some(it) => it.1.clone().substitute(Interner, subst),
+        Some(it) => it.1.clone().instantiate(DbInterner, args),
         None => return Err(LayoutError::InvalidSimdType),
     };
 
@@ -148,9 +60,9 @@ fn layout_of_simd_ty(
     // the first field is of array type, or
     //
     // * the homogeneous field type and the number of fields.
-    let (e_ty, e_len, is_array) = if let TyKind::Array(e_ty, _) = f0_ty.kind(Interner) {
+    let (e_ty, e_len, is_array) = if let TyKind::Array(e_ty, _) = f0_ty.clone().kind() {
         // Extract the number of elements from the layout of the array field:
-        let FieldsShape::Array { count, .. } = db.layout_of_ty(f0_ty.clone(), env.clone())?.fields
+        let FieldsShape::Array { count, .. } = layout_of_ty_query(db, f0_ty.clone(), env.clone())?.fields
         else {
             return Err(LayoutError::Unknown);
         };
@@ -162,7 +74,7 @@ fn layout_of_simd_ty(
     };
 
     // Compute the ABI of the element type:
-    let e_ly = db.layout_of_ty(e_ty, env)?;
+    let e_ly = layout_of_ty_query(db, e_ty, env)?;
     let BackendRepr::Scalar(e_abi) = e_ly.backend_repr else {
         return Err(LayoutError::Unknown);
     };
@@ -205,85 +117,86 @@ pub fn layout_of_ty_query(
     };
     let dl = &*target;
     let cx = LayoutCx::new(dl);
-    let ty = normalize(db, trait_env.clone(), ty);
-    let result = match ty.kind(Interner) {
-        TyKind::Adt(AdtId(def), subst) => {
-            if let hir_def::AdtId::StructId(s) = def {
-                let data = db.struct_data(*s);
-                let repr = data.repr.unwrap_or_default();
-                if repr.simd() {
-                    return layout_of_simd_ty(db, *s, subst, trait_env, &target);
+    //let ty = normalize(db, trait_env.clone(), ty);
+    let result = match ty.clone().kind() {
+        TyKind::Adt(def, args) => {
+            match def.0.id {
+                hir_def::AdtId::StructId(s) => {
+                    let data = db.struct_data(s);
+                    let repr = data.repr.unwrap_or_default();
+                    if repr.simd() {
+                        return layout_of_simd_ty(db, s, &args, trait_env, &target);
+                    }
                 }
-            };
-            return db.layout_of_adt(*def, subst.clone(), trait_env);
+                _ => {}
+            }
+            return layout_of_adt_query(db, def.0.id, &args, trait_env);
         }
-        TyKind::Scalar(s) => match s {
-            chalk_ir::Scalar::Bool => Layout::scalar(
-                dl,
-                Scalar::Initialized {
-                    value: Primitive::Int(Integer::I8, false),
-                    valid_range: WrappingRange { start: 0, end: 1 },
+        TyKind::Bool => Layout::scalar(
+            dl,
+            Scalar::Initialized {
+                value: Primitive::Int(Integer::I8, false),
+                valid_range: WrappingRange { start: 0, end: 1 },
+            },
+        ),
+        TyKind::Char => Layout::scalar(
+            dl,
+            Scalar::Initialized {
+                value: Primitive::Int(Integer::I32, false),
+                valid_range: WrappingRange { start: 0, end: 0x10FFFF },
+            },
+        ),
+        TyKind::Int(i) => scalar(
+            dl,
+            Primitive::Int(
+                match i {
+                    IntTy::Isize => dl.ptr_sized_integer(),
+                    IntTy::I8 => Integer::I8,
+                    IntTy::I16 => Integer::I16,
+                    IntTy::I32 => Integer::I32,
+                    IntTy::I64 => Integer::I64,
+                    IntTy::I128 => Integer::I128,
                 },
+                true,
             ),
-            chalk_ir::Scalar::Char => Layout::scalar(
-                dl,
-                Scalar::Initialized {
-                    value: Primitive::Int(Integer::I32, false),
-                    valid_range: WrappingRange { start: 0, end: 0x10FFFF },
+        ),
+        TyKind::Uint(i) => scalar(
+            dl,
+            Primitive::Int(
+                match i {
+                    UintTy::Usize => dl.ptr_sized_integer(),
+                    UintTy::U8 => Integer::I8,
+                    UintTy::U16 => Integer::I16,
+                    UintTy::U32 => Integer::I32,
+                    UintTy::U64 => Integer::I64,
+                    UintTy::U128 => Integer::I128,
                 },
+                false,
             ),
-            chalk_ir::Scalar::Int(i) => scalar(
-                dl,
-                Primitive::Int(
-                    match i {
-                        IntTy::Isize => dl.ptr_sized_integer(),
-                        IntTy::I8 => Integer::I8,
-                        IntTy::I16 => Integer::I16,
-                        IntTy::I32 => Integer::I32,
-                        IntTy::I64 => Integer::I64,
-                        IntTy::I128 => Integer::I128,
-                    },
-                    true,
-                ),
-            ),
-            chalk_ir::Scalar::Uint(i) => scalar(
-                dl,
-                Primitive::Int(
-                    match i {
-                        UintTy::Usize => dl.ptr_sized_integer(),
-                        UintTy::U8 => Integer::I8,
-                        UintTy::U16 => Integer::I16,
-                        UintTy::U32 => Integer::I32,
-                        UintTy::U64 => Integer::I64,
-                        UintTy::U128 => Integer::I128,
-                    },
-                    false,
-                ),
-            ),
-            chalk_ir::Scalar::Float(f) => scalar(
-                dl,
-                Primitive::Float(match f {
-                    FloatTy::F16 => Float::F16,
-                    FloatTy::F32 => Float::F32,
-                    FloatTy::F64 => Float::F64,
-                    FloatTy::F128 => Float::F128,
-                }),
-            ),
-        },
-        TyKind::Tuple(len, tys) => {
-            let kind = if *len == 0 { StructKind::AlwaysSized } else { StructKind::MaybeUnsized };
+        ),
+        TyKind::Float(f) => scalar(
+            dl,
+            Primitive::Float(match f {
+                FloatTy::F16 => Float::F16,
+                FloatTy::F32 => Float::F32,
+                FloatTy::F64 => Float::F64,
+                FloatTy::F128 => Float::F128,
+            }),
+        ),
+        TyKind::Tuple(tys) => {
+            let kind = if tys.len() == 0 { StructKind::AlwaysSized } else { StructKind::MaybeUnsized };
 
             let fields = tys
-                .iter(Interner)
-                .map(|k| db.layout_of_ty(k.assert_ty_ref(Interner).clone(), trait_env.clone()))
+                .iter()
+                .map(|k| layout_of_ty_query(db, k, trait_env.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
             let fields = fields.iter().map(|it| &**it).collect::<Vec<_>>();
             let fields = fields.iter().collect::<IndexVec<_, _>>();
             cx.calc.univariant(&fields, &ReprOptions::default(), kind)?
         }
         TyKind::Array(element, count) => {
-            let count = try_const_usize(db, count).ok_or(LayoutError::HasErrorConst)? as u64;
-            let element = db.layout_of_ty(element.clone(), trait_env)?;
+            let count = try_const_usize(db, &count).ok_or(LayoutError::HasErrorConst)? as u64;
+            let element = layout_of_ty_query(db, element.clone(), trait_env)?;
             let size = element
                 .size
                 .checked_mul(count, dl)
@@ -310,7 +223,7 @@ pub fn layout_of_ty_query(
             }
         }
         TyKind::Slice(element) => {
-            let element = db.layout_of_ty(element.clone(), trait_env)?;
+            let element = layout_of_ty_query(db, element.clone(), trait_env)?;
             Layout {
                 variants: Variants::Single { index: struct_variant_idx() },
                 fields: FieldsShape::Array { stride: element.size, count: 0 },
@@ -333,9 +246,9 @@ pub fn layout_of_ty_query(
             unadjusted_abi_align: dl.i8_align.abi,
         },
         // Potentially-wide pointers.
-        TyKind::Ref(_, _, pointee) | TyKind::Raw(_, pointee) => {
+        TyKind::Ref(_, pointee, _) | TyKind::RawPtr(pointee, _) => {
             let mut data_ptr = scalar_unit(dl, Primitive::Pointer(AddressSpace::DATA));
-            if matches!(ty.kind(Interner), TyKind::Ref(..)) {
+            if matches!(ty.clone().kind(), TyKind::Ref(..)) {
                 data_ptr.valid_range_mut().start = 1;
             }
 
@@ -344,7 +257,8 @@ pub fn layout_of_ty_query(
             //     return Ok(tcx.mk_layout(LayoutS::scalar(cx, data_ptr)));
             // }
 
-            let mut unsized_part = struct_tail_erasing_lifetimes(db, pointee.clone());
+            let unsized_part = struct_tail_erasing_lifetimes(db, pointee.clone());
+            /*
             if let TyKind::AssociatedType(id, subst) = unsized_part.kind(Interner) {
                 unsized_part = TyKind::Alias(chalk_ir::AliasTy::Projection(ProjectionTy {
                     associated_ty_id: *id,
@@ -353,11 +267,12 @@ pub fn layout_of_ty_query(
                 .intern(Interner);
             }
             unsized_part = normalize(db, trait_env, unsized_part);
-            let metadata = match unsized_part.kind(Interner) {
+            */
+            let metadata = match unsized_part.kind() {
                 TyKind::Slice(_) | TyKind::Str => {
                     scalar_unit(dl, Primitive::Int(dl.ptr_sized_integer(), false))
                 }
-                TyKind::Dyn(..) => {
+                TyKind::Dynamic(..) => {
                     let mut vtable = scalar_unit(dl, Primitive::Pointer(AddressSpace::DATA));
                     vtable.valid_range_mut().start = 1;
                     vtable
@@ -373,7 +288,7 @@ pub fn layout_of_ty_query(
         }
         TyKind::FnDef(_, _) => layout_of_unit(&cx)?,
         TyKind::Never => cx.calc.layout_of_never_type(),
-        TyKind::Dyn(_) | TyKind::Foreign(_) => {
+        TyKind::Dynamic(..) | TyKind::Foreign(_) => {
             let mut unit = layout_of_unit(&cx)?;
             match &mut unit.backend_repr {
                 BackendRepr::Memory { sized } => *sized = false,
@@ -381,34 +296,48 @@ pub fn layout_of_ty_query(
             }
             unit
         }
-        TyKind::Function(_) => {
+        TyKind::FnPtr(..) => {
             let mut ptr = scalar_unit(dl, Primitive::Pointer(dl.instruction_address_space));
             ptr.valid_range_mut().start = 1;
             Layout::scalar(dl, ptr)
         }
-        TyKind::OpaqueType(opaque_ty_id, _) => {
-            let impl_trait_id = db.lookup_intern_opaque_ty(from_opaque_ty_id(*opaque_ty_id));
-            match impl_trait_id {
-                OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
-                    let infer = db.infer(func.into());
-                    return db.layout_of_ty(infer.type_of_rpit[Idx::from_raw(idx)].clone(), trait_env);
+        TyKind::Alias(_, ty) => {
+            match ty.def_id {
+                hir_def::GenericDefId::TypeAliasId(_) => todo!(),
+                hir_def::GenericDefId::OpaqueTyId(opaque) => {
+                    let impl_trait_id = db.lookup_intern_opaque_ty(opaque);
+                    match impl_trait_id {
+                        OpaqueTyLoc::ReturnTypeImplTrait(func, idx) => {
+                            let infer = db.infer(func.into());
+                            return db.layout_of_ty(infer.type_of_rpit[Idx::from_raw(idx)].clone(), trait_env);
+                        }
+                        OpaqueTyLoc::TypeAliasImplTrait(..) => {
+                            return Err(LayoutError::NotImplemented);
+                        }
+                        OpaqueTyLoc::AsyncBlockTypeImplTrait(_, _) => {
+                            return Err(LayoutError::NotImplemented)
+                        }
+                    }
                 }
-                OpaqueTyLoc::TypeAliasImplTrait(..) => {
-                    return Err(LayoutError::NotImplemented);
-                }
-                OpaqueTyLoc::AsyncBlockTypeImplTrait(_, _) => {
-                    return Err(LayoutError::NotImplemented)
-                }
+                _ => unreachable!(),
             }
+
         }
-        TyKind::Closure(c, subst) => {
-            let InternedClosure(def, _) = db.lookup_intern_closure((*c).into());
-            let infer = db.infer(def);
-            let (captures, _) = infer.closure_info(c);
+        TyKind::Closure(_, _) => {
+            todo!()
+            /*
+            let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+            let def = match c {
+                hir_def::GenericDefId::ClosureId(id) => id,
+                _ => unreachable!(),
+            };
+            let def = db.lookup_intern_closure_def(def);
+            let infer = db.infer(def.parent);
+            let (captures, _) = infer.closure_info(&def);
             let fields = captures
                 .iter()
                 .map(|it| {
-                    db.layout_of_ty(
+                    layout_of_ty_query(
                         it.ty.clone().substitute(Interner, ClosureSubst(subst).parent_subst()),
                         trait_env.clone(),
                     )
@@ -417,24 +346,17 @@ pub fn layout_of_ty_query(
             let fields = fields.iter().map(|it| &**it).collect::<Vec<_>>();
             let fields = fields.iter().collect::<IndexVec<_, _>>();
             cx.calc.univariant(&fields, &ReprOptions::default(), StructKind::AlwaysSized)?
+            */
         }
         TyKind::Coroutine(_, _) | TyKind::CoroutineWitness(_, _) => {
             return Err(LayoutError::NotImplemented)
         }
-        TyKind::Error => return Err(LayoutError::HasErrorType),
-        TyKind::AssociatedType(id, subst) => {
-            // Try again with `TyKind::Alias` to normalize the associated type.
-            let ty = TyKind::Alias(chalk_ir::AliasTy::Projection(ProjectionTy {
-                associated_ty_id: *id,
-                substitution: subst.clone(),
-            }))
-            .intern(Interner);
-            return db.layout_of_ty(ty, trait_env);
-        }
-        TyKind::Alias(_)
-        | TyKind::Placeholder(_)
-        | TyKind::BoundVar(_)
-        | TyKind::InferenceVar(_, _) => return Err(LayoutError::HasPlaceholder),
+        TyKind::Error(_) => return Err(LayoutError::HasErrorType),
+        TyKind::Placeholder(_)
+        | TyKind::Bound(..)
+        | TyKind::Infer(..)
+        | TyKind::Param(..) => return Err(LayoutError::HasPlaceholder),
+        TyKind::Pat(..) | TyKind::CoroutineClosure(..) => todo!(),
     };
     Ok(Arc::new(result))
 }
@@ -459,13 +381,17 @@ fn layout_of_unit(cx: &LayoutCx<'_>) -> Result<Layout, LayoutError> {
 }
 
 fn struct_tail_erasing_lifetimes(db: &dyn HirDatabase, pointee: Ty) -> Ty {
-    match pointee.kind(Interner) {
-        TyKind::Adt(AdtId(hir_def::AdtId::StructId(i)), subst) => {
-            let data = db.struct_data(*i);
+    match pointee.clone().kind() {
+        TyKind::Adt(def, args) => {
+            let struct_id = match def.0.id {
+                AdtId::StructId(id) => id,
+                _ => return pointee,
+            };
+            let data = db.struct_data(struct_id);
             let mut it = data.variant_data.fields().iter().rev();
             match it.next() {
                 Some((f, _)) => {
-                    let last_field_ty = field_ty(db, (*i).into(), f, subst);
+                    let last_field_ty = field_ty(db, struct_id.into(), f, &args);
                     struct_tail_erasing_lifetimes(db, last_field_ty)
                 }
                 None => pointee,
@@ -479,9 +405,9 @@ fn field_ty(
     db: &dyn HirDatabase,
     def: hir_def::VariantId,
     fd: LocalFieldId,
-    subst: &Substitution,
+    args: &GenericArgs,
 ) -> Ty {
-    db.field_types(def)[fd].clone().substitute(Interner, subst)
+    field_types_query(db, def)[fd].clone().instantiate(DbInterner, args)
 }
 
 fn scalar_unit(dl: &TargetDataLayout, value: Primitive) -> Scalar {
@@ -491,6 +417,3 @@ fn scalar_unit(dl: &TargetDataLayout, value: Primitive) -> Scalar {
 fn scalar(dl: &TargetDataLayout, value: Primitive) -> Layout {
     Layout::scalar(dl, scalar_unit(dl, value))
 }
-
-#[cfg(test)]
-mod tests;

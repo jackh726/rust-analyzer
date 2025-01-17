@@ -151,6 +151,11 @@ impl Generics {
         (parent_len, self_param, type_params, const_params, impl_trait_params, lifetime_params)
     }
 
+    pub(crate) fn type_or_const_param(&self, param: TypeOrConstParamId) -> Option<(usize, &TypeOrConstParamData)> {
+        let idx = self.find_type_or_const_param(param)?;
+        self.params.iter_type_or_consts().nth(idx).map(|p| (idx,p.1))
+    }
+
     pub(crate) fn type_or_const_param_idx(&self, param: TypeOrConstParamId) -> Option<usize> {
         self.find_type_or_const_param(param)
     }

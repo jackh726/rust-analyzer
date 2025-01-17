@@ -40,12 +40,14 @@ mod utils;
 
 pub mod autoderef;
 pub mod consteval;
+pub mod consteval_nextsolver;
 pub mod db;
 pub mod diagnostics;
 pub mod display;
 pub mod dyn_compatibility;
 pub mod lang_items;
 pub mod layout;
+pub mod layout_nextsolver;
 pub mod method_resolution;
 pub mod mir;
 pub mod primitive;

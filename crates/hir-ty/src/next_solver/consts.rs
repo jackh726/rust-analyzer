@@ -64,7 +64,7 @@ pub struct ParamConst {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ValueConst(ConstScalar);
+pub struct ValueConst(pub(crate) ConstScalar);
 
 impl ValueConst {
     pub fn new(scalar: ConstScalar) -> Self {

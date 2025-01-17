@@ -14,12 +14,11 @@ use base_db::CrateId;
 use either::Either;
 use hir_def::{
     expander::Expander, generics::{
-        GenericParamDataRef, TypeParamProvenance, WherePredicate,
-        WherePredicateTypeTarget,
-    }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
+        GenericParamDataRef, TypeOrConstParamData, TypeParamProvenance, WherePredicate, WherePredicateTypeTarget
+    }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, ModPath, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    }, AdtId, AssocItemId, CallableDefId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, VariantId
+    }, AdtId, AssocItemId, CallableDefId, ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, InTypeConstLoc, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, VariantId
 };
 use hir_expand::{name::Name, ExpandResult};
 use intern::sym;
@@ -34,7 +33,7 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
+    all_super_traits, consteval_nextsolver::{intern_const_ref, path_to_const}, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, utils::InTypeConstIdMetadata, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
 };
 
 #[derive(PartialEq, Eq, Debug, Hash)]
@@ -190,15 +189,12 @@ impl<'a> TyLoweringContext<'a> {
 
     pub fn lower_const(&mut self, const_ref: &ConstRef, const_type: Ty) -> Const {
         let Some(owner) = self.owner else { return unknown_const(const_type) };
-        let debruijn = self.in_binders;
         const_or_path_to_const(
             self.db,
             self.resolver,
-            owner,
             const_type,
             const_ref,
             || self.generics(),
-            debruijn,
         )
     }
 
@@ -1393,16 +1389,10 @@ pub(crate) fn lower_mutability(m: hir_def::type_ref::Mutability) -> Mutability {
 pub(crate) fn const_or_path_to_const<'g>(
     db: &dyn HirDatabase,
     resolver: &Resolver,
-    owner: TypeOwnerId,
     expected_ty: Ty,
     value: &ConstRef,
     args: impl FnOnce() -> Option<&'g Generics>,
-    debruijn: DebruijnIndex,
 ) -> Const {
-    // FIXME: needs next-solver types all the way down
-    unknown_const(expected_ty)
-    /*
-    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
     match value {
         ConstRef::Scalar(s) => intern_const_ref(db, s, expected_ty, resolver.krate()),
         ConstRef::Path(n) => {
@@ -1411,12 +1401,9 @@ pub(crate) fn const_or_path_to_const<'g>(
                 db,
                 resolver,
                 &Path::from_known_path_with_no_generic(path),
-                mode,
                 args,
-                debruijn,
                 expected_ty.clone(),
             )
-            .map(|c| c.to_nextsolver(fake_ir))
             .unwrap_or_else(|| unknown_const(expected_ty))
         }
         &ConstRef::Complex(it) => {
@@ -1427,6 +1414,7 @@ pub(crate) fn const_or_path_to_const<'g>(
                 // that are unlikely to be edited.
                 return unknown_const(expected_ty);
             }
+            /*
             let c = db
                 .intern_in_type_const(InTypeConstLoc {
                     id: it,
@@ -1435,14 +1423,15 @@ pub(crate) fn const_or_path_to_const<'g>(
                 })
                 .into();
             Const::new(ConstKind::Value(expected_ty, ValueConst::new(ConstScalar::UnevaluatedConst(c, chalk_ir::Substitution::empty(crate::Interner)))))
+            */
+            todo!()
         }
     }
-    */
 }
 
 
-fn unknown_const(ty: Ty) -> Const {
-    Const::new(ConstKind::Value(ty, ValueConst::new(ConstScalar::Unknown)))
+fn unknown_const(_ty: Ty) -> Const {
+    Const::new(ConstKind::Error(ErrorGuaranteed))
 }
 
 
@@ -1542,6 +1531,22 @@ pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Early
     assert!(!ty.has_escaping_bound_vars());
     REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
     EarlyBinder::bind(ty)
+}
+
+// returns None if def is a type arg
+pub(crate) fn const_param_ty_query(db: &dyn HirDatabase, def: ConstParamId) -> Ty {
+    let parent_data = db.generic_params(def.parent());
+    let data = &parent_data[def.local_id()];
+    let resolver = def.parent().resolver(db.upcast());
+    let mut ctx =
+        TyLoweringContext::new(db, &resolver, &parent_data.types_map, def.parent().into());
+    match data {
+        TypeOrConstParamData::TypeParamData(_) => {
+            never!();
+            Ty::new_error(DbInterner, ErrorGuaranteed)
+        }
+        TypeOrConstParamData::ConstParamData(d) => ctx.lower_ty(d.ty),
+    }
 }
 
 /// Build the type of all specific fields of a struct or enum variant.
