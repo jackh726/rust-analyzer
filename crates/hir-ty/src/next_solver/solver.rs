@@ -107,7 +107,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         cv_info: rustc_type_ir::CanonicalVarInfo<Self::Interner>,
         universe_map: impl Fn(rustc_type_ir::UniverseIndex) -> rustc_type_ir::UniverseIndex,
     ) -> <Self::Interner as rustc_type_ir::Interner>::GenericArg {
-        todo!()
+        self.0.instantiate_canonical_var(Span::dummy(), cv_info, universe_map)
     }
 
     fn insert_hidden_type(

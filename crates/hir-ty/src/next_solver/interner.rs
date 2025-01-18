@@ -1026,7 +1026,30 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        let sized_trait = self
+            .db
+            .lang_item(self.krate, LangItem::Sized);
+        let Some(sized_id) = sized_trait.and_then(|t| t.as_trait()) else {
+            return false; /* No Sized trait, can't require it! */
+        };
+        let sized_def_id = sized_id.into();
+    
+        // Search for a predicate like `Self : Sized` amongst the trait bounds.
+        let predicates = self.predicates_of(def_id);
+        // FIXME: I don't think this worked for generic associated associated types,
+        // because the parent args are *after* the item args
+        elaborate(self, predicates.iter_identity()).any(|pred| match pred.kind().skip_binder() {
+            ClauseKind::Trait(ref trait_pred) => {
+                trait_pred.def_id() == sized_def_id && matches!(trait_pred.self_ty().clone().kind(), TyKind::Param(ParamTy { index: 0, .. }))
+            }
+            ClauseKind::RegionOutlives(_)
+            | ClauseKind::TypeOutlives(_)
+            | ClauseKind::Projection(_)
+            | ClauseKind::ConstArgHasType(_, _)
+            | ClauseKind::WellFormed(_)
+            | ClauseKind::ConstEvaluatable(_)
+            | ClauseKind::HostEffect(..) => false,
+        })
     }
 
     fn item_bounds(
@@ -1268,7 +1291,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             rustc_type_ir::lang_items::TraitSolverLangItem::Unpin => LangItem::Unpin,
             rustc_type_ir::lang_items::TraitSolverLangItem::Unsize => LangItem::Unsize,
         };
-        let target = self.db.lang_item(self.krate, dbg!(lang_item)).unwrap();
+        let target = self.db.lang_item(self.krate, dbg!(lang_item)).expect(&format!("Lang item {lang_item:?} required but not found."));
         match target {
             hir_def::lang_item::LangItemTarget::EnumId(enum_id) => enum_id.into(),
             hir_def::lang_item::LangItemTarget::Function(function_id) => function_id.into(),

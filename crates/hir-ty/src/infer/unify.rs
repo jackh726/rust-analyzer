@@ -19,7 +19,7 @@ use triomphe::Arc;
 use super::{InferOk, InferResult, InferenceContext, TypeError};
 use crate::{
     consteval::unknown_const, db::HirDatabase, fold_generic_args, fold_tys_and_consts,
-    to_chalk_trait_id, traits::FnTrait, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue,
+    to_chalk_trait_id, traits::{next_trait_solve, FnTrait}, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue,
     DebruijnIndex, DomainGoal, GenericArg, GenericArgData, Goal, GoalData, Guidance, InEnvironment,
     InferenceVar, Interner, Lifetime, OpaqueTyId, ParamKind, ProjectionTy, ProjectionTyExt, Scalar,
     Solution, Substitution, TraitEnvironment, TraitRef, Ty, TyBuilder, TyExt, TyKind, VariableKind,
@@ -834,7 +834,7 @@ impl<'a> InferenceTable<'a> {
             environment: trait_env.clone(),
         };
         let canonical = self.canonicalize(obligation.clone());
-        if self.db.trait_solve(krate, self.trait_env.block, canonical.cast(Interner)).is_some() {
+        if !next_trait_solve(self.db, krate, self.trait_env.block, canonical.cast(Interner)).no_solution() {
             self.register_obligation(obligation.goal);
             let return_ty = self.normalize_projection_ty(projection);
             for fn_x in [FnTrait::Fn, FnTrait::FnMut, FnTrait::FnOnce] {
@@ -845,11 +845,7 @@ impl<'a> InferenceTable<'a> {
                     environment: trait_env.clone(),
                 };
                 let canonical = self.canonicalize(obligation.clone());
-                if self
-                    .db
-                    .trait_solve(krate, self.trait_env.block, canonical.cast(Interner))
-                    .is_some()
-                {
+                if !next_trait_solve(self.db, krate, self.trait_env.block, canonical.cast(Interner)).no_solution() {
                     return Some((fn_x, arg_tys, return_ty));
                 }
             }

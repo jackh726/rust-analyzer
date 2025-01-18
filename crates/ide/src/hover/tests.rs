@@ -452,7 +452,7 @@ fn main() {
 fn hover_ranged_closure() {
     check_hover_range(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 struct S;
 struct S2;
 fn main() {
@@ -474,7 +474,7 @@ fn main() {
     );
     check_hover_range_actions(
         r#"
-//- minicore: fn
+//- minicore: fn, sized
 struct S;
 struct S2;
 fn main() {
