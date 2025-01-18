@@ -2368,7 +2368,7 @@ impl Trait for S<Self> {}
 
 fn test() {
     S.foo();
-} //^^^^^^^ {unknown}
+} //^^^^^^^ ()
 "#,
     );
 }
