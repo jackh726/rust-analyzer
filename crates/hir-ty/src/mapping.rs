@@ -78,30 +78,6 @@ impl From<crate::db::InternedCallableDefId> for FnDefId {
     }
 }
 
-impl From<chalk_ir::ClosureId<Interner>> for crate::db::InternedClosureId {
-    fn from(id: chalk_ir::ClosureId<Interner>) -> Self {
-        Self::from_intern_id(id.0)
-    }
-}
-
-impl From<crate::db::InternedClosureId> for chalk_ir::ClosureId<Interner> {
-    fn from(id: crate::db::InternedClosureId) -> Self {
-        chalk_ir::ClosureId(id.as_intern_id())
-    }
-}
-
-impl From<chalk_ir::CoroutineId<Interner>> for crate::db::InternedCoroutineId {
-    fn from(id: chalk_ir::CoroutineId<Interner>) -> Self {
-        Self::from_intern_id(id.0)
-    }
-}
-
-impl From<crate::db::InternedCoroutineId> for chalk_ir::CoroutineId<Interner> {
-    fn from(id: crate::db::InternedCoroutineId) -> Self {
-        chalk_ir::CoroutineId(id.as_intern_id())
-    }
-}
-
 pub fn to_foreign_def_id(id: TypeAliasId) -> ForeignDefId {
     chalk_ir::ForeignDefId(ra_salsa::InternKey::as_intern_id(&id))
 }
@@ -159,5 +135,21 @@ pub fn to_chalk_trait_id(id: TraitId) -> ChalkTraitId {
 }
 
 pub fn from_chalk_trait_id(id: ChalkTraitId) -> TraitId {
+    ra_salsa::InternKey::from_intern_id(id.0)
+}
+
+pub fn to_chalk_closure_id(id: hir_def::ClosureId) -> chalk_ir::ClosureId<Interner> {
+    chalk_ir::ClosureId(ra_salsa::InternKey::as_intern_id(&id))
+}
+
+pub fn from_chalk_closure_id(id: chalk_ir::ClosureId<Interner>) -> hir_def::ClosureId {
+    ra_salsa::InternKey::from_intern_id(id.0)
+}
+
+pub fn to_chalk_coroutine_id(id: hir_def::CoroutineId) -> chalk_ir::CoroutineId<Interner> {
+    chalk_ir::CoroutineId(ra_salsa::InternKey::as_intern_id(&id))
+}
+
+pub fn from_chalk_coroutine_id(id: chalk_ir::CoroutineId<Interner>) -> hir_def::CoroutineId {
     ra_salsa::InternKey::from_intern_id(id.0)
 }

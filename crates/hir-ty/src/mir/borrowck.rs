@@ -5,17 +5,17 @@
 
 use std::iter;
 
-use hir_def::{DefWithBodyId, HasModule};
+use hir_def::{ClosureId, ClosureLoc, DefWithBodyId, HasModule};
 use la_arena::ArenaMap;
 use rustc_hash::FxHashMap;
 use stdx::never;
 use triomphe::Arc;
 
 use crate::{
-    db::{HirDatabase, InternedClosure},
+    db::HirDatabase,
     mir::Operand,
     utils::ClosureSubst,
-    ClosureId, Interner, Substitution, Ty, TyExt, TypeFlags,
+    Interner, Substitution, Ty, TyExt, TypeFlags,
 };
 
 use super::{
@@ -109,7 +109,7 @@ fn make_fetch_closure_field(
     db: &dyn HirDatabase,
 ) -> impl FnOnce(ClosureId, &Substitution, usize) -> Ty + '_ {
     |c: ClosureId, subst: &Substitution, f: usize| {
-        let InternedClosure(def, _) = db.lookup_intern_closure(c.into());
+        let ClosureLoc { parent: def, .. } = db.lookup_intern_closure_def(c);
         let infer = db.infer(def);
         let (captures, _) = infer.closure_info(&c);
         let parent_subst = ClosureSubst(subst).parent_subst();

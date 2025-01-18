@@ -4,12 +4,12 @@ use chalk_ir::{
     cast::Cast, FloatTy, IntTy, Mutability, Scalar, TyVariableKind, TypeOutlives, UintTy,
 };
 use hir_def::{
-    builtin_type::{BuiltinFloat, BuiltinInt, BuiltinType, BuiltinUint}, generics::TypeOrConstParamData, lang_item::LangItem, type_ref::Rawness, DefWithBodyId, FunctionId, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TraitId
+    builtin_type::{BuiltinFloat, BuiltinInt, BuiltinType, BuiltinUint}, generics::TypeOrConstParamData, lang_item::LangItem, type_ref::Rawness, ClosureId, DefWithBodyId, FunctionId, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TraitId
 };
 use la_arena::Idx;
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, mapping::from_opaque_ty_id, to_chalk_trait_id, traits::next_trait_solve, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId, DynTy, FnPointer, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
+    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, mapping::{from_chalk_closure_id, from_opaque_ty_id}, to_chalk_trait_id, traits::next_trait_solve, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, DynTy, FnPointer, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
 };
 
 pub trait TyExt {
@@ -146,7 +146,7 @@ impl TyExt for Ty {
 
     fn as_closure(&self) -> Option<ClosureId> {
         match self.kind(Interner) {
-            TyKind::Closure(id, _) => Some(*id),
+            TyKind::Closure(id, _) => Some(from_chalk_closure_id(*id)),
             _ => None,
         }
     }

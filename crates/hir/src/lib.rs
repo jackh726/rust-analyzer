@@ -43,41 +43,14 @@ use arrayvec::ArrayVec;
 use base_db::{CrateDisplayName, CrateId, CrateOrigin};
 use either::Either;
 use hir_def::{
-    body::{BodyDiagnostic, SyntheticSyntax},
-    data::adt::VariantData,
-    generics::{LifetimeParamData, TypeOrConstParamData, TypeParamProvenance},
-    hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, Pat},
-    item_tree::{AttrOwner, FieldParent, ItemTreeFieldId, ItemTreeNode},
-    lang_item::LangItemTarget,
-    layout::{self, ReprOptions, TargetDataLayout},
-    nameres::{self, diagnostics::DefDiagnostic},
-    path::ImportAlias,
-    per_ns::PerNs,
-    resolver::{HasResolver, Resolver},
-    AssocItemId, AssocItemLoc, AttrDefId, CallableDefId, ConstId, ConstParamId, CrateRootModuleId,
-    DefWithBodyId, EnumId, EnumVariantId, ExternCrateId, FunctionId, GenericDefId, GenericParamId,
-    HasModule, ImplId, InTypeConstId, ItemContainerId, LifetimeParamId, LocalFieldId, Lookup,
-    MacroExpander, ModuleId, StaticId, StructId, TraitAliasId, TraitId, TupleId, TypeAliasId,
-    TypeOrConstParamId, TypeParamId, UnionId,
+    body::{BodyDiagnostic, SyntheticSyntax}, data::adt::VariantData, generics::{LifetimeParamData, TypeOrConstParamData, TypeParamProvenance}, hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, Pat}, item_tree::{AttrOwner, FieldParent, ItemTreeFieldId, ItemTreeNode}, lang_item::LangItemTarget, layout::{self, ReprOptions, TargetDataLayout}, nameres::{self, diagnostics::DefDiagnostic}, path::ImportAlias, per_ns::PerNs, resolver::{HasResolver, Resolver}, AssocItemId, AssocItemLoc, AttrDefId, CallableDefId, ClosureId, ConstId, ConstParamId, CrateRootModuleId, DefWithBodyId, EnumId, EnumVariantId, ExternCrateId, FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, InTypeConstId, ItemContainerId, LifetimeParamId, LocalFieldId, Lookup, MacroExpander, ModuleId, StaticId, StructId, TraitAliasId, TraitId, TupleId, TypeAliasId, TypeOrConstParamId, TypeParamId, UnionId
 };
 use hir_expand::{
     attrs::collect_attrs, proc_macro::ProcMacroKind, AstId, MacroCallKind, RenderedExpandError,
     ValueResult,
 };
 use hir_ty::{
-    all_super_traits, autoderef, check_orphan_rules,
-    consteval::{try_const_usize, unknown_const_as_generic, ConstExt},
-    diagnostics::BodyValidationDiagnostic,
-    error_lifetime, known_const_to_ast,
-    layout::{Layout as TyLayout, RustcEnumVariantIdx, RustcFieldIdx, TagEncoding},
-    method_resolution,
-    mir::{interpret_mir, MutBorrowKind},
-    primitive::UintTy,
-    traits::{next_trait_solve, FnTrait},
-    AliasTy, CallableSig, Canonical, CanonicalVarKinds, Cast, ClosureId, GenericArg,
-    GenericArgData, Interner, ParamKind, QuantifiedWhereClause, Scalar, Substitution,
-    TraitEnvironment, TraitRefExt, Ty, TyBuilder, TyDefId, TyExt, TyKind, ValueTyDefId,
-    WhereClause,
+    all_super_traits, autoderef, check_orphan_rules, consteval::{try_const_usize, unknown_const_as_generic, ConstExt}, diagnostics::BodyValidationDiagnostic, error_lifetime, from_chalk_closure_id, known_const_to_ast, layout::{Layout as TyLayout, RustcEnumVariantIdx, RustcFieldIdx, TagEncoding}, method_resolution, mir::{interpret_mir, MutBorrowKind}, primitive::UintTy, to_chalk_closure_id, traits::{next_trait_solve, FnTrait}, AliasTy, CallableSig, Canonical, CanonicalVarKinds, Cast, GenericArg, GenericArgData, Interner, ParamKind, QuantifiedWhereClause, Scalar, Substitution, TraitEnvironment, TraitRefExt, Ty, TyBuilder, TyDefId, TyExt, TyKind, ValueTyDefId, WhereClause
 };
 use itertools::Itertools;
 use nameres::diagnostics::DefDiagnosticKind;
@@ -2386,7 +2359,7 @@ impl Param {
     pub fn as_local(&self, db: &dyn HirDatabase) -> Option<Local> {
         let parent = match self.func {
             Callee::Def(CallableDefId::FunctionId(it)) => DefWithBodyId::FunctionId(it),
-            Callee::Closure(closure, _) => db.lookup_intern_closure(closure.into()).0,
+            Callee::Closure(closure, _) => db.lookup_intern_closure_def(closure).parent,
             _ => return None,
         };
         let body = db.body(parent);
@@ -4155,7 +4128,7 @@ impl From<Closure> for ClosureId {
 
 impl Closure {
     fn as_ty(self) -> Ty {
-        TyKind::Closure(self.id, self.subst).intern(Interner)
+        TyKind::Closure(to_chalk_closure_id(self.id), self.subst).intern(Interner)
     }
 
     pub fn display_with_id(&self, db: &dyn HirDatabase, edition: Edition) -> String {
@@ -4175,7 +4148,7 @@ impl Closure {
     }
 
     pub fn captured_items(&self, db: &dyn HirDatabase) -> Vec<ClosureCapture> {
-        let owner = db.lookup_intern_closure((self.id).into()).0;
+        let owner = db.lookup_intern_closure_def(self.id).parent;
         let infer = &db.infer(owner);
         let info = infer.closure_info(&self.id);
         info.0
@@ -4186,7 +4159,7 @@ impl Closure {
     }
 
     pub fn capture_types(&self, db: &dyn HirDatabase) -> Vec<Type> {
-        let owner = db.lookup_intern_closure((self.id).into()).0;
+        let owner = db.lookup_intern_closure_def(self.id).parent;
         let infer = &db.infer(owner);
         let (captures, _) = infer.closure_info(&self.id);
         captures
@@ -4199,7 +4172,7 @@ impl Closure {
     }
 
     pub fn fn_trait(&self, db: &dyn HirDatabase) -> FnTrait {
-        let owner = db.lookup_intern_closure((self.id).into()).0;
+        let owner = db.lookup_intern_closure_def(self.id).parent;
         let infer = &db.infer(owner);
         let info = infer.closure_info(&self.id);
         info.1
@@ -4666,7 +4639,7 @@ impl Type {
 
     pub fn as_callable(&self, db: &dyn HirDatabase) -> Option<Callable> {
         let callee = match self.ty.kind(Interner) {
-            TyKind::Closure(id, subst) => Callee::Closure(*id, subst.clone()),
+            TyKind::Closure(id, subst) => Callee::Closure(from_chalk_closure_id(*id), subst.clone()),
             TyKind::Function(_) => Callee::FnPtr,
             TyKind::FnDef(..) => Callee::Def(self.ty.callable_def(db)?),
             kind => {
@@ -4681,7 +4654,7 @@ impl Type {
                     return Some(Callable {
                         ty: self.clone(),
                         sig,
-                        callee: Callee::Closure(*closure, subst.clone()),
+                        callee: Callee::Closure(from_chalk_closure_id(*closure), subst.clone()),
                         is_bound_method: false,
                     });
                 }
@@ -4705,7 +4678,7 @@ impl Type {
 
     pub fn as_closure(&self) -> Option<Closure> {
         match self.ty.kind(Interner) {
-            TyKind::Closure(id, subst) => Some(Closure { id: *id, subst: subst.clone() }),
+            TyKind::Closure(id, subst) => Some(Closure { id: from_chalk_closure_id(*id), subst: subst.clone() }),
             _ => None,
         }
     }

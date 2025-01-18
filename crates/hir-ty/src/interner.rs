@@ -2,7 +2,7 @@
 //! representation of the various objects Chalk deals with (types, goals etc.).
 
 use crate::{
-    chalk_db, tls, AliasTy, CanonicalVarKind, CanonicalVarKinds, ClosureId, Const, ConstData,
+    chalk_db, tls, AliasTy, CanonicalVarKind, CanonicalVarKinds, Const, ConstData,
     ConstScalar, FnAbi, FnDefId, GenericArg, GenericArgData, Goal, GoalData, InEnvironment,
     Lifetime, LifetimeData, OpaqueTy, OpaqueTyId, ProgramClause, ProjectionTy,
     QuantifiedWhereClause, QuantifiedWhereClauses, Substitution, Ty, TyKind, VariableKind,
@@ -113,7 +113,7 @@ impl chalk_ir::interner::Interner for Interner {
     }
 
     fn debug_closure_id(
-        _fn_def_id: ClosureId,
+        _fn_def_id: chalk_ir::ClosureId<Interner>,
         _fmt: &mut fmt::Formatter<'_>,
     ) -> Option<fmt::Result> {
         None

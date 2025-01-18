@@ -14,16 +14,16 @@ use chalk_solve::rust_ir::{self, OpaqueTyDatumBound, WellKnownTrait};
 
 use base_db::CrateId;
 use hir_def::{
-    data::adt::StructFlags, hir::Movability, lang_item::{LangItem, LangItemTarget}, AssocItemId, BlockId, CallableDefId, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TypeAliasId, VariantId
+    data::adt::StructFlags, hir::Movability, lang_item::{LangItem, LangItemTarget}, AssocItemId, BlockId, CallableDefId, CoroutineLoc, GenericDefId, HasModule, ItemContainerId, Lookup, OpaqueTyLoc, TypeAliasId, VariantId
 };
 
 use crate::{
-    db::{HirDatabase, InternedCoroutine},
+    db::HirDatabase,
     display::HirDisplay,
     from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id,
     generics::generics,
     make_binders, make_single_type_binders,
-    mapping::{from_chalk, from_opaque_ty_id, ToChalk, TypeAliasAsValue},
+    mapping::{from_chalk, from_chalk_coroutine_id, from_opaque_ty_id, ToChalk, TypeAliasAsValue},
     method_resolution::{TraitImpls, TyFingerprint, ALL_FLOAT_FPS, ALL_INT_FPS},
     to_assoc_type_id, to_chalk_trait_id,
     traits::ChalkContext,
@@ -457,7 +457,8 @@ impl chalk_solve::RustIrDatabase<Interner> for ChalkContext<'_> {
         &self,
         id: chalk_ir::CoroutineId<Interner>,
     ) -> Arc<chalk_solve::rust_ir::CoroutineDatum<Interner>> {
-        let InternedCoroutine(parent, expr) = self.db.lookup_intern_coroutine(id.into());
+        let id = from_chalk_coroutine_id(id);
+        let CoroutineLoc { parent, root: expr } = self.db.lookup_intern_coroutine_def(id);
 
         // We fill substitution with unknown type, because we only need to know whether the generic
         // params are types or consts to build `Binders` and those being filled up are for
@@ -502,7 +503,8 @@ impl chalk_solve::RustIrDatabase<Interner> for ChalkContext<'_> {
         let inner_types =
             rust_ir::CoroutineWitnessExistential { types: wrap_empty_binders(vec![]) };
 
-        let InternedCoroutine(parent, _) = self.db.lookup_intern_coroutine(id.into());
+        let id = from_chalk_coroutine_id(id);
+        let CoroutineLoc { parent, .. } = self.db.lookup_intern_coroutine_def(id);
         // See the comment in `coroutine_datum()` for unknown types.
         let subst = TyBuilder::subst_for_coroutine(self.db, parent).fill_with_unknown().build();
         let it = subst

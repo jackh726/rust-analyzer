@@ -116,8 +116,6 @@ impl RootDatabase {
             hir::db::InherentImplsInBlockQuery
             hir::db::InherentImplsInCrateQuery
             hir::db::InternCallableDefQuery
-            hir::db::InternClosureQuery
-            hir::db::InternCoroutineQuery
             hir::db::InternLifetimeParamIdQuery
             hir::db::InternTypeOrConstParamIdQuery
             hir::db::LayoutOfAdtQuery
@@ -220,6 +218,7 @@ impl RootDatabase {
             hir::db::InternMacroRulesQuery
             hir::db::InternOpaqueTyQuery
             hir::db::InternClosureDefQuery
+            hir::db::InternCoroutineDefQuery
 
             // ExpandDatabase
             hir::db::AstIdMapQuery

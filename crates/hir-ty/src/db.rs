@@ -5,13 +5,11 @@ use std::sync;
 
 use base_db::{
     impl_intern_key,
-    ra_salsa::{self, InternValueTrivial},
+    ra_salsa,
     CrateId, Upcast,
 };
 use hir_def::{
-    db::DefDatabase, hir::ExprId, layout::TargetDataLayout, AdtId, BlockId, CallableDefId,
-    ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GeneralConstId, GenericDefId, ImplId,
-    LifetimeParamId, LocalFieldId, StaticId, TraitId, TypeAliasId, TypeOrConstParamId, VariantId,
+    db::DefDatabase, layout::TargetDataLayout, AdtId, BlockId, CallableDefId, ClosureId, ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GeneralConstId, GenericDefId, ImplId, LifetimeParamId, LocalFieldId, StaticId, TraitId, TypeAliasId, TypeOrConstParamId, VariantId
 };
 use la_arena::ArenaMap;
 use smallvec::SmallVec;
@@ -25,7 +23,7 @@ use crate::{
     lower::{GenericDefaults, GenericPredicates},
     method_resolution::{InherentImpls, TraitImpls, TyFingerprint},
     mir::{BorrowckResult, MirBody, MirLowerError},
-    Binders, ClosureId, Const, FnDefId, ImplTraits, InferenceResult, Interner,
+    Binders, Const, FnDefId, ImplTraits, InferenceResult, Interner,
     PolyFnSig, Substitution, TraitEnvironment, TraitRef, Ty, TyDefId, ValueTyDefId,
 };
 use hir_expand::name::Name;
@@ -204,10 +202,6 @@ pub trait HirDatabase: DefDatabase + Upcast<dyn DefDatabase> {
     ) -> InternedTypeOrConstParamId;
     #[ra_salsa::interned]
     fn intern_lifetime_param_id(&self, param_id: LifetimeParamId) -> InternedLifetimeParamId;
-    #[ra_salsa::interned]
-    fn intern_closure(&self, id: InternedClosure) -> InternedClosureId;
-    #[ra_salsa::interned]
-    fn intern_coroutine(&self, id: InternedCoroutine) -> InternedCoroutineId;
 
     #[ra_salsa::invoke(chalk_db::associated_ty_data_query)]
     fn associated_ty_data(
@@ -293,23 +287,6 @@ impl_intern_key!(InternedLifetimeParamId);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InternedConstParamId(ra_salsa::InternId);
 impl_intern_key!(InternedConstParamId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InternedClosureId(ra_salsa::InternId);
-impl_intern_key!(InternedClosureId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InternedClosure(pub DefWithBodyId, pub ExprId);
-
-impl InternValueTrivial for InternedClosure {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InternedCoroutineId(ra_salsa::InternId);
-impl_intern_key!(InternedCoroutineId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InternedCoroutine(pub DefWithBodyId, pub ExprId);
-impl InternValueTrivial for InternedCoroutine {}
 
 /// This exists just for Chalk, because Chalk just has a single `FnDefId` where
 /// we have different IDs for struct and enum variant constructors.

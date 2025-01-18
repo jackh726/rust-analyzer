@@ -6,19 +6,18 @@ use std::cmp;
 use chalk_ir::TyKind;
 use hir_def::{
     builtin_type::{BuiltinInt, BuiltinUint},
-    resolver::HasResolver,
+    resolver::HasResolver, ClosureLoc,
 };
 use hir_expand::name::Name;
 use intern::{sym, Symbol};
 
 use crate::{
-    error_lifetime,
-    mir::eval::{
+    error_lifetime, mapping::from_chalk_closure_id, mir::eval::{
         pad16, Address, AdtId, Arc, BuiltinType, Evaluator, FunctionId, HasModule, HirDisplay,
-        InternedClosure, Interner, Interval, IntervalAndTy, IntervalOrOwned, ItemContainerId,
+        Interner, Interval, IntervalAndTy, IntervalOrOwned, ItemContainerId,
         LangItem, Layout, Locals, Lookup, MirEvalError, MirSpan, Mutability, Result, Substitution,
         Ty, TyBuilder, TyExt,
-    },
+    }
 };
 
 mod simd;
@@ -187,9 +186,10 @@ impl Evaluator<'_> {
                     not_supported!("wrong arg count for clone");
                 };
                 let addr = Address::from_bytes(arg.get(self)?)?;
-                let InternedClosure(closure_owner, _) = self.db.lookup_intern_closure((*id).into());
+                let id = from_chalk_closure_id(*id);
+                let ClosureLoc { parent: closure_owner, .. } = self.db.lookup_intern_closure_def(id);
                 let infer = self.db.infer(closure_owner);
-                let (captures, _) = infer.closure_info(id);
+                let (captures, _) = infer.closure_info(&id);
                 let layout = self.layout(&self_ty)?;
                 let ty_iter = captures.iter().map(|c| c.ty(subst));
                 self.exec_clone_for_fields(ty_iter, layout, addr, def, locals, destination, span)?;

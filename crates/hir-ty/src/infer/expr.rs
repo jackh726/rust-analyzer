@@ -11,7 +11,7 @@ use hir_def::{
     hir::{
         ArithOp, Array, AsmOperand, AsmOptions, BinaryOp, ClosureKind, Expr, ExprId, ExprOrPatId,
         LabelId, Literal, Pat, PatId, Statement, UnaryOp,
-    }, lang_item::{LangItem, LangItemTarget}, path::{GenericArg, GenericArgs, Path}, resolver::ValueNs, BlockId, FieldId, GenericDefId, GenericParamId, ItemContainerId, Lookup, OpaqueTyLoc, TupleFieldId, TupleId
+    }, lang_item::{LangItem, LangItemTarget}, path::{GenericArg, GenericArgs, Path}, resolver::ValueNs, BlockId, ClosureLoc, CoroutineLoc, FieldId, GenericDefId, GenericParamId, ItemContainerId, Lookup, OpaqueTyLoc, TupleFieldId, TupleId
 };
 use hir_expand::name::Name;
 use intern::sym;
@@ -21,7 +21,6 @@ use syntax::ast::RangeOp;
 use crate::{
     autoderef::{builtin_deref, deref_by_trait, Autoderef},
     consteval,
-    db::{InternedClosure, InternedCoroutine},
     error_lifetime,
     generics::{generics, Generics},
     infer::{
@@ -34,7 +33,7 @@ use crate::{
     lower::{
         const_or_path_to_chalk, generic_arg_to_chalk, lower_to_chalk_mutability, ParamLoweringMode,
     },
-    mapping::{from_chalk, to_opaque_ty_id, ToChalk},
+    mapping::{from_chalk, from_chalk_closure_id, to_chalk_closure_id, to_chalk_coroutine_id, to_opaque_ty_id, ToChalk},
     method_resolution::{self, VisibleFromModule},
     primitive::{self, UintTy},
     static_lifetime, to_chalk_trait_id,
@@ -428,17 +427,16 @@ impl InferenceContext<'_> {
 
                         let coroutine_id = self
                             .db
-                            .intern_coroutine(InternedCoroutine(self.owner, tgt_expr))
-                            .into();
-                        let coroutine_ty = TyKind::Coroutine(coroutine_id, subst).intern(Interner);
+                            .intern_coroutine_def(CoroutineLoc { parent: self.owner, root: tgt_expr });
+                        let coroutine_ty = TyKind::Coroutine(to_chalk_coroutine_id(coroutine_id), subst).intern(Interner);
 
                         (None, coroutine_ty, Some((resume_ty, yield_ty)))
                     }
                     ClosureKind::Closure | ClosureKind::Async => {
                         let closure_id =
-                            self.db.intern_closure(InternedClosure(self.owner, tgt_expr)).into();
+                            self.db.intern_closure_def(ClosureLoc { parent: self.owner, root: tgt_expr }).into();
                         let closure_ty = TyKind::Closure(
-                            closure_id,
+                            to_chalk_closure_id(closure_id),
                             TyBuilder::subst_for_closure(self.db, self.owner, sig_ty.clone()),
                         )
                         .intern(Interner);
@@ -504,9 +502,9 @@ impl InferenceContext<'_> {
                             self.table.resolve_completely(callee_ty.clone()).kind(Interner)
                         {
                             if let Some(par) = self.current_closure {
-                                self.closure_dependencies.entry(par).or_default().push(*c);
+                                self.closure_dependencies.entry(par).or_default().push(from_chalk_closure_id(*c));
                             }
-                            self.deferred_closures.entry(*c).or_default().push((
+                            self.deferred_closures.entry(from_chalk_closure_id(*c)).or_default().push((
                                 derefed_callee.clone(),
                                 callee_ty.clone(),
                                 params.clone(),

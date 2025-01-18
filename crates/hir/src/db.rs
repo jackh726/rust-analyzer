@@ -20,7 +20,8 @@ pub use hir_def::db::{
     InternUnionQuery, InternUseQuery, LangItemQuery, Macro2DataQuery, MacroDefQuery,
     MacroRulesDataQuery, NotableTraitsInDepsQuery, ProcMacroDataQuery, StaticDataQuery,
     StructDataWithDiagnosticsQuery, TraitAliasDataQuery, TraitDataWithDiagnosticsQuery,
-    TypeAliasDataQuery, UnionDataWithDiagnosticsQuery,InternOpaqueTyQuery,InternClosureDefQuery
+    TypeAliasDataQuery, UnionDataWithDiagnosticsQuery, InternOpaqueTyQuery, InternClosureDefQuery,
+    InternCoroutineDefQuery,
 };
 pub use hir_expand::db::{
     AstIdMapQuery, DeclMacroExpanderQuery, ExpandDatabase, ExpandDatabaseStorage,
@@ -36,7 +37,7 @@ pub use hir_ty::db::{
     GenericPredicatesQuery, GenericPredicatesWithoutParentQuery, HirDatabase, HirDatabaseStorage,
     ImplDatumQuery, ImplSelfTyQuery, ImplTraitQuery, IncoherentInherentImplCratesQuery, InferQuery,
     InherentImplsInBlockQuery, InherentImplsInCrateQuery, InternCallableDefQuery,
-    InternClosureQuery, InternCoroutineQuery, InternLifetimeParamIdQuery,
+    InternLifetimeParamIdQuery,
     InternTypeOrConstParamIdQuery, LayoutOfAdtQuery, LayoutOfTyQuery, LookupImplMethodQuery,
     MirBodyForClosureQuery, MirBodyQuery, MonomorphizedMirBodyForClosureQuery,
     MonomorphizedMirBodyQuery, ProgramClausesForChalkEnvQuery, ReturnTypeImplTraitsQuery,

@@ -8,17 +8,15 @@ use crate::{
     display::HirDisplay,
     infer::{normalize, PointerCast},
     lang_items::is_box,
-    mapping::ToChalk,
-    CallableDefId, ClosureId, Const, ConstScalar, InferenceResult, Interner, MemoryMap,
+    mapping::{from_chalk_closure_id, ToChalk},
+    CallableDefId, Const, ConstScalar, InferenceResult, Interner, MemoryMap,
     Substitution, TraitEnvironment, Ty, TyKind,
 };
 use base_db::CrateId;
 use chalk_ir::Mutability;
 use either::Either;
 use hir_def::{
-    body::Body,
-    hir::{BindingAnnotation, BindingId, Expr, ExprId, Ordering, PatId},
-    DefWithBodyId, FieldId, StaticId, TupleFieldId, UnionId, VariantId,
+    body::Body, hir::{BindingAnnotation, BindingId, Expr, ExprId, Ordering, PatId}, ClosureId, DefWithBodyId, FieldId, StaticId, TupleFieldId, UnionId, VariantId
 };
 use la_arena::{Arena, ArenaMap, Idx, RawIdx};
 
@@ -191,7 +189,7 @@ impl<V, T> ProjectionElem<V, T> {
                 }
             },
             ProjectionElem::ClosureField(f) => match &base.kind(Interner) {
-                TyKind::Closure(id, subst) => closure_field(*id, subst, *f),
+                TyKind::Closure(id, subst) => closure_field(from_chalk_closure_id(*id), subst, *f),
                 _ => {
                     never!("Only closure has closure field");
                     TyKind::Error.intern(Interner)

@@ -385,6 +385,17 @@ pub struct ClosureLoc {
     pub root: hir::ExprId,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct CoroutineId(ra_salsa::InternId);
+impl_intern!(CoroutineId, CoroutineLoc, intern_coroutine_def, lookup_intern_coroutine_def);
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct CoroutineLoc {
+    /// The parent of the closure.
+    pub parent: DefWithBodyId,
+    /// The root expression of this closure in the parent body.
+    pub root: hir::ExprId,
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct OpaqueTyId(ra_salsa::InternId);

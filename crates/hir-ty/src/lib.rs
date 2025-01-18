@@ -100,7 +100,7 @@ pub use lower::{
 pub use mapping::{
     from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx,
     lt_from_placeholder_idx, lt_to_placeholder_idx, to_assoc_type_id, to_chalk_trait_id,
-    to_foreign_def_id, to_placeholder_idx,
+    to_foreign_def_id, to_placeholder_idx, from_chalk_closure_id, from_chalk_coroutine_id, to_chalk_closure_id, to_chalk_coroutine_id,
 };
 pub use method_resolution::check_orphan_rules;
 pub use traits::TraitEnvironment;
@@ -109,8 +109,6 @@ pub use utils::{all_super_traits, is_fn_unsafe_to_call};
 pub use chalk_ir::cast::Cast;
 pub use chalk_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 pub use chalk_ir::{AdtId, BoundVar, DebruijnIndex, Mutability, Safety, Scalar, TyVariableKind};
-
-pub type ClosureId = chalk_ir::ClosureId<Interner>;
 
 pub(crate) type ForeignDefId = chalk_ir::ForeignDefId<Interner>;
 pub(crate) type AssocTypeId = chalk_ir::AssocTypeId<Interner>;

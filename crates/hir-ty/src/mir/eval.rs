@@ -6,14 +6,7 @@ use base_db::CrateId;
 use chalk_ir::{cast::Cast, Mutability};
 use either::Either;
 use hir_def::{
-    body::HygieneId,
-    builtin_type::BuiltinType,
-    data::adt::{StructFlags, VariantData},
-    lang_item::LangItem,
-    layout::{TagEncoding, Variants},
-    resolver::{HasResolver, TypeNs, ValueNs},
-    AdtId, DefWithBodyId, EnumVariantId, FunctionId, HasModule, ItemContainerId, Lookup, StaticId,
-    VariantId,
+    body::HygieneId, builtin_type::BuiltinType, data::adt::{StructFlags, VariantData}, lang_item::LangItem, layout::{TagEncoding, Variants}, resolver::{HasResolver, TypeNs, ValueNs}, AdtId, ClosureId, ClosureLoc, DefWithBodyId, EnumVariantId, FunctionId, HasModule, ItemContainerId, Lookup, StaticId, VariantId
 };
 use hir_expand::{mod_path::path, name::Name, HirFileIdExt, InFile};
 use intern::sym;
@@ -31,16 +24,16 @@ use triomphe::Arc;
 
 use crate::{
     consteval::{intern_const_scalar, try_const_usize, ConstEvalError},
-    db::{HirDatabase, InternedClosure},
+    db::HirDatabase,
     display::{ClosureStyle, HirDisplay},
     infer::PointerCast,
     layout::{Layout, LayoutError, RustcEnumVariantIdx},
-    mapping::from_chalk,
+    mapping::{from_chalk, from_chalk_closure_id},
     method_resolution::{is_dyn_method, lookup_impl_const},
     static_lifetime,
     traits::FnTrait,
     utils::{detect_variant_from_bytes, ClosureSubst},
-    CallableDefId, ClosureId, ComplexMemoryMap, Const, ConstData, ConstScalar, FnDefId, Interner,
+    CallableDefId, ComplexMemoryMap, Const, ConstData, ConstScalar, FnDefId, Interner,
     MemoryMap, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt, TyKind,
 };
 
@@ -705,7 +698,7 @@ impl Evaluator<'_> {
             ty.clone(),
             self.db,
             |c, subst, f| {
-                let InternedClosure(def, _) = self.db.lookup_intern_closure(c.into());
+                let ClosureLoc { parent: def, .. } = self.db.lookup_intern_closure_def(c);
                 let infer = self.db.infer(def);
                 let (captures, _) = infer.closure_info(&c);
                 let parent_subst = ClosureSubst(subst).parent_subst();
@@ -2429,7 +2422,7 @@ impl Evaluator<'_> {
                 self.exec_fn_def(*def, generic_args, destination, args, locals, target_bb, span)
             }
             TyKind::Closure(id, subst) => {
-                self.exec_closure(*id, bytes.slice(0..0), subst, destination, args, locals, span)
+                self.exec_closure(from_chalk_closure_id(*id), bytes.slice(0..0), subst, destination, args, locals, span)
             }
             _ => Err(MirEvalError::InternalError("function pointer to non function".into())),
         }
@@ -2705,7 +2698,7 @@ impl Evaluator<'_> {
                 self.exec_fn_pointer(func_data, destination, &args[1..], locals, target_bb, span)
             }
             TyKind::Closure(closure, subst) => self.exec_closure(
-                *closure,
+                from_chalk_closure_id(*closure),
                 func_data,
                 &Substitution::from_iter(Interner, ClosureSubst(subst).parent_subst()),
                 destination,

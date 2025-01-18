@@ -1,13 +1,12 @@
-use base_db::ra_salsa::InternKey;
 use expect_test::{expect, Expect};
-use hir_def::db::DefDatabase;
+use hir_def::db::{DefDatabase, InternDatabase};
 use hir_expand::files::InFileWrapper;
 use itertools::Itertools;
 use span::{HirFileId, TextRange};
 use syntax::{AstNode, AstPtr};
 use test_fixture::WithFixture;
 
-use crate::db::{HirDatabase, InternedClosureId};
+use crate::db::HirDatabase;
 use crate::display::HirDisplay;
 use crate::mir::MirSpan;
 use crate::test_db::TestDB;
@@ -28,10 +27,10 @@ fn check_closure_captures(ra_fixture: &str, expect: Expect) {
         let infer = db.infer(def);
         let db = &db;
         captures_info.extend(infer.closure_info.iter().flat_map(|(closure_id, (captures, _))| {
-            let closure = db.lookup_intern_closure(InternedClosureId::from_intern_id(closure_id.0));
-            let (_, source_map) = db.body_with_source_map(closure.0);
+            let closure = db.lookup_intern_closure_def(*closure_id);
+            let (_, source_map) = db.body_with_source_map(closure.parent);
             let closure_text_range = source_map
-                .expr_syntax(closure.1)
+                .expr_syntax(closure.root)
                 .expect("failed to map closure to SyntaxNode")
                 .value
                 .text_range();
@@ -45,7 +44,7 @@ fn check_closure_captures(ra_fixture: &str, expect: Expect) {
                 }
 
                 // FIXME: Deduplicate this with hir::Local::sources().
-                let (body, source_map) = db.body_with_source_map(closure.0);
+                let (body, source_map) = db.body_with_source_map(closure.parent);
                 let local_text_range = match body.self_param.zip(source_map.self_param_syntax()) {
                     Some((param, source)) if param == capture.local() => {
                         format!("{:?}", text_range(db, source))
@@ -59,7 +58,7 @@ fn check_closure_captures(ra_fixture: &str, expect: Expect) {
                         .map(|it| format!("{it:?}"))
                         .join(", "),
                 };
-                let place = capture.display_place(closure.0, db);
+                let place = capture.display_place(closure.parent, db);
                 let capture_ty = capture.ty.skip_binders().display_test(db).to_string();
                 let spans = capture
                     .spans()

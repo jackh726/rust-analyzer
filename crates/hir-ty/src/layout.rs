@@ -9,7 +9,7 @@ use hir_def::{
         BackendRepr, FieldsShape, Float, Integer, LayoutCalculator, LayoutCalculatorError,
         LayoutData, Primitive, ReprOptions, Scalar, Size, StructKind, TargetDataLayout,
         WrappingRange,
-    }, LocalFieldId, OpaqueTyLoc, StructId
+    }, ClosureLoc, LocalFieldId, OpaqueTyLoc, StructId
 };
 use la_arena::{Idx, RawIdx};
 use rustc_abi::AddressSpace;
@@ -18,7 +18,7 @@ use rustc_index::{IndexSlice, IndexVec};
 use triomphe::Arc;
 
 use crate::{
-    consteval::try_const_usize, db::{HirDatabase, InternedClosure}, infer::normalize, layout::adt::struct_variant_idx, mapping::from_opaque_ty_id, utils::ClosureSubst, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty
+    consteval::try_const_usize, db::HirDatabase, infer::normalize, layout::adt::struct_variant_idx, mapping::{from_chalk_closure_id, from_opaque_ty_id}, utils::ClosureSubst, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty
 };
 
 pub use self::{
@@ -402,9 +402,10 @@ pub fn layout_of_ty_query(
             }
         }
         TyKind::Closure(c, subst) => {
-            let InternedClosure(def, _) = db.lookup_intern_closure((*c).into());
+            let c = from_chalk_closure_id(*c);
+            let ClosureLoc { parent: def, .. } = db.lookup_intern_closure_def(c);
             let infer = db.infer(def);
-            let (captures, _) = infer.closure_info(c);
+            let (captures, _) = infer.closure_info(&c);
             let fields = captures
                 .iter()
                 .map(|it| {

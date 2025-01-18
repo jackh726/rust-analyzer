@@ -13,7 +13,7 @@ use either::Either;
 use hir_def::{
     data::adt::VariantData, db::DefDatabase, find_path::{self, PrefixKind}, generics::{TypeOrConstParamData, TypeParamProvenance}, item_scope::ItemInNs, lang_item::{LangItem, LangItemTarget}, nameres::DefMap, path::{Path, PathKind}, type_ref::{
         TraitBoundModifier, TypeBound, TypeRef, TypeRefId, TypesMap, TypesSourceMap, UseArgRef,
-    }, visibility::Visibility, GenericDefId, HasModule, ImportPathConfig, ItemContainerId, LocalFieldId, Lookup, ModuleDefId, ModuleId, OpaqueTyLoc, TraitId
+    }, visibility::Visibility, ClosureLoc, GenericDefId, HasModule, ImportPathConfig, ItemContainerId, LocalFieldId, Lookup, ModuleDefId, ModuleId, OpaqueTyLoc, TraitId
 };
 use hir_expand::name::Name;
 use intern::{sym, Internable, Interned};
@@ -30,12 +30,12 @@ use triomphe::Arc;
 
 use crate::{
     consteval::try_const_usize,
-    db::{HirDatabase, InternedClosure},
+    db::HirDatabase,
     from_assoc_type_id, from_foreign_def_id, from_placeholder_idx,
     generics::generics,
     layout::Layout,
     lt_from_placeholder_idx,
-    mapping::{from_chalk, from_opaque_ty_id},
+    mapping::{from_chalk, from_chalk_closure_id, from_opaque_ty_id},
     mir::pad16,
     primitive, to_assoc_type_id,
     utils::{self, detect_variant_from_bytes, ClosureSubst},
@@ -1233,9 +1233,10 @@ impl HirDisplay for Ty {
                 }
                 let sig = ClosureSubst(substs).sig_ty().callable_sig(db);
                 if let Some(sig) = sig {
-                    let InternedClosure(def, _) = db.lookup_intern_closure((*id).into());
+                    let id = from_chalk_closure_id(*id);
+                    let ClosureLoc { parent: def, .. } = db.lookup_intern_closure_def(id);
                     let infer = db.infer(def);
-                    let (_, kind) = infer.closure_info(id);
+                    let (_, kind) = infer.closure_info(&id);
                     match f.closure_style {
                         ClosureStyle::ImplFn => write!(f, "impl {kind:?}(")?,
                         ClosureStyle::RANotation => write!(f, "|")?,

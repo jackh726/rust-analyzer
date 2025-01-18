@@ -14,12 +14,12 @@ use chalk_ir::{
     fold::{FallibleTypeFolder, TypeFoldable, TypeSuperFoldable},
     ConstData, DebruijnIndex,
 };
-use hir_def::{DefWithBodyId, OpaqueTyLoc};
+use hir_def::{ClosureId, ClosureLoc, DefWithBodyId, OpaqueTyLoc};
 use la_arena::Idx;
 use triomphe::Arc;
 
 use crate::{
-    consteval::{intern_const_scalar, unknown_const}, db::{HirDatabase, InternedClosure}, from_placeholder_idx, generics::{generics, Generics}, infer::normalize, mapping::from_opaque_ty_id, ClosureId, Const, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty, TyKind
+    consteval::{intern_const_scalar, unknown_const}, db::HirDatabase, from_placeholder_idx, generics::{generics, Generics}, infer::normalize, mapping::from_opaque_ty_id, Const, Interner, ProjectionTy, Substitution, TraitEnvironment, Ty, TyKind
 };
 
 use super::{MirBody, MirLowerError, Operand, Rvalue, StatementKind, TerminatorKind};
@@ -327,7 +327,7 @@ pub fn monomorphized_mir_body_for_closure_query(
     subst: Substitution,
     trait_env: Arc<crate::TraitEnvironment>,
 ) -> Result<Arc<MirBody>, MirLowerError> {
-    let InternedClosure(owner, _) = db.lookup_intern_closure(closure.into());
+    let ClosureLoc { parent: owner, .. } = db.lookup_intern_closure_def(closure.into());
     let generics = owner.as_generic_def_id(db.upcast()).map(|g_def| generics(db.upcast(), g_def));
     let filler = &mut Filler { db, subst: &subst, trait_env, generics, owner };
     let body = db.mir_body_for_closure(closure)?;

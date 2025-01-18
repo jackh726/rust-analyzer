@@ -33,7 +33,7 @@ use chalk_ir::{
 };
 use either::Either;
 use hir_def::{
-    body::{Body, HygieneId}, builtin_type::{BuiltinInt, BuiltinType, BuiltinUint}, data::{ConstData, StaticData}, hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, PatId}, lang_item::{LangItem, LangItemTarget}, layout::Integer, path::{ModPath, Path}, resolver::{HasResolver, ResolveValueResult, Resolver, TypeNs, ValueNs}, type_ref::{LifetimeRef, TypeRefId, TypesMap}, AdtId, AssocItemId, DefWithBodyId, FieldId, FunctionId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, TraitId, TupleFieldId, TupleId, TypeAliasId, VariantId
+    body::{Body, HygieneId}, builtin_type::{BuiltinInt, BuiltinType, BuiltinUint}, data::{ConstData, StaticData}, hir::{BindingAnnotation, BindingId, ExprId, ExprOrPatId, LabelId, PatId}, lang_item::{LangItem, LangItemTarget}, layout::Integer, path::{ModPath, Path}, resolver::{HasResolver, ResolveValueResult, Resolver, TypeNs, ValueNs}, type_ref::{LifetimeRef, TypeRefId, TypesMap}, AdtId, AssocItemId, ClosureId, DefWithBodyId, FieldId, FunctionId, ImplId, ItemContainerId, Lookup, OpaqueTyLoc, TraitId, TupleFieldId, TupleId, TypeAliasId, VariantId
 };
 use hir_expand::name::Name;
 use indexmap::IndexSet;
@@ -44,7 +44,7 @@ use stdx::{always, never};
 use triomphe::Arc;
 
 use crate::{
-    db::HirDatabase, fold_tys, generics::Generics, infer::{coerce::CoerceMany, expr::ExprIsRead, unify::InferenceTable}, lower::ImplTraitLoweringMode, mapping::from_opaque_ty_id, mir::MirSpan, to_assoc_type_id, traits::FnTrait, utils::{InTypeConstIdMetadata, UnevaluatedConstEvaluatorFolder}, AliasEq, AliasTy, Binders, ClosureId, Const, DomainGoal, GenericArg, Goal, ImplTraitIdx, InEnvironment, Interner, Lifetime, OpaqueTyId, ParamLoweringMode, ProjectionTy, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt
+    db::HirDatabase, fold_tys, generics::Generics, infer::{coerce::CoerceMany, expr::ExprIsRead, unify::InferenceTable}, lower::ImplTraitLoweringMode, mapping::from_opaque_ty_id, mir::MirSpan, to_assoc_type_id, traits::FnTrait, utils::{InTypeConstIdMetadata, UnevaluatedConstEvaluatorFolder}, AliasEq, AliasTy, Binders, Const, DomainGoal, GenericArg, Goal, ImplTraitIdx, InEnvironment, Interner, Lifetime, OpaqueTyId, ParamLoweringMode, ProjectionTy, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt
 };
 
 // This lint has a false positive here. See the link below for details.

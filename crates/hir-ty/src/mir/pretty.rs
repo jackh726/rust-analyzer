@@ -6,7 +6,7 @@ use std::{
 };
 
 use either::Either;
-use hir_def::{body::Body, hir::BindingId};
+use hir_def::{body::Body, hir::BindingId, ClosureId};
 use hir_expand::{name::Name, Lookup};
 use la_arena::ArenaMap;
 use span::Edition;
@@ -15,7 +15,6 @@ use crate::{
     db::HirDatabase,
     display::{ClosureStyle, HirDisplay},
     mir::{PlaceElem, ProjectionElem, StatementKind, TerminatorKind},
-    ClosureId,
 };
 
 use super::{

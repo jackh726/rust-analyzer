@@ -9,15 +9,10 @@ use chalk_ir::{
 };
 use either::Either;
 use hir_def::{
-    data::adt::VariantData,
-    hir::{
+    data::adt::VariantData, hir::{
         Array, AsmOperand, BinaryOp, BindingId, CaptureBy, Expr, ExprId, ExprOrPatId, Pat, PatId,
         Statement, UnaryOp,
-    },
-    lang_item::LangItem,
-    path::Path,
-    resolver::ValueNs,
-    DefWithBodyId, FieldId, HasModule, TupleFieldId, TupleId, VariantId,
+    }, lang_item::LangItem, path::Path, resolver::ValueNs, ClosureId, ClosureLoc, DefWithBodyId, FieldId, HasModule, TupleFieldId, TupleId, VariantId
 };
 use hir_expand::name::Name;
 use intern::sym;
@@ -27,18 +22,7 @@ use stdx::{format_to, never};
 use syntax::utils::is_raw_identifier;
 
 use crate::{
-    db::{HirDatabase, InternedClosure},
-    error_lifetime, from_chalk_trait_id, from_placeholder_idx,
-    generics::Generics,
-    infer::coerce::CoerceNever,
-    make_binders,
-    mir::{BorrowKind, MirSpan, MutBorrowKind, ProjectionElem},
-    to_chalk_trait_id,
-    traits::FnTrait,
-    utils::{self, elaborate_clause_supertraits},
-    Adjust, Adjustment, AliasEq, AliasTy, Binders, BindingMode, ChalkTraitId, ClosureId, DynTy,
-    DynTyExt, FnAbi, FnPointer, FnSig, Interner, OpaqueTy, ProjectionTyExt, Substitution, Ty,
-    TyExt, WhereClause,
+    db::HirDatabase, error_lifetime, from_chalk_trait_id, from_placeholder_idx, generics::Generics, infer::coerce::CoerceNever, make_binders, mapping::from_chalk_closure_id, mir::{BorrowKind, MirSpan, MutBorrowKind, ProjectionElem}, to_chalk_trait_id, traits::FnTrait, utils::{self, elaborate_clause_supertraits}, Adjust, Adjustment, AliasEq, AliasTy, Binders, BindingMode, ChalkTraitId, DynTy, DynTyExt, FnAbi, FnPointer, FnSig, Interner, OpaqueTy, ProjectionTyExt, Substitution, Ty, TyExt, WhereClause
 };
 
 use super::{Expectation, InferenceContext};
@@ -61,7 +45,7 @@ impl InferenceContext<'_> {
             if let Some(closure_kind) = self.deduce_closure_kind_from_expectations(&expected_ty) {
                 self.result
                     .closure_info
-                    .entry(*closure_id)
+                    .entry(from_chalk_closure_id(*closure_id))
                     .or_insert_with(|| (Vec::new(), closure_kind));
             }
         }
@@ -883,7 +867,7 @@ impl InferenceContext<'_> {
                     return;
                 };
                 let (captures, _) =
-                    self.result.closure_info.get(id).expect(
+                    self.result.closure_info.get(&from_chalk_closure_id(*id)).expect(
                         "We sort closures, so we should always have data for inner closures",
                     );
                 let mut cc = mem::take(&mut self.current_captures);
@@ -1014,7 +998,7 @@ impl InferenceContext<'_> {
 
     fn is_upvar(&self, place: &HirPlace) -> bool {
         if let Some(c) = self.current_closure {
-            let InternedClosure(_, root) = self.db.lookup_intern_closure(c.into());
+            let ClosureLoc { root, .. } = self.db.lookup_intern_closure_def(c);
             return self.body.is_binding_upvar(place.local, root);
         }
         false
@@ -1025,7 +1009,7 @@ impl InferenceContext<'_> {
             // FIXME: We handle closure as a special case, since chalk consider every closure as copy. We
             // should probably let chalk know which closures are copy, but I don't know how doing it
             // without creating query cycles.
-            return self.result.closure_info.get(id).map(|it| it.1 == FnTrait::Fn).unwrap_or(true);
+            return self.result.closure_info.get(&from_chalk_closure_id(*id)).map(|it| it.1 == FnTrait::Fn).unwrap_or(true);
         }
         self.table.resolve_completely(ty).is_copy(self.db, self.owner)
     }
@@ -1276,7 +1260,7 @@ impl InferenceContext<'_> {
     }
 
     fn analyze_closure(&mut self, closure: ClosureId) -> FnTrait {
-        let InternedClosure(_, root) = self.db.lookup_intern_closure(closure.into());
+        let ClosureLoc { root, .. } = self.db.lookup_intern_closure_def(closure);
         self.current_closure = Some(closure);
         let Expr::Closure { body, capture_by, .. } = &self.body[root] else {
             unreachable!("Closure expression id is always closure");

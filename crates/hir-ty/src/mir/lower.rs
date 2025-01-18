@@ -5,18 +5,10 @@ use std::{fmt::Write, iter, mem};
 use base_db::ra_salsa::Cycle;
 use chalk_ir::{BoundVar, ConstData, DebruijnIndex, TyKind};
 use hir_def::{
-    body::{Body, HygieneId},
-    data::adt::{StructKind, VariantData},
-    hir::{
+    body::{Body, HygieneId}, data::adt::{StructKind, VariantData}, hir::{
         ArithOp, Array, BinaryOp, BindingAnnotation, BindingId, ExprId, LabelId, Literal,
         LiteralOrConst, MatchArm, Pat, PatId, RecordFieldPat, RecordLitField,
-    },
-    lang_item::{LangItem, LangItemTarget},
-    path::Path,
-    resolver::{HasResolver, ResolveValueResult, Resolver, ValueNs},
-    type_ref::TypesMap,
-    AdtId, DefWithBodyId, EnumVariantId, GeneralConstId, HasModule, ItemContainerId, LocalFieldId,
-    Lookup, TraitId, TupleId, TypeOrConstParamId,
+    }, lang_item::{LangItem, LangItemTarget}, path::Path, resolver::{HasResolver, ResolveValueResult, Resolver, ValueNs}, type_ref::TypesMap, AdtId, ClosureId, ClosureLoc, DefWithBodyId, EnumVariantId, GeneralConstId, HasModule, ItemContainerId, LocalFieldId, Lookup, TraitId, TupleId, TypeOrConstParamId
 };
 use hir_expand::name::Name;
 use la_arena::ArenaMap;
@@ -28,17 +20,17 @@ use triomphe::Arc;
 
 use crate::{
     consteval::ConstEvalError,
-    db::{HirDatabase, InternedClosure},
+    db::HirDatabase,
     display::{hir_display_with_types_map, HirDisplay},
     error_lifetime,
     generics::generics,
     infer::{cast::CastTy, unify::InferenceTable, CaptureKind, CapturedItem, TypeMismatch},
     inhabitedness::is_ty_uninhabited_from,
     layout::LayoutError,
-    mapping::ToChalk,
+    mapping::{from_chalk_closure_id, ToChalk},
     mir::{
         intern_const_scalar, return_slot, AggregateKind, Arena, BasicBlock, BasicBlockId, BinOp,
-        BorrowKind, CastKind, ClosureId, ConstScalar, Either, Expr, FieldId, Idx, InferenceResult,
+        BorrowKind, CastKind, ConstScalar, Either, Expr, FieldId, Idx, InferenceResult,
         Interner, Local, LocalId, MemoryMap, MirBody, MirSpan, Mutability, Operand, Place,
         PlaceElem, PointerCast, ProjectionElem, ProjectionStore, RawIdx, Rvalue, Statement,
         StatementKind, Substitution, SwitchTargets, Terminator, TerminatorKind, TupleFieldId, Ty,
@@ -1188,6 +1180,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                 let TyKind::Closure(id, _) = ty.kind(Interner) else {
                     not_supported!("closure with non closure type");
                 };
+                let id = &from_chalk_closure_id(*id);
                 self.result.closures.push(*id);
                 let (captures, _) = self.infer.closure_info(id);
                 let mut operands = vec![];
@@ -2008,7 +2001,7 @@ pub fn mir_body_for_closure_query(
     db: &dyn HirDatabase,
     closure: ClosureId,
 ) -> Result<Arc<MirBody>> {
-    let InternedClosure(owner, expr) = db.lookup_intern_closure(closure.into());
+    let ClosureLoc { parent: owner, root: expr } = db.lookup_intern_closure_def(closure.into());
     let body = db.body(owner);
     let infer = db.infer(owner);
     let Expr::Closure { args, body: root, .. } = &body[expr] else {
