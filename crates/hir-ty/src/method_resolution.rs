@@ -1670,9 +1670,7 @@ pub fn implements_trait(
     trait_: TraitId,
 ) -> bool {
     let goal = generic_implements_goal(db, env, trait_, ty);
-    let solution = db.trait_solve(env.krate, env.block, goal.cast(Interner));
-
-    solution.is_some()
+    !next_trait_solve(db, env.krate, env.block, goal.cast(Interner)).no_solution()
 }
 
 pub fn implements_trait_unique(
@@ -1682,9 +1680,7 @@ pub fn implements_trait_unique(
     trait_: TraitId,
 ) -> bool {
     let goal = generic_implements_goal(db, env, trait_, ty);
-    let solution = db.trait_solve(env.krate, env.block, goal.cast(Interner));
-
-    matches!(solution, Some(crate::Solution::Unique(_)))
+    next_trait_solve(db, env.krate, env.block, goal.cast(Interner)).certain()
 }
 
 /// This creates Substs for a trait with the given Self type and type variables
