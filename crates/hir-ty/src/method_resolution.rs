@@ -1447,10 +1447,7 @@ pub(crate) fn resolve_indexing_op(
     let deref_chain = autoderef_method_receiver(&mut table, ty);
     for (ty, adj) in deref_chain {
         let goal = generic_implements_goal(db, &table.trait_env, index_trait, &ty);
-        if db
-            .trait_solve(table.trait_env.krate, table.trait_env.block, goal.cast(Interner))
-            .is_some()
-        {
+        if !next_trait_solve(db, table.trait_env.krate, table.trait_env.block, goal.cast(Interner)).no_solution() {
             return Some(adj);
         }
     }
