@@ -246,15 +246,15 @@ impl rustc_type_ir::inherent::GenericArgs<DbInterner> for GenericArgs {
 
     fn split_coroutine_args(self) -> rustc_type_ir::CoroutineArgsParts<DbInterner> {
         match self.0 .0.as_slice() {
-            [ref parent_args @ .., kind_ty, resume_ty, yield_ty, return_ty, witness, tupled_upvars_ty] => {
+            [ref parent_args @ .., resume_ty, yield_ty, return_ty] => {
                 rustc_type_ir::CoroutineArgsParts {
                     parent_args: GenericArgs::new_from_iter(parent_args.iter().cloned()),
-                    kind_ty: kind_ty.expect_ty(),
+                    kind_ty: Ty::new_unit(DbInterner),
                     resume_ty: resume_ty.expect_ty(),
                     yield_ty: yield_ty.expect_ty(),
                     return_ty: return_ty.expect_ty(),
-                    witness: witness.expect_ty(),
-                    tupled_upvars_ty: tupled_upvars_ty.expect_ty(),
+                    witness: Ty::new_unit(DbInterner),
+                    tupled_upvars_ty: Ty::new_unit(DbInterner),
                 }
             }
             _ => todo!(), // rustc has `bug!` here?, should we have error report

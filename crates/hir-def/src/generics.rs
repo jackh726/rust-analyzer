@@ -438,7 +438,7 @@ impl GenericParams {
                 }),
                 None,
             ),
-            GenericDefId::ConstId(_) | GenericDefId::ClosureId(_) => (
+            GenericDefId::ConstId(_) | GenericDefId::ClosureId(_) | GenericDefId::CoroutineId(_) => (
                 Arc::new(GenericParams {
                     type_or_consts: Default::default(),
                     lifetimes: Default::default(),

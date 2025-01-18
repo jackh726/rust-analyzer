@@ -7,7 +7,7 @@ use rustc_type_ir::{
 };
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, mapping::{from_opaque_ty_id, ToChalk}, next_solver::{
+    db::HirDatabase, from_assoc_type_id, from_chalk_closure_id, from_chalk_coroutine_id, from_chalk_trait_id, mapping::{from_opaque_ty_id, ToChalk}, next_solver::{
         interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
         Binder, ClauseKind, TraitPredicate,
     }, Interner
@@ -189,18 +189,16 @@ impl ChalkToNextSolver<Ty> for chalk_ir::Ty<Interner> {
             chalk_ir::TyKind::Str => rustc_type_ir::TyKind::Str,
             chalk_ir::TyKind::Never => rustc_type_ir::TyKind::Never,
             chalk_ir::TyKind::Closure(closure_id, substitution) => {
-                let id: ClosureId = ra_salsa::InternKey::from_intern_id(closure_id.0);
+                let id = from_chalk_closure_id(*closure_id);
                 rustc_type_ir::TyKind::Closure(id.into(), substitution.to_nextsolver(ir))
             }
-            chalk_ir::TyKind::Coroutine(_coroutine_id, _substitution) => {
-                //let id = ra_salsa::InternKey::from_intern_id(coroutine_id.0);
-                //rustc_type_ir::TyKind::Coroutine(id.into(), substitution.to_nextsolver(ir))
-                todo!("Needs GenericDefId::Coroutine")
+            chalk_ir::TyKind::Coroutine(coroutine_id, substitution) => {
+                let id = from_chalk_coroutine_id(*coroutine_id);
+                rustc_type_ir::TyKind::Coroutine(id.into(), substitution.to_nextsolver(ir))
             }
-            chalk_ir::TyKind::CoroutineWitness(_coroutine_id, _substitution) => {
-                //let id = ra_salsa::InternKey::from_intern_id(coroutine_id.0);
-                //rustc_type_ir::TyKind::CoroutineWitness(id.into(), substitution.to_nextsolver(ir))
-                todo!("Needs GenericDefId::Coroutine")
+            chalk_ir::TyKind::CoroutineWitness(coroutine_id, substitution) => {
+                let id = from_chalk_coroutine_id(*coroutine_id);
+                rustc_type_ir::TyKind::CoroutineWitness(id.into(), substitution.to_nextsolver(ir))
             }
             chalk_ir::TyKind::Foreign(_foreign_def_id) => {
                 //let id = ra_salsa::InternKey::from_intern_id(foreign_def_id.0);

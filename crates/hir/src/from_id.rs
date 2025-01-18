@@ -198,6 +198,7 @@ impl From<GenericDefId> for GenericDef {
             GenericDefId::ImplId(it) => GenericDef::Impl(it.into()),
             GenericDefId::ConstId(it) => GenericDef::Const(it.into()),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::CoroutineId(it) => todo!(),
             GenericDefId::OpaqueTyId(id) => todo!(),
             GenericDefId::Ctor(..) => todo!(),
         }

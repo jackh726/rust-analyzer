@@ -1214,6 +1214,7 @@ impl HasResolver for GenericDefId {
             GenericDefId::ImplId(inner) => inner.resolver(db),
             GenericDefId::ConstId(inner) => inner.resolver(db),
             GenericDefId::ClosureId(inner) => todo!(),
+            GenericDefId::CoroutineId(inner) => todo!(),
             GenericDefId::OpaqueTyId(inner) => todo!(),
             GenericDefId::Ctor(..) => todo!(),
         }

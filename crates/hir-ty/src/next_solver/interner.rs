@@ -952,6 +952,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::TypeAliasId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::ConstId(it) => it.lookup(self.db.upcast()).container,
             GenericDefId::ClosureId(it) => return it.lookup(self.db.upcast()).parent.as_generic_def_id(self.db.upcast()).unwrap(),
+            GenericDefId::CoroutineId(it) => return it.lookup(self.db.upcast()).parent.as_generic_def_id(self.db.upcast()).unwrap(),
             GenericDefId::OpaqueTyId(it) => todo!(),
             GenericDefId::AdtId(_)
             | GenericDefId::TraitId(_)
@@ -1644,28 +1645,32 @@ impl<'cx> RustIr for DbIr<'cx> {
         self,
         coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        true
     }
 
     fn coroutine_is_async(
         self,
         coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        true
     }
 
     fn coroutine_is_gen(
         self,
         coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        false
     }
 
     fn coroutine_is_async_gen(
         self,
         coroutine_def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
     ) -> bool {
-        todo!()
+        // FIXME
+        false
     }
 
     fn unsizing_params_for_adt(

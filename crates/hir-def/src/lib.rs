@@ -778,6 +778,7 @@ impl From<GenericDefId> for TypeOwnerId {
             GenericDefId::ImplId(it) => it.into(),
             GenericDefId::ConstId(it) => it.into(),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::CoroutineId(it) => todo!(),
             GenericDefId::OpaqueTyId(it) => todo!(),
             GenericDefId::Ctor(..) => todo!(),
         }
@@ -973,6 +974,7 @@ pub enum GenericDefId {
     // consts can have type parameters from their parents (i.e. associated consts of traits)
     ConstId(ConstId),
     ClosureId(ClosureId),
+    CoroutineId(CoroutineId),
     OpaqueTyId(OpaqueTyId),
     Ctor(Ctor),
 }
@@ -985,6 +987,7 @@ impl_from!(
     ImplId,
     ConstId,
     ClosureId,
+    CoroutineId,
     OpaqueTyId
     for GenericDefId
 );
@@ -1017,6 +1020,7 @@ impl GenericDefId {
             GenericDefId::ImplId(it) => file_id_and_params_of_item_loc(db, it),
             GenericDefId::ConstId(it) => (it.lookup(db).id.file_id(), None),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::CoroutineId(it) => todo!(),
             GenericDefId::OpaqueTyId(it) => todo!(),
             GenericDefId::Ctor(..) => todo!(),
         }
@@ -1413,6 +1417,7 @@ impl HasModule for GenericDefId {
             GenericDefId::ConstId(it) => it.module(db),
             GenericDefId::OpaqueTyId(it) => it.module(db),
             GenericDefId::ClosureId(it) => todo!(),
+            GenericDefId::CoroutineId(it) => todo!(),
             GenericDefId::Ctor(..) => todo!(),
         }
     }
