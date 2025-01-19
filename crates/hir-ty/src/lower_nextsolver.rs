@@ -18,7 +18,7 @@ use hir_def::{
     }, lang_item::LangItem, nameres::MacroSubNs, path::{GenericArg, ModPath, Path, PathKind, PathSegment, PathSegments}, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, type_ref::{
         ConstRef, LifetimeRef, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef,
         TypeRefId, TypesMap, TypesSourceMap,
-    }, AdtId, AssocItemId, CallableDefId, ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, InTypeConstLoc, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, VariantId
+    }, AdtId, AssocItemId, CallableDefId, ConstParamId, DefWithBodyId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, LocalFieldId, Lookup, OpaqueTyLoc, StructId, TraitId, TypeAliasId, TypeOrConstParamId, TypeOwnerId, VariantId
 };
 use hir_expand::{name::Name, ExpandResult};
 use intern::sym;
@@ -33,7 +33,7 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    all_super_traits, consteval_nextsolver::{intern_const_ref, path_to_const}, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, elaborate::{all_super_trait_refs, associated_type_by_name_including_super_traits}, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, utils::InTypeConstIdMetadata, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
+    consteval_nextsolver::{intern_const_ref, path_to_const}, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, utils::InTypeConstIdMetadata, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
 };
 
 #[derive(PartialEq, Eq, Debug, Hash)]
@@ -1328,9 +1328,10 @@ fn named_associated_type_shorthand_candidates(
     // properly (see `TyLoweringContext::select_associated_type()`).
     mut cb: impl FnMut(&Name, &TraitRef, TypeAliasId) -> Option<Ty>,
 ) -> Option<Ty> {
-    let mut search = |t| {
-        all_super_trait_refs(db, t, |t| {
-            let trait_id = match t.def_id {
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    let mut search = |t: TraitRef| {
+        rustc_type_ir::elaborate::supertraits(fake_ir, Binder::dummy(t)).find_map(|t| {
+            let trait_id = match t.def_id() {
                 GenericDefId::TraitId(id) => id,
                 _ => unreachable!(),
             };
@@ -1338,7 +1339,7 @@ fn named_associated_type_shorthand_candidates(
 
             for (name, assoc_id) in &data.items {
                 if let AssocItemId::TypeAliasId(alias) = assoc_id {
-                    if let Some(result) = cb(name, &t, *alias) {
+                    if let Some(result) = cb(name, t.as_ref().skip_binder(), *alias) {
                         return Some(result);
                     }
                 }
@@ -1600,6 +1601,7 @@ pub(crate) fn generic_predicates_for_param_query(
         REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&map_key); });
         return GenericPredicates(None);
     }
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
     let resolver = def.resolver(db.upcast());
     let mut ctx = if let GenericDefId::FunctionId(_) = def {
         TyLoweringContext::new(db, &resolver, TypesMap::EMPTY, def.into())
@@ -1641,8 +1643,12 @@ pub(crate) fn generic_predicates_for_param_query(
                         return false;
                     };
 
-                    all_super_traits(db.upcast(), tr).iter().any(|tr| {
-                        db.trait_data(*tr).items.iter().any(|(name, item)| {
+                    rustc_type_ir::elaborate::supertrait_def_ids(fake_ir, tr.into()).any(|tr| {
+                        let tr = match tr {
+                            GenericDefId::TraitId(id) => id,
+                            _ => unreachable!(),
+                        };
+                        db.trait_data(tr).items.iter().any(|(name, item)| {
                             matches!(item, AssocItemId::TypeAliasId(_)) && name == assoc_name
                         })
                     })
@@ -1942,4 +1948,20 @@ fn fn_sig_for_enum_variant_constructor(db: &dyn HirDatabase, def: EnumVariantId)
         safety: Safety::Safe,
         inputs_and_output,
     }))
+}
+
+pub fn associated_type_by_name_including_super_traits(
+    db: &dyn HirDatabase,
+    trait_ref: TraitRef,
+    name: &Name,
+) -> Option<(TraitRef, TypeAliasId)> {
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    rustc_type_ir::elaborate::supertraits(fake_ir, Binder::dummy(trait_ref)).find_map(|t| {
+        let trait_id = match t.as_ref().skip_binder().def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => unreachable!(),
+        };
+        let assoc_type = db.trait_data(trait_id).associated_type_by_name(name)?;
+        Some((t.skip_binder(), assoc_type))        
+    })
 }

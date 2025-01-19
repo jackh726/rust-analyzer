@@ -2,7 +2,6 @@
 
 pub mod abi;
 mod consts;
-pub mod elaborate;
 mod flags;
 pub mod fold;
 mod generic_arg;
