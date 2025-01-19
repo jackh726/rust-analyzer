@@ -927,10 +927,15 @@ impl<'a> TyLoweringContext<'a> {
                     WherePredicateTypeTarget::TypeRef(type_ref) => self.lower_ty(*type_ref),
                     &WherePredicateTypeTarget::TypeOrConstParam(local_id) => {
                         let param_id = hir_def::TypeOrConstParamId { parent: def, local_id };
-                        let idx = generics(self.db.upcast(), def)
-                            .type_or_const_param_idx(param_id)
+                        let generics = generics(self.db.upcast(), def);
+                        let (idx, data) = generics
+                            .type_or_const_param(param_id)
                             .expect("matching generics");
-                        Ty::new_param(idx as u32, sym::MISSING_NAME.clone())
+                        let type_data = match data {
+                            TypeOrConstParamData::TypeParamData(ty) => ty,
+                            _ => unreachable!(),
+                        };
+                        Ty::new_param(idx as u32, type_data.name.as_ref().map_or_else(|| sym::MISSING_NAME.clone(), |d| d.symbol().clone()) )
                     }
                 };
                 Either::Left(self.lower_type_bound(bound, self_ty, ignore_bindings))
@@ -951,7 +956,7 @@ impl<'a> TyLoweringContext<'a> {
         let mut trait_ref = None;
         let clause = match bound {
             TypeBound::Path(path, TraitBoundModifier::None) => {
-                trait_ref = dbg!(self.lower_trait_ref_from_path(path, self_ty));
+                trait_ref = self.lower_trait_ref_from_path(path, self_ty);
                 trait_ref.clone().map(|trait_ref| Clause(Predicate::new(Binder::dummy(rustc_type_ir::PredicateKind::Clause(rustc_type_ir::ClauseKind::Trait(TraitPredicate { trait_ref, polarity: rustc_type_ir::PredicatePolarity::Positive }))))))
 
             }

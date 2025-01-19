@@ -11,17 +11,36 @@ use super::{
     generics::{GenericParamDef, GenericParamDefKind, Generics}, interned_vec, Const, DbInterner, DbIr, EarlyParamRegion, ErrorGuaranteed, ParamConst, Region, Ty, Tys
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum GenericArg {
     Ty(Ty),
     Lifetime(Region),
     Const(Const),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl std::fmt::Debug for GenericArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ty(t) => std::fmt::Debug::fmt(t, f),
+            Self::Lifetime(r) => std::fmt::Debug::fmt(r, f),
+            Self::Const(c) => std::fmt::Debug::fmt(c, f),
+        }   
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Term {
     Ty(Ty),
     Const(Const),
+}
+
+impl std::fmt::Debug for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ty(t) => std::fmt::Debug::fmt(t, f),
+            Self::Const(c) => std::fmt::Debug::fmt(c, f),
+        }   
+    }
 }
 
 impl From<Ty> for GenericArg {

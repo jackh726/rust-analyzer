@@ -15,7 +15,7 @@ use hir_def::{
 use hir_expand::name::Name;
 use intern::sym;
 use rustc_next_trait_solver::solve::{HasChanged, SolverDelegateEvalExt};
-use rustc_type_ir::{inherent::Span, solve::Certainty, InferCtxtLike, TypingMode};
+use rustc_type_ir::{inherent::{SliceLike, Span as _}, solve::Certainty, InferCtxtLike, TypingMode, UniverseIndex};
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
@@ -23,7 +23,7 @@ use triomphe::Arc;
 use crate::{
     db::HirDatabase,
     infer::unify::InferenceTable,
-    next_solver::{infer::DbInternerInferExt, mapping::ChalkToNextSolver, DbIr, SolverContext},
+    next_solver::{infer::DbInternerInferExt, mapping::ChalkToNextSolver, DbIr, GenericArg, SolverContext},
     utils::UnevaluatedConstEvaluatorFolder,
     AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
     ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
@@ -156,7 +156,7 @@ pub(crate) fn trait_solve_query(
             let chalk_res = solve(db, krate, block, &u_canonical);
             match (&chalk_res, &next_solver_res) {
                 (Some(Solution::Unique(_)), Err(_)) => panic!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
-                (None, Ok(_)) => panic!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
+                (None, Ok((_, Certainty::Yes, _))) => panic!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
                 _ => {}
             }
             chalk_res
@@ -223,25 +223,29 @@ fn solve_nextsolver(
     krate: CrateId,
     block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
-) -> Result<(HasChanged, Certainty), rustc_type_ir::solve::NoSolution> {
+) -> Result<(HasChanged, Certainty, Vec<GenericArg>), rustc_type_ir::solve::NoSolution> {
     crate::next_solver::tls::with_db(db, || {
         // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
         let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
 
         match goal.canonical.value.goal.data(Interner) {
-            GoalData::All(goals) if goals.is_empty(Interner) => return Ok((HasChanged::No, Certainty::Yes)),
+            // FIXME: args here should be...what? not empty
+            GoalData::All(goals) if goals.is_empty(Interner) => return Ok((HasChanged::No, Certainty::Yes, vec![])),
             _ => {}
         }
 
         let goal = goal.canonical.to_nextsolver(context.cx());
         dbg!(&goal);
 
-        let (goal, _) = context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
+        let (goal, var_values) = context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
+        dbg!(&var_values);
 
         let (res, _) =
             context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
 
-        res
+        let values: Vec<_> = var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect();
+
+        res.map(|r| (r.0, r.1, values))
     })
 }
 
@@ -305,14 +309,14 @@ pub fn next_trait_solve(
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
         (Some(Solution::Unique(_)), Err(_)) => eprintln!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
-        (None, Ok(_)) => eprintln!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
+        (None, Ok((_, Certainty::Yes, _))) => eprintln!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
         _ => {}
     }
 
     match next_solver_res {
         Err(_) => NextTraitSolveResult::NoSolution,
-        Ok((_, Certainty::Yes)) => NextTraitSolveResult::Certain,
-        Ok((_, Certainty::Maybe(_))) => NextTraitSolveResult::Uncertain,
+        Ok((_, Certainty::Yes, _)) => NextTraitSolveResult::Certain,
+        Ok((_, Certainty::Maybe(_), _)) => NextTraitSolveResult::Uncertain,
     }
 }
 

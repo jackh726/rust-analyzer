@@ -1198,13 +1198,9 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        dbg!(def_id);
         let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
-            dbg!(p);
-            dbg!(def_id);
             true
         }).iter().cloned().map(|p| (p, Span::dummy())).collect();
-        dbg!(&predicates);
         rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
@@ -1220,13 +1216,9 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        dbg!(def_id);
         let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
-            dbg!(p);
-            dbg!(def_id);
             true
         }).iter().cloned().map(|p| (p, Span::dummy())).collect();
-        dbg!(&predicates);
         rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
@@ -1291,7 +1283,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             rustc_type_ir::lang_items::TraitSolverLangItem::Unpin => LangItem::Unpin,
             rustc_type_ir::lang_items::TraitSolverLangItem::Unsize => LangItem::Unsize,
         };
-        let target = self.db.lang_item(self.krate, dbg!(lang_item)).expect(&format!("Lang item {lang_item:?} required but not found."));
+        let target = self.db.lang_item(self.krate, lang_item).expect(&format!("Lang item {lang_item:?} required but not found."));
         match target {
             hir_def::lang_item::LangItemTarget::EnumId(enum_id) => enum_id.into(),
             hir_def::lang_item::LangItemTarget::Function(function_id) => function_id.into(),
@@ -1626,7 +1618,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             GenericDefId::TraitId(id) => id,
             _ => unreachable!(),
         };
-        dbg!(crate::dyn_compatibility::dyn_compatibility(self.db, trait_)).is_none()
+        crate::dyn_compatibility::dyn_compatibility(self.db, trait_).is_none()
     }
 
     fn trait_is_fundamental(

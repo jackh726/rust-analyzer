@@ -587,9 +587,7 @@ impl ChalkToNextSolver<ParamEnv> for chalk_ir::Environment<Interner> {
         let clauses = Clauses::new_from_iter(self.clauses().iter(Interner).map(|c| {
             c.to_nextsolver(ir)
         }));
-        dbg!(&clauses);
         let clauses = Clauses::new_from_iter(elaborate::elaborate(ir, clauses.iter()));
-        dbg!(&clauses);
         ParamEnv {
             reveal: rustc_type_ir::solve::Reveal::UserFacing,
             clauses,

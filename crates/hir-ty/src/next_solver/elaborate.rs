@@ -1,5 +1,6 @@
 use std::iter;
 
+use base_db::CrateId;
 use hir_def::db::DefDatabase;
 use hir_def::generics::{WherePredicate, WherePredicateTypeTarget};
 use hir_def::resolver::{HasResolver, TypeNs};
@@ -14,7 +15,7 @@ use smallvec::{smallvec, SmallVec};
 use crate::db::HirDatabase;
 use crate::lower_nextsolver::generic_predicates_for_param_query;
 
-use super::TraitRef;
+use super::{Binder, TraitRef};
 
 // FIXME: use rustc_type_ir's elaborate
 
@@ -143,12 +144,13 @@ pub fn associated_type_by_name_including_super_traits(
     trait_ref: TraitRef,
     name: &Name,
 ) -> Option<(TraitRef, TypeAliasId)> {
-    all_super_trait_refs(db, trait_ref, |t| {
-        let trait_id = match t.def_id {
+    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+    rustc_type_ir::elaborate::supertraits(fake_ir, Binder::dummy(trait_ref)).find_map(|t| {
+        let trait_id = match t.as_ref().skip_binder().def_id {
             GenericDefId::TraitId(id) => id,
             _ => unreachable!(),
         };
         let assoc_type = db.trait_data(trait_id).associated_type_by_name(name)?;
-        Some((t, assoc_type))
+        Some((t.skip_binder(), assoc_type))        
     })
 }
