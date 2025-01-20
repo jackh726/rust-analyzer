@@ -455,6 +455,7 @@ impl<'a> TyLoweringContext<'a> {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_ty_relative_path(
         &mut self,
         ty: Ty,
@@ -617,6 +618,7 @@ impl<'a> TyLoweringContext<'a> {
         self.lower_partly_resolved_path(resolution, resolved_segment, remaining_segments, false)
     }
 
+    #[tracing::instrument(skip(self))]
     fn select_associated_type(&mut self, res: Option<TypeNs>, segment: PathSegment<'_>) -> Ty {
         let Some((generics, res)) = self.generics().zip(res) else {
             return Ty::new_error(DbInterner, ErrorGuaranteed);
@@ -731,6 +733,7 @@ impl<'a> TyLoweringContext<'a> {
         )
     }
 
+    #[tracing::instrument(skip(self))]
     fn substs_from_args_and_bindings(
         &mut self,
         args_and_bindings: Option<&hir_def::path::GenericArgs>,
@@ -876,6 +879,7 @@ impl<'a> TyLoweringContext<'a> {
         GenericArgs::new_from_iter(substs)
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_trait_ref_from_resolved_path(
         &mut self,
         resolved: TraitId,
@@ -887,6 +891,7 @@ impl<'a> TyLoweringContext<'a> {
         TraitRef::new_from_args(fake_ir, resolved.into(), substs)
     }
 
+    #[tracing::instrument(skip(self))]
     fn lower_trait_ref_from_path(&mut self, path: &Path, explicit_self_ty: Ty) -> Option<TraitRef> {
         let resolved = match self.resolver.resolve_path_in_type_ns_fully(self.db.upcast(), path)? {
             // FIXME(trait_alias): We need to handle trait alias here.
@@ -914,6 +919,7 @@ impl<'a> TyLoweringContext<'a> {
         self.substs_from_path_segment(segment, Some(resolved.into()), false, Some(explicit_self_ty))
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_where_predicate<'b>(
         &'b mut self,
         where_predicate: &'b WherePredicate,
@@ -947,6 +953,7 @@ impl<'a> TyLoweringContext<'a> {
         .into_iter()
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_type_bound<'b>(
         &'b mut self,
         bound: &'b TypeBound,
@@ -1329,22 +1336,41 @@ fn named_associated_type_shorthand_candidates(
     mut cb: impl FnMut(&Name, &TraitRef, TypeAliasId) -> Option<Ty>,
 ) -> Option<Ty> {
     let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let mut search = |t: TraitRef| {
-        rustc_type_ir::elaborate::supertraits(fake_ir, Binder::dummy(t)).find_map(|t| {
-            let trait_id = match t.def_id() {
-                GenericDefId::TraitId(id) => id,
-                _ => unreachable!(),
-            };
-            let data = db.trait_data(trait_id);
+    let mut check_trait_ref = |t: &TraitRef| {
+        let trait_id = match t.def_id {
+            GenericDefId::TraitId(id) => id,
+            _ => unreachable!(),
+        };
+        let data = db.trait_data(trait_id);
 
-            for (name, assoc_id) in &data.items {
-                if let AssocItemId::TypeAliasId(alias) = assoc_id {
-                    if let Some(result) = cb(name, t.as_ref().skip_binder(), *alias) {
-                        return Some(result);
-                    }
+        for (name, assoc_id) in &data.items {
+            if let AssocItemId::TypeAliasId(alias) = assoc_id {
+                if let Some(result) = cb(name, t, *alias) {
+                    return Some(result);
                 }
             }
-            None
+        }
+        None
+    };
+    let mut search = |t: TraitRef| {
+        // Before elaborating supertraits, check the current one first.
+        // This is because `elaborate::supertraits` gets the super predicates
+        // *before* returning here. So, if the associated type is on the
+        // current trait, we will end up in a cycle.
+        // FIXME: this is not quite correct for a couple reasons:
+        // 1) This only avoids cycle at the first trait ref - so, if there would
+        //    be a cycle in the super trait refs, this doesn't avoid it
+        // 2) I think this is still an incomplete solution when there are *other*
+        //    associated types and predicates around and we could get into a
+        //    double-cycle - I think we *always* need to avoid calling the
+        //    `generic_predicates_for_param` and instead follow rustc's approach
+        //    like filtering for traits that *could* define the associated type
+        //    first.
+        if let Some(ty) = check_trait_ref(&t) {
+            return Some(ty);
+        }
+        rustc_type_ir::elaborate::supertraits(fake_ir, Binder::dummy(t)).find_map(|t| {
+            check_trait_ref(t.as_ref().skip_binder())
         })
     };
 
@@ -1357,6 +1383,20 @@ fn named_associated_type_shorthand_candidates(
             search(trait_ref.skip_binder())
         }
         TypeNs::GenericParam(param_id) => {
+            // Handle `Self::Type` referring to own associated type in trait definitions
+            // This *must* be done first to avoid cycles with
+            // `generic_predicates_for_param`, but not sure that it's sufficient,
+            // see FIXME in `search`.
+            if let GenericDefId::TraitId(trait_id) = param_id.parent() {
+                let trait_generics = generics(db.upcast(), trait_id.into());
+                if trait_generics[param_id.local_id()].is_trait_self() {
+                    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+                    let args = GenericArgs::identity_for_item(fake_ir, trait_id.into());
+                    let trait_ref = TraitRef::new_from_args(fake_ir, trait_id.into(), args);
+                    return search(trait_ref);
+                }
+            }
+
             let predicates = generic_predicates_for_param_query(db, def, param_id.into(), assoc_name);
             let res = predicates.iter().find_map(|pred| match pred.clone().kind().skip_binder() {
                 rustc_type_ir::ClauseKind::Trait(trait_predicate) => {
@@ -1368,16 +1408,6 @@ fn named_associated_type_shorthand_candidates(
             });
             if res.is_some() {
                 return res;
-            }
-            // Handle `Self::Type` referring to own associated type in trait definitions
-            if let GenericDefId::TraitId(trait_id) = param_id.parent() {
-                let trait_generics = generics(db.upcast(), trait_id.into());
-                if trait_generics[param_id.local_id()].is_trait_self() {
-                    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-                    let args = GenericArgs::identity_for_item(fake_ir, trait_id.into());
-                    let trait_ref = TraitRef::new_from_args(fake_ir, trait_id.into(), args);
-                    return search(trait_ref);
-                }
             }
             None
         }
@@ -1719,6 +1749,7 @@ pub(crate) fn generic_predicates_without_parent_query(
 
 /// Resolve the where clause(s) of an item with generics,
 /// with a given filter
+#[tracing::instrument(skip(db, filter))]
 pub(crate) fn generic_predicates_filtered_by<F>(
     db: &dyn HirDatabase,
     def: GenericDefId,

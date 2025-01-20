@@ -15,7 +15,7 @@ use hir_def::{
 use hir_expand::name::Name;
 use intern::sym;
 use rustc_next_trait_solver::solve::{HasChanged, SolverDelegateEvalExt};
-use rustc_type_ir::{inherent::{SliceLike, Span as _}, solve::Certainty, InferCtxtLike, TypingMode, UniverseIndex};
+use rustc_type_ir::{inherent::{SliceLike, Span as _}, solve::Certainty, InferCtxtLike, TypingMode};
 use span::Edition;
 use stdx::{never, panic_context};
 use triomphe::Arc;
