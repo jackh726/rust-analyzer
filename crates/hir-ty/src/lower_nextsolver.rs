@@ -33,7 +33,7 @@ use syntax::ast;
 use triomphe::Arc;
 
 use crate::{
-    consteval_nextsolver::{intern_const_ref, path_to_const}, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, ParamConst, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys, ValueConst}, utils::InTypeConstIdMetadata, ConstScalar, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
+    consteval_nextsolver::{intern_const_ref, path_to_const}, db::HirDatabase, generics::{generics, trait_self_param_idx, Generics}, next_solver::{abi::Safety, mapping::ChalkToNextSolver, util::apply_args_to_binder, AdtDef, AliasTy, Binder, BoundExistentialPredicates, BoundRegionKind, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds, Clause, Const, DbInterner, EarlyBinder, EarlyParamRegion, ErrorGuaranteed, GenericArgs, Placeholder, PolyFnSig, Predicate, Region, TraitPredicate, TraitRef, Ty, Tys}, FnAbi, ParamKind, TyBuilder, TyDefId, ValueTyDefId
 };
 
 #[derive(PartialEq, Eq, Debug, Hash)]

@@ -21,12 +21,7 @@ use stdx::{never, panic_context};
 use triomphe::Arc;
 
 use crate::{
-    db::HirDatabase,
-    infer::unify::InferenceTable,
-    next_solver::{infer::DbInternerInferExt, mapping::ChalkToNextSolver, DbIr, GenericArg, SolverContext},
-    utils::UnevaluatedConstEvaluatorFolder,
-    AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
-    ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
+    db::HirDatabase, infer::unify::InferenceTable, next_solver::{infer::DbInternerInferExt, mapping::{convert_canonical_args_for_result, ChalkToNextSolver}, util::mini_canonicalize, DbInterner, DbIr, GenericArg, SolverContext}, utils::UnevaluatedConstEvaluatorFolder, AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy, ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause
 };
 
 /// This controls how much 'time' we give the Chalk solver before giving up.
@@ -223,14 +218,14 @@ fn solve_nextsolver(
     krate: CrateId,
     block: Option<BlockId>,
     goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
-) -> Result<(HasChanged, Certainty, Vec<GenericArg>), rustc_type_ir::solve::NoSolution> {
+) -> Result<(HasChanged, Certainty, rustc_type_ir::Canonical<DbInterner, Vec<GenericArg>>), rustc_type_ir::solve::NoSolution> {
     crate::next_solver::tls::with_db(db, || {
         // FIXME: should use analysis_in_body, but that needs GenericDefId::Block
         let context = SolverContext(DbIr::new(db, krate, block).infer_ctxt().build(TypingMode::non_body_analysis()));
 
         match goal.canonical.value.goal.data(Interner) {
             // FIXME: args here should be...what? not empty
-            GoalData::All(goals) if goals.is_empty(Interner) => return Ok((HasChanged::No, Certainty::Yes, vec![])),
+            GoalData::All(goals) if goals.is_empty(Interner) => return Ok((HasChanged::No, Certainty::Yes, mini_canonicalize(vec![]))),
             _ => {}
         }
 
@@ -243,17 +238,17 @@ fn solve_nextsolver(
         let (res, _) =
             context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
 
-        let values: Vec<_> = var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect();
+        let canonical_var_values: rustc_type_ir::Canonical<DbInterner, Vec<_>> = mini_canonicalize(var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect());
 
-        res.map(|r| (r.0, r.1, values))
+        res.map(|r| (r.0, r.1, canonical_var_values))
     })
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub enum NextTraitSolveResult {
+    Certain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
+    Uncertain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
     NoSolution,
-    Certain,
-    Uncertain,
 }
 
 impl NextTraitSolveResult {
@@ -262,7 +257,7 @@ impl NextTraitSolveResult {
     }
 
     pub fn certain(self) -> bool {
-        matches!(self, NextTraitSolveResult::Certain)
+        matches!(self, NextTraitSolveResult::Certain(..))
     }
 }
 
@@ -290,7 +285,8 @@ pub fn next_trait_solve(
     {
         if let TyKind::BoundVar(_) = projection_ty.self_type_parameter(db).kind(Interner) {
             // Hack: don't ask Chalk to normalize with an unknown self type, it'll say that's impossible
-            return NextTraitSolveResult::Uncertain;
+            // FIXME
+            return NextTraitSolveResult::Uncertain(convert_canonical_args_for_result(db, mini_canonicalize(vec![])));
         }
     }
 
@@ -309,14 +305,15 @@ pub fn next_trait_solve(
     let chalk_res = solve(db, krate, block, &u_canonical);
     match (&chalk_res, &next_solver_res) {
         (Some(Solution::Unique(_)), Err(_)) => eprintln!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
+        (Some(Solution::Unique(_)), Ok((_, Certainty::Maybe(_), _))) => eprintln!("Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
         (None, Ok((_, Certainty::Yes, _))) => eprintln!("Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n", u_canonical, chalk_res, next_solver_res),
         _ => {}
     }
 
     match next_solver_res {
         Err(_) => NextTraitSolveResult::NoSolution,
-        Ok((_, Certainty::Yes, _)) => NextTraitSolveResult::Certain,
-        Ok((_, Certainty::Maybe(_), _)) => NextTraitSolveResult::Uncertain,
+        Ok((_, Certainty::Yes, args)) => NextTraitSolveResult::Certain(convert_canonical_args_for_result(db, args)),
+        Ok((_, Certainty::Maybe(_), args)) => NextTraitSolveResult::Uncertain(convert_canonical_args_for_result(db, args)),
     }
 }
 

@@ -15,7 +15,7 @@ use stdx::never;
 use triomphe::Arc;
 
 use crate::{
-    consteval::ConstEvalError, db::HirDatabase, generics::Generics, infer::InferenceContext, layout_nextsolver::layout_of_ty_query, lower_nextsolver::const_param_ty_query, mir::monomorphize_mir_body_bad, next_solver::{mapping::ChalkToNextSolver, Const, ConstKind, GenericArg, GenericArgs, ParamConst, Ty, ValueConst}, ConstScalar, Interner, MemoryMap, Substitution, TraitEnvironment, TyBuilder
+    consteval::ConstEvalError, db::HirDatabase, generics::Generics, infer::InferenceContext, layout_nextsolver::layout_of_ty_query, mir::monomorphize_mir_body_bad, next_solver::{mapping::ChalkToNextSolver, Const, ConstKind, GenericArg, ParamConst, Ty, ValueConst}, ConstScalar, Interner, MemoryMap, Substitution, TraitEnvironment,
 };
 
 use super::mir::{interpret_mir, lower_to_mir, pad16};
@@ -29,7 +29,6 @@ pub(crate) fn path_to_const<'g>(
 ) -> Option<Const> {
     match resolver.resolve_path_in_value_ns_fully(db.upcast(), path, HygieneId::ROOT) {
         Some(ValueNs::GenericParam(p)) => {
-            let ty = const_param_ty_query(db, p);
             let args = args();
             match args.and_then(|args| args.type_or_const_param(p.into())).and_then(|(idx, p)| p.const_param().map(|p| (idx, p))) {
                 Some((idx, param)) => {
@@ -110,7 +109,7 @@ pub fn try_const_usize(db: &dyn HirDatabase, c: &Const) -> Option<u128> {
         ConstKind::Infer(_) => None,
         ConstKind::Bound(_, _) => None,
         ConstKind::Placeholder(_) => None,
-        ConstKind::Unevaluated(unevaluated_const) => todo!(),
+        ConstKind::Unevaluated(_) => todo!(),
         ConstKind::Value(_, val) => match val.0 {
             ConstScalar::Bytes(it, _) => Some(u128::from_le_bytes(pad16(&it, false))),
             ConstScalar::UnevaluatedConst(c, subst) => {
@@ -130,7 +129,7 @@ pub fn try_const_isize(db: &dyn HirDatabase, c: &Const) -> Option<i128> {
         ConstKind::Infer(_) => None,
         ConstKind::Bound(_, _) => None,
         ConstKind::Placeholder(_) => None,
-        ConstKind::Unevaluated(unevaluated_const) => todo!(),
+        ConstKind::Unevaluated(_) => todo!(),
         ConstKind::Value(_, val) => match val.0 {
             ConstScalar::Bytes(it, _) => Some(i128::from_le_bytes(pad16(&it, false))),
             ConstScalar::UnevaluatedConst(c, subst) => {

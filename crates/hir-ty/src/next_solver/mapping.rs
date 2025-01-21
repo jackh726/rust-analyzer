@@ -1,16 +1,16 @@
-use base_db::ra_salsa::{self, InternKey};
-use chalk_ir::{fold::Shift, interner::HasInterner, CanonicalVarKinds};
+use base_db::{ra_salsa::{self, InternKey}, CrateId};
+use chalk_ir::{fold::Shift, interner::HasInterner, CanonicalVarKind, CanonicalVarKinds, InferenceVar, Substitution, TyVariableKind};
 use hir_def::{CallableDefId, ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
+    elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike, Ty as _}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, DebruijnIndex, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_closure_id, from_chalk_coroutine_id, from_chalk_trait_id, mapping::{from_opaque_ty_id, ToChalk}, next_solver::{
+    db::HirDatabase, from_assoc_type_id, from_chalk_closure_id, from_chalk_coroutine_id, from_chalk_trait_id, mapping::{from_opaque_ty_id, to_opaque_ty_id, ToChalk}, next_solver::{
         interner::{AdtDef, BoundVarKind, BoundVarKinds, DbInterner},
         Binder, ClauseKind, TraitPredicate,
-    }, Interner
+    }, to_assoc_type_id, to_chalk_trait_id, Interner
 };
 
 use super::{
@@ -490,8 +490,13 @@ impl ChalkToNextSolver<Canonical<Goal<DbInterner, Predicate>>>
         let variables = CanonicalVars::new_from_iter(self.binders.iter(Interner).map(
             |k| match &k.kind {
                 chalk_ir::VariableKind::Ty(ty_variable_kind) => {
+                    let kind = match ty_variable_kind {
+                        TyVariableKind::General => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ROOT)),
+                        TyVariableKind::Integer => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Int),
+                        TyVariableKind::Float => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Float),
+                    };
                     CanonicalVarInfo {
-                        kind: rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ROOT))
+                        kind,
                     }
                 }
                 chalk_ir::VariableKind::Lifetime => {
@@ -697,4 +702,272 @@ impl ChalkToNextSolver<PredicateKind> for chalk_ir::WhereClause<Interner> {
             chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),
         }
     }
+}
+
+pub fn convert_canonical_args_for_result(db: &dyn HirDatabase, args: Canonical<Vec<GenericArg>>) -> chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>> {
+    let Canonical { value, variables, max_universe } = args;
+    let binders = CanonicalVarKinds::from_iter(Interner, variables.iter().map(|v| {
+        match v.kind {
+            rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(_)) => CanonicalVarKind::new(chalk_ir::VariableKind::Ty(TyVariableKind::General), chalk_ir::UniverseIndex::ROOT),
+            rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Int) => CanonicalVarKind::new(chalk_ir::VariableKind::Ty(TyVariableKind::Integer), chalk_ir::UniverseIndex::ROOT),
+            rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Float) => CanonicalVarKind::new(chalk_ir::VariableKind::Ty(TyVariableKind::Float), chalk_ir::UniverseIndex::ROOT),
+            rustc_type_ir::CanonicalVarKind::Region(universe_index) => CanonicalVarKind::new(chalk_ir::VariableKind::Lifetime, chalk_ir::UniverseIndex::ROOT),
+            rustc_type_ir::CanonicalVarKind::Const(universe_index) => CanonicalVarKind::new(chalk_ir::VariableKind::Const(crate::TyKind::Error.intern(Interner)), chalk_ir::UniverseIndex::ROOT),
+            rustc_type_ir::CanonicalVarKind::PlaceholderTy(_) => todo!(),
+            rustc_type_ir::CanonicalVarKind::PlaceholderRegion(_) => todo!(),
+            rustc_type_ir::CanonicalVarKind::PlaceholderConst(_) => todo!(),
+        }
+    }));
+    chalk_ir::Canonical {
+        binders,
+        value: chalk_ir::ConstrainedSubst {
+            constraints: chalk_ir::Constraints::empty(Interner),
+            subst: convert_args_for_result(db, &value),
+        },
+    }
+}
+
+fn convert_args_for_result(db: &dyn HirDatabase, args: &[GenericArg]) -> crate::Substitution {
+    let mut substs = Vec::with_capacity(args.len());
+    for arg in args {
+        match arg.clone().kind() {
+            rustc_type_ir::GenericArgKind::Type(ty) => {
+                let ty = convert_ty_for_result(db, ty);
+                substs.push(chalk_ir::GenericArgData::Ty(ty.unwrap_or_else(|| crate::TyKind::Error.intern(Interner))).intern(Interner));
+            }
+            rustc_type_ir::GenericArgKind::Lifetime(_) => {
+                substs.push(chalk_ir::GenericArgData::Lifetime(chalk_ir::LifetimeData::Error.intern(Interner)).intern(Interner));
+            }
+            rustc_type_ir::GenericArgKind::Const(const_) => {
+                substs.push(chalk_ir::GenericArgData::Const(convert_const_for_result(const_)).intern(Interner));
+            }
+        }
+    }
+    Substitution::from_iter(Interner, substs)
+}
+
+fn convert_ty_for_result(db: &dyn HirDatabase, ty: Ty) -> Option<crate::Ty> {
+    use crate::{Scalar, TyKind};
+    use chalk_ir::{FloatTy, IntTy, UintTy};
+    Some(match ty.kind() {
+        rustc_type_ir::TyKind::Bool => TyKind::Scalar(Scalar::Bool),
+        rustc_type_ir::TyKind::Char => TyKind::Scalar(Scalar::Char),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::I8) => TyKind::Scalar(Scalar::Int(IntTy::I8)),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::I16) => TyKind::Scalar(Scalar::Int(IntTy::I16)),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::I32) => TyKind::Scalar(Scalar::Int(IntTy::I32)),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::I64) => TyKind::Scalar(Scalar::Int(IntTy::I64)),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::I128) => TyKind::Scalar(Scalar::Int(IntTy::I128)),
+        rustc_type_ir::TyKind::Int(rustc_type_ir::IntTy::Isize) => TyKind::Scalar(Scalar::Int(IntTy::Isize)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::U8) => TyKind::Scalar(Scalar::Uint(UintTy::U8)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::U16) => TyKind::Scalar(Scalar::Uint(UintTy::U16)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::U32) => TyKind::Scalar(Scalar::Uint(UintTy::U32)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::U64) => TyKind::Scalar(Scalar::Uint(UintTy::U64)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::U128) => TyKind::Scalar(Scalar::Uint(UintTy::U128)),
+        rustc_type_ir::TyKind::Uint(rustc_type_ir::UintTy::Usize) => TyKind::Scalar(Scalar::Uint(UintTy::Usize)),
+        rustc_type_ir::TyKind::Float(rustc_type_ir::FloatTy::F16) => TyKind::Scalar(Scalar::Float(FloatTy::F16)),
+        rustc_type_ir::TyKind::Float(rustc_type_ir::FloatTy::F32) => TyKind::Scalar(Scalar::Float(FloatTy::F32)),
+        rustc_type_ir::TyKind::Float(rustc_type_ir::FloatTy::F64) => TyKind::Scalar(Scalar::Float(FloatTy::F64)),
+        rustc_type_ir::TyKind::Float(rustc_type_ir::FloatTy::F128) => TyKind::Scalar(Scalar::Float(FloatTy::F128)),
+        rustc_type_ir::TyKind::Str => TyKind::Str,
+        rustc_type_ir::TyKind::Error(_) => TyKind::Error,
+        rustc_type_ir::TyKind::Never => TyKind::Never,
+
+        rustc_type_ir::TyKind::Adt(def, args) => {
+            let adt_id = def.0.id;
+            let subst = convert_args_for_result(db, args.as_slice());
+            TyKind::Adt(chalk_ir::AdtId(adt_id), subst)
+        }
+
+        rustc_type_ir::TyKind::Infer(infer_ty) => {
+            let (var, kind) = match infer_ty {
+                rustc_type_ir::InferTy::TyVar(var) => (InferenceVar::from(var.as_u32()), TyVariableKind::General),
+                rustc_type_ir::InferTy::IntVar(var) => (InferenceVar::from(var.as_u32()), TyVariableKind::Integer),
+                rustc_type_ir::InferTy::FloatVar(var) => (InferenceVar::from(var.as_u32()), TyVariableKind::Float),
+                _ => todo!(),
+            };
+            TyKind::InferenceVar(var, kind)
+        }
+
+        rustc_type_ir::TyKind::Ref(_r, ty, mutability) => {
+            let mutability = match mutability {
+                rustc_ast_ir::Mutability::Mut => chalk_ir::Mutability::Mut,
+                rustc_ast_ir::Mutability::Not => chalk_ir::Mutability::Not,
+            };
+            let r = crate::LifetimeData::Error.intern(Interner);
+            let ty = convert_ty_for_result(db, ty).unwrap_or_else(|| crate::TyKind::Error.intern(Interner));
+            TyKind::Ref(mutability, r, ty)
+        }
+
+        rustc_type_ir::TyKind::Tuple(tys) => {
+            let size = tys.len();
+            let subst = Substitution::from_iter(Interner, tys.iter().map(|ty| {
+                chalk_ir::GenericArgData::Ty(convert_ty_for_result(db, ty).unwrap_or_else(|| crate::TyKind::Error.intern(Interner))).intern(Interner)
+            }));
+            TyKind::Tuple(size, subst)
+        }
+
+        rustc_type_ir::TyKind::Array(ty, const_) => {
+            let ty = convert_ty_for_result(db, ty).unwrap_or_else(|| crate::TyKind::Error.intern(Interner));
+            let const_ = convert_const_for_result(const_);
+            TyKind::Array(ty, const_)
+        }
+
+        rustc_type_ir::TyKind::Alias(alias_ty_kind, alias_ty) => {
+            match alias_ty_kind {
+                rustc_type_ir::AliasTyKind::Projection => {
+                    let assoc_ty_id = match alias_ty.def_id {
+                        GenericDefId::TypeAliasId(id) => id,
+                        _ => unreachable!()
+                    };
+                    let associated_ty_id = to_assoc_type_id(assoc_ty_id);
+                    let substitution = convert_args_for_result(db, alias_ty.args.as_slice());
+                    let projection_ty = chalk_ir::ProjectionTy {
+                        associated_ty_id,
+                        substitution,
+                    };
+                    let alias_ty = chalk_ir::AliasTy::Projection(projection_ty);
+                    TyKind::Alias(alias_ty)
+                }
+                rustc_type_ir::AliasTyKind::Opaque => {
+                    let opaque_ty_id = match alias_ty.def_id {
+                        GenericDefId::OpaqueTyId(id) => id,
+                        _ => unreachable!()
+                    };
+                    let opaque_ty_id = to_opaque_ty_id(opaque_ty_id);
+                    let substitution = convert_args_for_result(db, alias_ty.args.as_slice());
+                    let opaque_ty = chalk_ir::OpaqueTy {
+                        opaque_ty_id,
+                        substitution,
+                    };
+                    let alias_ty = chalk_ir::AliasTy::Opaque(opaque_ty);
+                    TyKind::Alias(alias_ty)
+                }
+                rustc_type_ir::AliasTyKind::Inherent => todo!(),
+                rustc_type_ir::AliasTyKind::Weak => todo!(),
+            }
+        }
+
+        rustc_type_ir::TyKind::Placeholder(placeholder) => {
+            let ui = chalk_ir::UniverseIndex { counter: placeholder.universe.as_usize() };
+            let placeholder_index = chalk_ir::PlaceholderIndex {
+                idx: placeholder.bound.var.as_usize(),
+                ui,
+            };
+            TyKind::Placeholder(placeholder_index)
+        }
+
+        rustc_type_ir::TyKind::Bound(debruijn_index, ty) => {
+            TyKind::BoundVar(chalk_ir::BoundVar { debruijn: chalk_ir::DebruijnIndex::new(debruijn_index.as_u32()), index: ty.var.as_usize() })
+        }
+
+        rustc_type_ir::TyKind::FnPtr(bound_sig, fn_header) => {
+            let num_binders = bound_sig.bound_vars().len();
+            let sig = chalk_ir::FnSig {
+                abi: fn_header.abi,
+                safety: match fn_header.safety {
+                    crate::next_solver::abi::Safety::Safe => chalk_ir::Safety::Safe,
+                    crate::next_solver::abi::Safety::Unsafe => chalk_ir::Safety::Unsafe,
+                },
+                variadic: fn_header.c_variadic,
+            };
+            let args = GenericArgs::new_from_iter(bound_sig.skip_binder().inputs_and_output.iter().map(|a| a.into()));
+            let substitution = convert_args_for_result(db, args.as_slice());
+            let substitution = chalk_ir::FnSubst(substitution);
+            let fnptr = chalk_ir::FnPointer {
+                num_binders,
+                sig,
+                substitution,
+            };
+            TyKind::Function(fnptr)
+        }
+
+        rustc_type_ir::TyKind::Dynamic(preds, region_, dyn_kind) => {
+            let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+            assert!(matches!(dyn_kind, rustc_type_ir::DynKind::Dyn));
+            let self_ty = Ty::new_bound(DbInterner, DebruijnIndex::from_u32(0), BoundTy { kind: BoundTyKind::Anon, var: BoundVar::from_u32(0) });
+            let bounds = chalk_ir::QuantifiedWhereClauses::from_iter(Interner, preds.iter().map(|p| {
+                let binders = chalk_ir::VariableKinds::from_iter(Interner, p.bound_vars().iter().map(|b| {
+                    match b {
+                        BoundVarKind::Ty(kind) => chalk_ir::VariableKind::Ty(TyVariableKind::General),
+                        BoundVarKind::Region(kind) => chalk_ir::VariableKind::Lifetime,
+                        BoundVarKind::Const => chalk_ir::VariableKind::Const(crate::TyKind::Error.intern(Interner)),
+                    }
+                }));
+                let where_clause = match p.skip_binder() {
+                    rustc_type_ir::ExistentialPredicate::Trait(trait_ref) => {
+                        let trait_ref = trait_ref.with_self_ty(fake_ir, self_ty.clone());
+                        let trait_id = match trait_ref.def_id {
+                            GenericDefId::TraitId(id) => to_chalk_trait_id(id),
+                            _ => unreachable!(),
+                        };
+                        let substitution = convert_args_for_result(db, trait_ref.args.as_slice());
+                        let trait_ref = chalk_ir::TraitRef {
+                            trait_id,
+                            substitution
+                        };
+                        chalk_ir::WhereClause::Implemented(trait_ref)
+                    }
+                    rustc_type_ir::ExistentialPredicate::AutoTrait(trait_) => {
+                        let trait_id = match trait_ {
+                            GenericDefId::TraitId(id) => to_chalk_trait_id(id),
+                            _ => unreachable!(),
+                        };
+                        let substitution = chalk_ir::Substitution::empty(Interner);
+                        let trait_ref = chalk_ir::TraitRef {
+                            trait_id,
+                            substitution
+                        };
+                        chalk_ir::WhereClause::Implemented(trait_ref)
+                    }
+                    rustc_type_ir::ExistentialPredicate::Projection(existential_projection) => {
+                        let projection = existential_projection.with_self_ty(fake_ir, self_ty.clone());
+                        let associated_ty_id = match projection.projection_term.def_id {
+                            GenericDefId::TypeAliasId(id) => to_assoc_type_id(id),
+                            _ => unreachable!(),
+                        };
+                        let substitution = convert_args_for_result(db, projection.projection_term.args.as_slice());
+                        let alias = chalk_ir::AliasTy::Projection(chalk_ir::ProjectionTy {
+                            associated_ty_id,
+                            substitution,
+                        });
+                        let ty = match projection.term {
+                            Term::Ty(ty) => ty,
+                            _ => unreachable!(),
+                        };
+                        let ty = convert_ty_for_result(db, ty).unwrap_or_else(|| chalk_ir::TyKind::Error.intern(Interner));
+                        let alias_eq = chalk_ir::AliasEq {
+                            alias,
+                            ty,
+                        };
+                        chalk_ir::WhereClause::AliasEq(alias_eq)
+                    }
+                };
+                chalk_ir::Binders::new(binders, where_clause)
+            }));
+            let binders = chalk_ir::VariableKinds::from1(Interner, chalk_ir::VariableKind::Ty(chalk_ir::TyVariableKind::General));
+            let bounds = chalk_ir::Binders::new(binders, bounds);
+            let dyn_ty = chalk_ir::DynTy {
+                bounds,
+                lifetime: chalk_ir::LifetimeData::Error.intern(Interner),
+            };
+            TyKind::Dyn(dyn_ty)
+        }
+
+        rustc_type_ir::TyKind::Foreign(_) => todo!(),
+        rustc_type_ir::TyKind::Pat(_, _) => todo!(),
+        rustc_type_ir::TyKind::Slice(_) => todo!(),
+        rustc_type_ir::TyKind::RawPtr(_, mutability) => todo!(),
+        rustc_type_ir::TyKind::FnDef(_, _) => todo!(),
+        
+        rustc_type_ir::TyKind::Closure(_, _) => todo!(),
+        rustc_type_ir::TyKind::CoroutineClosure(_, _) => todo!(),
+        rustc_type_ir::TyKind::Coroutine(_, _) => todo!(),
+        rustc_type_ir::TyKind::CoroutineWitness(_, _) => todo!(),
+
+        rustc_type_ir::TyKind::Param(_) => todo!(),
+    }.intern(Interner))
+}
+
+fn convert_const_for_result(const_: Const) -> crate::Const {
+    chalk_ir::ConstData { ty: crate::TyKind::Error.intern(Interner), value: chalk_ir::ConstValue::InferenceVar(InferenceVar::from(0)) }.intern(Interner)
 }

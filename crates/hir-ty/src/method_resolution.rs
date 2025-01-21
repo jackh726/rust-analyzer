@@ -21,7 +21,7 @@ use stdx::never;
 use triomphe::Arc;
 
 use crate::{
-    autoderef::{self, AutoderefKind}, db::HirDatabase, error_lifetime, from_chalk_trait_id, from_foreign_def_id, infer::{unify::InferenceTable, Adjust, Adjustment, OverloadedDeref, PointerCast}, lang_items::is_box, primitive::{FloatTy, IntTy, UintTy}, to_chalk_trait_id, traits::next_trait_solve, utils::all_super_traits, AdtId, Canonical, CanonicalVarKinds, DebruijnIndex, DynTyExt, ForeignDefId, GenericArgData, Goal, Guidance, InEnvironment, Interner, Mutability, Scalar, Solution, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder, TyExt, TyKind, TyVariableKind, VariableKind, WhereClause
+    autoderef::{self, AutoderefKind}, db::HirDatabase, error_lifetime, from_chalk_trait_id, from_foreign_def_id, infer::{unify::InferenceTable, Adjust, Adjustment, OverloadedDeref, PointerCast}, lang_items::is_box, primitive::{FloatTy, IntTy, UintTy}, to_chalk_trait_id, traits::{next_trait_solve, NextTraitSolveResult}, utils::all_super_traits, AdtId, Canonical, CanonicalVarKinds, DebruijnIndex, DynTyExt, ForeignDefId, GenericArgData, Goal, InEnvironment, Interner, Mutability, Scalar, Solution, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder, TyExt, TyKind, TyVariableKind, VariableKind, WhereClause
 };
 
 /// This is used as a key for indexing impls.
@@ -1629,14 +1629,15 @@ fn is_valid_impl_fn_candidate(
         for goal in goals.clone() {
             let in_env = InEnvironment::new(&table.trait_env.env, goal);
             let canonicalized = table.canonicalize_with_free_vars(in_env);
-            let solution = table.db.trait_solve(
+            let next_solution = next_trait_solve(
+                table.db,
                 table.trait_env.krate,
                 table.trait_env.block,
                 canonicalized.value.clone(),
             );
 
-            match solution {
-                Some(Solution::Unique(canonical_subst)) => {
+            match next_solution {
+                NextTraitSolveResult::Certain(canonical_subst) => {
                     canonicalized.apply_solution(
                         table,
                         Canonical {
@@ -1645,11 +1646,8 @@ fn is_valid_impl_fn_candidate(
                         },
                     );
                 }
-                Some(Solution::Ambig(Guidance::Definite(substs))) => {
-                    canonicalized.apply_solution(table, substs);
-                }
-                Some(_) => (),
-                None => return IsValidCandidate::No,
+                NextTraitSolveResult::Uncertain(_) => {}
+                NextTraitSolveResult::NoSolution => return IsValidCandidate::No,
             }
         }
 

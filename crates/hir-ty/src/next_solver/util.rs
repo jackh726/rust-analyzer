@@ -5,15 +5,16 @@ use base_db::CrateId;
 use extension_traits::extension;
 use hir_def::{BlockId, HasModule};
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
+use rustc_type_ir::data_structures::IndexMap;
 use rustc_type_ir::fold::TypeFoldable;
-use rustc_type_ir::inherent::{GenericArg, IrAdtDef, SliceLike};
-use rustc_type_ir::{BoundVar, EarlyBinder};
+use rustc_type_ir::inherent::{GenericArg as _, IrAdtDef, SliceLike};
+use rustc_type_ir::{BoundVar, Canonical, DebruijnIndex, EarlyBinder, GenericArgKind};
 use rustc_type_ir::{fold::{TypeFolder, TypeSuperFoldable}, inherent::IntoKind, visit::{TypeSuperVisitable, TypeVisitor}, ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, UintTy, UniverseIndex};
 
 use crate::{db::HirDatabase, from_foreign_def_id, method_resolution::{TraitImpls, TyFingerprint}};
 
 use super::fold::{BoundVarReplacer, FnMutDelegate};
-use super::{Binder, BoundRegion, BoundTy, Clause, Const, DbInterner, DbIr, GenericArgs, Region, Ty, TyKind};
+use super::{Binder, BoundRegion, BoundTy, CanonicalVarInfo, CanonicalVars, Clause, Const, DbInterner, DbIr, GenericArg, GenericArgs, Region, Ty, TyKind};
 
 #[derive(Clone, Debug)]
 pub struct Discr {
@@ -437,4 +438,93 @@ pub fn apply_args_to_binder<T: TypeFoldable<DbInterner>>(b: Binder<T>, args: Gen
         consts,
     });
     dbg!(b.skip_binder().fold_with(&mut instantiate))
+}
+
+pub fn mini_canonicalize<T: TypeFoldable<DbInterner>>(val: T) -> Canonical<DbInterner, T> {
+    let mut canon = MiniCanonicalizer {
+        db: DebruijnIndex::ZERO,
+        vars: IndexMap::default(),
+    };
+    let canon_val = val.fold_with(&mut canon);
+    Canonical {
+        value: canon_val,
+        max_universe: UniverseIndex::from_u32(1),
+        variables: CanonicalVars::new_from_iter(canon.vars.iter().map(|(k, v)| {
+            let kind = match k.clone().kind() {
+                GenericArgKind::Type(_) => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ZERO)),
+                GenericArgKind::Lifetime(_) => rustc_type_ir::CanonicalVarKind::Region(UniverseIndex::ZERO),
+                GenericArgKind::Const(_) => rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ZERO),
+            };
+            CanonicalVarInfo { kind }
+        }))
+    }
+}
+
+struct MiniCanonicalizer {
+    db: DebruijnIndex,
+    vars: IndexMap<GenericArg, usize>,
+}
+
+impl TypeFolder<DbInterner> for MiniCanonicalizer {
+    fn cx(&self) -> DbInterner{
+        DbInterner
+    }
+
+    fn fold_binder<T: TypeFoldable<DbInterner>>(&mut self, t: rustc_type_ir::Binder<DbInterner, T>) -> rustc_type_ir::Binder<DbInterner, T> {
+        self.db.shift_in(1);
+        let res = t.map_bound(|t| t.fold_with(self));
+        self.db.shift_out(1);
+        res
+    }
+
+    fn fold_ty(&mut self, t: Ty) -> Ty {
+        match t.clone().kind() {
+            rustc_type_ir::TyKind::Bound(db, _) => {
+                if db >= self.db {
+                    panic!("Unexpected bound var");
+                }
+                t
+            }
+            rustc_type_ir::TyKind::Infer(infer) => {
+                let len = self.vars.len();
+                let var = *self.vars.entry(t.into()).or_insert(len);
+                Ty::new(TyKind::Bound(self.db, BoundTy { kind: super::BoundTyKind::Anon, var: BoundVar::from_usize(var) }))
+            }
+            _ => t,
+        }
+    }
+
+    fn fold_region(&mut self, r: <DbInterner as rustc_type_ir::Interner>::Region) -> <DbInterner as rustc_type_ir::Interner>::Region {
+        match r.clone().kind() {
+            RegionKind::ReBound(db, _) => {
+                if db >= self.db {
+                    panic!("Unexpected bound var");
+                }
+                r
+            }
+            RegionKind::ReVar(vid) => {
+                let len = self.vars.len();
+                let var = *self.vars.entry(r.into()).or_insert(len);
+                Region::new(RegionKind::ReBound(self.db, BoundRegion { kind: super::BoundRegionKind::Anon, var: BoundVar::from_usize(len) }))
+            }
+            _ => r,
+        }
+    }
+
+    fn fold_const(&mut self, c: <DbInterner as rustc_type_ir::Interner>::Const) -> <DbInterner as rustc_type_ir::Interner>::Const {
+        match c.clone().kind() {
+            ConstKind::Bound(db, _) => {
+                if db >= self.db {
+                    panic!("Unexpected bound var");
+                }
+                c
+            }
+            ConstKind::Infer(infer) => {
+                let len = self.vars.len();
+                let var = *self.vars.entry(c.into()).or_insert(len);
+                Const::new(ConstKind::Bound(self.db, BoundVar::from_usize(len)))
+            }
+            _ => c,
+        }
+    }
 }
