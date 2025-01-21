@@ -544,9 +544,9 @@ struct Bar<T>(Foo<T>);
 
 fn test() {
     let _: &Foo<[usize]> = &Foo { t: [1, 2, 3] };
-                         //^^^^^^^^^^^^^^^^^^^^^ expected &'? Foo<[usize]>, got &'? Foo<[i32; 3]>
+                         //^^^^^^^^^^^^^^^^^^^^^ type: &'? Foo<[usize; 3]>
     let _: &Bar<[usize]> = &Bar(Foo { t: [1, 2, 3] });
-                         //^^^^^^^^^^^^^^^^^^^^^^^^^^ expected &'? Bar<[usize]>, got &'? Bar<[i32; 3]>
+                         //^^^^^^^^^^^^^^^^^^^^^^^^^^ type: &'? Bar<[usize; 3]>
 }
 "#,
     );

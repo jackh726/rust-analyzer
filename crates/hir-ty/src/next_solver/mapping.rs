@@ -3,7 +3,7 @@ use chalk_ir::{fold::Shift, interner::HasInterner, CanonicalVarKind, CanonicalVa
 use hir_def::{CallableDefId, ClosureId, ConstParamId, FunctionId, GenericDefId, LifetimeParamId, TypeAliasId, TypeOrConstParamId, TypeParamId};
 use intern::sym;
 use rustc_type_ir::{
-    elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike, Ty as _}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, DebruijnIndex, ExistentialProjection, ExistentialTraitRef, ProjectionPredicate, RustIr, UniverseIndex
+    elaborate, fold::{shift_vars, TypeFoldable, TypeSuperFoldable}, inherent::{BoundVarLike, Clause as _, IntoKind, PlaceholderLike, SliceLike, Ty as _}, solve::Goal, visit::{TypeVisitable, TypeVisitableExt}, AliasTerm, BoundVar, DebruijnIndex, ExistentialProjection, ExistentialTraitRef, OutlivesPredicate, ProjectionPredicate, RustIr, UniverseIndex
 };
 
 use crate::{
@@ -635,8 +635,12 @@ impl ChalkToNextSolver<PredicateKind> for chalk_ir::ProgramClauseImplication<Int
                     };
                     PredicateKind::Clause(ClauseKind::Projection(predicate))
                 }
+                chalk_ir::WhereClause::TypeOutlives(type_outlives) => {
+                    let ty = type_outlives.ty.to_nextsolver(ir);
+                    let r = type_outlives.lifetime.to_nextsolver(ir);
+                    PredicateKind::Clause(ClauseKind::TypeOutlives(OutlivesPredicate(ty, r)))
+                }
                 chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
-                chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),
             },
             chalk_ir::DomainGoal::WellFormed(well_formed) => todo!(),
             chalk_ir::DomainGoal::FromEnv(from_env) => match from_env {

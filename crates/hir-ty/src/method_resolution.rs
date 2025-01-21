@@ -1629,14 +1629,14 @@ fn is_valid_impl_fn_candidate(
         for goal in goals.clone() {
             let in_env = InEnvironment::new(&table.trait_env.env, goal);
             let canonicalized = table.canonicalize_with_free_vars(in_env);
-            let next_solution = next_trait_solve(
+            let solution = next_trait_solve(
                 table.db,
                 table.trait_env.krate,
                 table.trait_env.block,
                 canonicalized.value.clone(),
             );
 
-            match next_solution {
+            match solution {
                 NextTraitSolveResult::Certain(canonical_subst) => {
                     canonicalized.apply_solution(
                         table,

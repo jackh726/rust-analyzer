@@ -16,15 +16,10 @@ use stdx::always;
 use triomphe::Arc;
 
 use crate::{
-    autoderef::{Autoderef, AutoderefKind},
-    db::HirDatabase,
-    infer::{
+    autoderef::{Autoderef, AutoderefKind}, db::HirDatabase, infer::{
         Adjust, Adjustment, AutoBorrow, InferOk, InferenceContext, OverloadedDeref, PointerCast,
         TypeError, TypeMismatch,
-    },
-    utils::ClosureSubst,
-    Canonical, DomainGoal, FnAbi, FnPointer, FnSig, Guidance, InEnvironment, Interner, Lifetime,
-    Solution, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt,
+    }, traits::{next_trait_solve, NextTraitSolveResult}, utils::ClosureSubst, Canonical, DomainGoal, FnAbi, FnPointer, FnSig, Guidance, InEnvironment, Interner, Lifetime, Solution, Substitution, TraitEnvironment, Ty, TyBuilder, TyExt
 };
 
 use super::unify::InferenceTable;
@@ -694,13 +689,14 @@ impl InferenceTable<'_> {
         // solve `CoerceUnsized` and `Unsize` goals at this point and leaves the
         // rest for later. Also, there's some logic about sized type variables.
         // Need to find out in what cases this is necessary
-        let solution = self
-            .db
-            .trait_solve(krate, self.trait_env.block, canonicalized.value.clone().cast(Interner))
-            .ok_or(TypeError)?;
+        let solution = next_trait_solve(self.db, krate, self.trait_env.block, canonicalized.value.clone().cast(Interner));
 
         match solution {
-            Solution::Unique(v) => {
+            // FIXME: this is a weaker guarantee than Chalk's `Guidance::Unique`
+            // was. Chalk's unique guidance at least guarantees that the real solution
+            // is some "subset" of the solutions matching the guidance, but the
+            // substs for `Certainty::No` don't have that same guarantee (I think).
+            NextTraitSolveResult::Certain(v) => {
                 canonicalized.apply_solution(
                     self,
                     Canonical {
@@ -710,13 +706,10 @@ impl InferenceTable<'_> {
                     },
                 );
             }
-            Solution::Ambig(Guidance::Definite(subst)) => {
-                // FIXME need to record an obligation here
-                canonicalized.apply_solution(self, subst)
-            }
-            // FIXME actually we maybe should also accept unknown guidance here
-            _ => return Err(TypeError),
-        };
+            // ...so, should think about how to get some actually get some guidance here
+            NextTraitSolveResult::Uncertain(_) | NextTraitSolveResult::NoSolution => return Err(TypeError),
+        }
+
         let unsize =
             Adjustment { kind: Adjust::Pointer(PointerCast::Unsize), target: to_ty.clone() };
         let adjustments = match reborrow {
