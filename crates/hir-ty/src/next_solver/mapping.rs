@@ -834,12 +834,7 @@ fn convert_ty_for_result(db: &dyn HirDatabase, ty: Ty) -> Option<crate::Ty> {
                     };
                     let opaque_ty_id = to_opaque_ty_id(opaque_ty_id);
                     let substitution = convert_args_for_result(db, alias_ty.args.as_slice());
-                    let opaque_ty = chalk_ir::OpaqueTy {
-                        opaque_ty_id,
-                        substitution,
-                    };
-                    let alias_ty = chalk_ir::AliasTy::Opaque(opaque_ty);
-                    TyKind::Alias(alias_ty)
+                    TyKind::OpaqueType(opaque_ty_id, substitution)
                 }
                 rustc_type_ir::AliasTyKind::Inherent => todo!(),
                 rustc_type_ir::AliasTyKind::Weak => todo!(),
@@ -952,9 +947,13 @@ fn convert_ty_for_result(db: &dyn HirDatabase, ty: Ty) -> Option<crate::Ty> {
             TyKind::Dyn(dyn_ty)
         }
 
+        rustc_type_ir::TyKind::Slice(ty) => {
+            let ty = convert_ty_for_result(db, ty).unwrap_or_else(|| chalk_ir::TyKind::Error.intern(Interner));
+            TyKind::Slice(ty)
+        }
+
         rustc_type_ir::TyKind::Foreign(_) => todo!(),
         rustc_type_ir::TyKind::Pat(_, _) => todo!(),
-        rustc_type_ir::TyKind::Slice(_) => todo!(),
         rustc_type_ir::TyKind::RawPtr(_, mutability) => todo!(),
         rustc_type_ir::TyKind::FnDef(_, _) => todo!(),
         
