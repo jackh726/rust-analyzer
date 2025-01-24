@@ -1553,10 +1553,16 @@ fn type_for_type_alias(db: &dyn HirDatabase, t: TypeAliasId) -> EarlyBinder<Ty> 
 
 pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> EarlyBinder<Ty> {
     // HACK HACK HACK delete pls
-    static REENTRANT_MAP: std::sync::OnceLock<std::sync::Mutex<HashSet<ImplId>>> = std::sync::OnceLock::new();
-    let new = REENTRANT_MAP.get_or_init(|| std::sync::Mutex::new(HashSet::new())).lock().unwrap().insert(impl_id);
+    thread_local! {
+        static REENTRANT_MAP: std::cell::RefCell<HashSet<ImplId>> = std::cell::RefCell::new(HashSet::new());
+    }
+    let new = REENTRANT_MAP.with_borrow_mut(|m| {
+        m.insert(impl_id)
+    });
     if !new {
-        REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
+        REENTRANT_MAP.with_borrow_mut(|m| {
+            m.remove(&impl_id);
+        });
         return EarlyBinder::bind(Ty::new_error(DbInterner, ErrorGuaranteed));
     }
 
@@ -1565,7 +1571,9 @@ pub(crate) fn impl_self_ty_query(db: &dyn HirDatabase, impl_id: ImplId) -> Early
     let mut ctx = TyLoweringContext::new(db, &resolver, &impl_data.types_map, impl_id.into());
     let ty = ctx.lower_ty(impl_data.self_ty);
     assert!(!ty.has_escaping_bound_vars());
-    REENTRANT_MAP.get().inspect(|m| { m.lock().unwrap().remove(&impl_id); });
+    REENTRANT_MAP.with_borrow_mut(|m| {
+        m.remove(&impl_id);
+    });
     EarlyBinder::bind(ty)
 }
 
