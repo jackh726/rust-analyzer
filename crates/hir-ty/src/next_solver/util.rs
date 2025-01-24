@@ -451,7 +451,14 @@ pub fn mini_canonicalize<T: TypeFoldable<DbInterner>>(val: T) -> Canonical<DbInt
         max_universe: UniverseIndex::from_u32(1),
         variables: CanonicalVars::new_from_iter(canon.vars.iter().map(|(k, v)| {
             let kind = match k.clone().kind() {
-                GenericArgKind::Type(_) => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ZERO)),
+                GenericArgKind::Type(ty) => {
+                    match ty.kind() {
+                        TyKind::Int(..) | TyKind::Uint(..) => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Int),
+                        TyKind::Float(..) => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::Float),
+                        _ => rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(UniverseIndex::ZERO)),
+                    }
+                    
+                }
                 GenericArgKind::Lifetime(_) => rustc_type_ir::CanonicalVarKind::Region(UniverseIndex::ZERO),
                 GenericArgKind::Const(_) => rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ZERO),
             };

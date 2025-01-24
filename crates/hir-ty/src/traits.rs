@@ -279,8 +279,8 @@ pub fn next_trait_solve(
         GoalData::DomainGoal(DomainGoal::Holds(WhereClause::AliasEq(_))) => "alias_eq".to_owned(),
         _ => "??".to_owned(),
     };
-    let _p = tracing::info_span!("trait_solve_query", ?detail).entered();
-    tracing::info!("trait_solve_query({:?})", goal.value.goal);
+    let _p = tracing::info_span!("next_trait_solve", ?detail).entered();
+    tracing::info!("next_trait_solve({:?})", goal.value.goal);
 
     if let GoalData::DomainGoal(DomainGoal::Holds(WhereClause::AliasEq(AliasEq {
         alias: AliasTy::Projection(projection_ty),
