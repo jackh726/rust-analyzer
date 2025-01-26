@@ -203,9 +203,7 @@ pub(crate) fn deref_by_trait(
     // Check that the type implements Deref at all
     let trait_ref = projection.trait_ref(db);
     let implements_goal: Goal = trait_ref.cast(Interner);
-    if table.try_obligation(implements_goal.clone()).no_solution() {
-        return None;
-    }
+    table.try_obligation(implements_goal.clone())?;
 
     table.register_obligation(implements_goal);
 

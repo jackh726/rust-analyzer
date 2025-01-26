@@ -825,7 +825,12 @@ fn convert_ty_for_result(db: &dyn HirDatabase, ty: Ty) -> Option<crate::Ty> {
                     };
                     let associated_ty_id = to_assoc_type_id(assoc_ty_id);
                     let substitution = convert_args_for_result(db, alias_ty.args.as_slice());
-                    TyKind::AssociatedType(associated_ty_id, substitution)
+                    let projection_ty = chalk_ir::ProjectionTy {
+                        associated_ty_id,
+                        substitution,
+                    };
+                    let alias_ty = chalk_ir::AliasTy::Projection(projection_ty);
+                    TyKind::Alias(alias_ty)
                 }
                 rustc_type_ir::AliasTyKind::Opaque => {
                     let opaque_ty_id = match alias_ty.def_id {

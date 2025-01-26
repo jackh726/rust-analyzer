@@ -847,9 +847,8 @@ fn find_matching_impl(
             for goal in crate::chalk_db::convert_where_clauses(db, impl_.into(), &impl_substs)
                 .into_iter()
                 .map(|b| -> Goal { b.cast(Interner) }) {
-                    if !table.try_obligation(goal.clone()).no_solution() {
-                        table.register_obligation(goal);
-                    }
+                    table.try_obligation(goal.clone())?;
+                    table.register_obligation(goal);
             }
             Some((impl_data, table.resolve_completely(impl_substs)))
         })
@@ -1653,7 +1652,7 @@ fn is_valid_impl_fn_candidate(
         }
 
         for goal in goals {
-            if table.try_obligation(goal).no_solution() {
+            if table.try_obligation(goal).is_none() {
                 return IsValidCandidate::No;
             }
         }
