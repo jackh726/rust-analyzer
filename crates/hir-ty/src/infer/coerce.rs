@@ -707,7 +707,7 @@ impl InferenceTable<'_> {
                 );
             }
             // ...so, should think about how to get some actually get some guidance here
-            NextTraitSolveResult::Uncertain(_) | NextTraitSolveResult::NoSolution => return Err(TypeError),
+            NextTraitSolveResult::Uncertain | NextTraitSolveResult::NoSolution => return Err(TypeError),
         }
 
         let unsize =

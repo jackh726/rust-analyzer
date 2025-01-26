@@ -247,17 +247,21 @@ fn solve_nextsolver(
 #[derive(Clone, Debug)]
 pub enum NextTraitSolveResult {
     Certain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
-    Uncertain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
+    Uncertain,
     NoSolution,
 }
 
 impl NextTraitSolveResult {
-    pub fn no_solution(self) -> bool {
+    pub fn no_solution(&self) -> bool {
         matches!(self, NextTraitSolveResult::NoSolution)
     }
 
-    pub fn certain(self) -> bool {
+    pub fn certain(&self) -> bool {
         matches!(self, NextTraitSolveResult::Certain(..))
+    }
+
+    pub fn uncertain(&self) -> bool {
+        matches!(self, NextTraitSolveResult::Uncertain)
     }
 }
 
@@ -286,7 +290,7 @@ pub fn next_trait_solve(
         if let TyKind::BoundVar(_) = projection_ty.self_type_parameter(db).kind(Interner) {
             // Hack: don't ask Chalk to normalize with an unknown self type, it'll say that's impossible
             // FIXME
-            return NextTraitSolveResult::Uncertain(convert_canonical_args_for_result(db, mini_canonicalize(vec![])));
+            return NextTraitSolveResult::Uncertain;
         }
     }
 
@@ -313,7 +317,7 @@ pub fn next_trait_solve(
     match next_solver_res {
         Err(_) => NextTraitSolveResult::NoSolution,
         Ok((_, Certainty::Yes, args)) => NextTraitSolveResult::Certain(convert_canonical_args_for_result(db, args)),
-        Ok((_, Certainty::Maybe(_), args)) => NextTraitSolveResult::Uncertain(convert_canonical_args_for_result(db, args)),
+        Ok((_, Certainty::Maybe(_), args)) => NextTraitSolveResult::Uncertain,
     }
 }
 

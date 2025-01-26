@@ -19,10 +19,10 @@ use triomphe::Arc;
 use super::{InferOk, InferResult, InferenceContext, TypeError};
 use crate::{
     consteval::unknown_const, db::HirDatabase, fold_generic_args, fold_tys_and_consts,
-    to_chalk_trait_id, traits::{next_trait_solve, FnTrait}, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue,
-    DebruijnIndex, DomainGoal, GenericArg, GenericArgData, Goal, GoalData, Guidance, InEnvironment,
+    to_chalk_trait_id, traits::{next_trait_solve, trait_solve_query, FnTrait, NextTraitSolveResult}, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue,
+    DebruijnIndex, DomainGoal, GenericArg, GenericArgData, Goal, GoalData, InEnvironment,
     InferenceVar, Interner, Lifetime, OpaqueTyId, ParamKind, ProjectionTy, ProjectionTyExt, Scalar,
-    Solution, Substitution, TraitEnvironment, TraitRef, Ty, TyBuilder, TyExt, TyKind, VariableKind,
+    Substitution, TraitEnvironment, TraitRef, Ty, TyBuilder, TyExt, TyKind, VariableKind,
     WhereClause,
 };
 
@@ -115,7 +115,8 @@ impl<T: HasInterner<Interner = Interner>> Canonicalized<T> {
             if let Some(ty) = v.ty(Interner) {
                 // eagerly replace projections in the type; we may be getting types
                 // e.g. from where clauses where this hasn't happened yet
-                let ty = ctx.normalize_associated_types_in(new_vars.apply(ty.clone(), Interner));
+                //let ty = ctx.normalize_associated_types_in(new_vars.apply(ty.clone(), Interner));
+                let ty = new_vars.apply(ty.clone(), Interner);
                 ctx.unify(var.assert_ty_ref(Interner), &ty);
             } else {
                 let _ = ctx.try_unify(var, &new_vars.apply(v.clone(), Interner));
@@ -548,7 +549,7 @@ impl<'a> InferenceTable<'a> {
         };
         result.goals.iter().all(|goal| {
             let canonicalized = self.canonicalize_with_free_vars(goal.clone());
-            self.try_resolve_obligation(&canonicalized).is_some()
+            self.try_resolve_obligation(&canonicalized).certain()
         })
     }
 
@@ -604,11 +605,11 @@ impl<'a> InferenceTable<'a> {
     /// Checks an obligation without registering it. Useful mostly to check
     /// whether a trait *might* be implemented before deciding to 'lock in' the
     /// choice (during e.g. method resolution or deref).
-    pub(crate) fn try_obligation(&mut self, goal: Goal) -> Option<Solution> {
+    pub(crate) fn try_obligation(&mut self, goal: Goal) -> NextTraitSolveResult {
         let in_env = InEnvironment::new(&self.trait_env.env, goal);
         let canonicalized = self.canonicalize(in_env);
 
-        self.db.trait_solve(self.trait_env.krate, self.trait_env.block, canonicalized)
+        next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized)
     }
 
     pub(crate) fn register_obligation(&mut self, goal: Goal) {
@@ -619,7 +620,7 @@ impl<'a> InferenceTable<'a> {
     fn register_obligation_in_env(&mut self, goal: InEnvironment<Goal>) {
         let canonicalized = self.canonicalize_with_free_vars(goal);
         let solution = self.try_resolve_obligation(&canonicalized);
-        if matches!(solution, Some(Solution::Ambig(_))) {
+        if solution.uncertain() {
             self.pending_obligations.push(canonicalized);
         }
     }
@@ -744,34 +745,33 @@ impl<'a> InferenceTable<'a> {
     fn try_resolve_obligation(
         &mut self,
         canonicalized: &Canonicalized<InEnvironment<Goal>>,
-    ) -> Option<chalk_solve::Solution<Interner>> {
-        let solution = self.db.trait_solve(
-            self.trait_env.krate,
-            self.trait_env.block,
-            canonicalized.value.clone(),
-        );
+    ) -> NextTraitSolveResult {
+        //let solution = next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone());
+        let solution = match trait_solve_query(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone()) {
+            Some(chalk_solve::Solution::Unique(u)) => NextTraitSolveResult::Certain(u),
+            Some(chalk_solve::Solution::Ambig(_)) => NextTraitSolveResult::Uncertain,
+            None => NextTraitSolveResult::NoSolution,
+        };
 
         match &solution {
-            Some(Solution::Unique(canonical_subst)) => {
+            // FIXME: this is a weaker guarantee than Chalk's `Guidance::Unique`
+            // was. Chalk's unique guidance at least guarantees that the real solution
+            // is some "subset" of the solutions matching the guidance, but the
+            // substs for `Certainty::No` don't have that same guarantee (I think).
+            NextTraitSolveResult::Certain(v) => {
                 canonicalized.apply_solution(
                     self,
                     Canonical {
-                        binders: canonical_subst.binders.clone(),
-                        // FIXME: handle constraints
-                        value: canonical_subst.value.subst.clone(),
+                        binders: v.binders.clone(),
+                        // FIXME handle constraints
+                        value: v.value.subst.clone(),
                     },
                 );
             }
-            Some(Solution::Ambig(Guidance::Definite(substs))) => {
-                canonicalized.apply_solution(self, substs.clone());
-            }
-            Some(_) => {
-                // FIXME use this when trying to resolve everything at the end
-            }
-            None => {
-                // FIXME obligation cannot be fulfilled => diagnostic
-            }
+            // ...so, should think about how to get some actually get some guidance here
+            NextTraitSolveResult::Uncertain | NextTraitSolveResult::NoSolution => {}
         }
+
         solution
     }
 
@@ -948,7 +948,7 @@ impl<'a> InferenceTable<'a> {
             substitution: Substitution::from1(Interner, ty.clone()),
         });
         let goal = GoalData::DomainGoal(chalk_ir::DomainGoal::Holds(sized_pred)).intern(Interner);
-        matches!(self.try_obligation(goal), Some(Solution::Unique(_)))
+        self.try_obligation(goal).certain()
     }
 }
 
