@@ -3,7 +3,7 @@ use span::{Edition, EditionedFileId};
 use syntax::{TextRange, TextSize};
 use test_fixture::WithFixture;
 
-use crate::{db::HirDatabase, test_db::TestDB, Interner, Substitution};
+use crate::{db::HirDatabase, test_db::TestDB, tests::setup_tracing, Interner, Substitution};
 
 use super::{interpret_mir, MirEvalError};
 
@@ -42,6 +42,7 @@ fn check_pass(ra_fixture: &str) {
 }
 
 fn check_pass_and_stdio(ra_fixture: &str, expected_stdout: &str, expected_stderr: &str) {
+    let _tracing = setup_tracing();
     let (db, file_ids) = TestDB::with_many_files(ra_fixture);
     let file_id = *file_ids.last().unwrap();
     let x = eval_main(&db, file_id);

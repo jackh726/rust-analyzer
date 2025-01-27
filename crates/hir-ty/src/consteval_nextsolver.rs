@@ -7,7 +7,7 @@ use hir_def::{
     path::Path,
     resolver::{Resolver, ValueNs},
     type_ref::LiteralConstRef,
-    ConstBlockLoc, EnumVariantId, GeneralConstId, HasModule as _, StaticId,
+    EnumVariantId,
 };
 use hir_expand::Lookup;
 use rustc_type_ir::inherent::IntoKind;
@@ -15,7 +15,7 @@ use stdx::never;
 use triomphe::Arc;
 
 use crate::{
-    consteval::ConstEvalError, db::HirDatabase, generics::Generics, infer::InferenceContext, layout_nextsolver::layout_of_ty_query, mir::monomorphize_mir_body_bad, next_solver::{mapping::ChalkToNextSolver, Const, ConstKind, GenericArg, ParamConst, Ty, ValueConst}, ConstScalar, Interner, MemoryMap, Substitution, TraitEnvironment,
+    consteval::ConstEvalError, db::HirDatabase, generics::Generics, infer::InferenceContext, layout_nextsolver::layout_of_ty_query, next_solver::{mapping::ChalkToNextSolver, Const, ConstKind, GenericArg, ParamConst, Ty, ValueConst}, ConstScalar, Interner, MemoryMap, Substitution, TraitEnvironment,
 };
 
 use super::mir::{interpret_mir, lower_to_mir, pad16};
@@ -113,7 +113,8 @@ pub fn try_const_usize(db: &dyn HirDatabase, c: &Const) -> Option<u128> {
         ConstKind::Value(_, val) => match val.0 {
             ConstScalar::Bytes(it, _) => Some(u128::from_le_bytes(pad16(&it, false))),
             ConstScalar::UnevaluatedConst(c, subst) => {
-                let ec = const_eval_query(db, c, subst.clone(), None).ok()?;
+                let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+                let ec = db.const_eval(c, subst.clone(), None).ok()?.to_nextsolver(fake_ir);
                 try_const_usize(db, &ec)
             }
             ConstScalar::Unknown => None,
@@ -133,7 +134,8 @@ pub fn try_const_isize(db: &dyn HirDatabase, c: &Const) -> Option<i128> {
         ConstKind::Value(_, val) => match val.0 {
             ConstScalar::Bytes(it, _) => Some(i128::from_le_bytes(pad16(&it, false))),
             ConstScalar::UnevaluatedConst(c, subst) => {
-                let ec = const_eval_query(db, c, subst.clone(), None).ok()?;
+                let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
+                let ec = db.const_eval(c, subst.clone(), None).ok()?.to_nextsolver(fake_ir);
                 try_const_isize(db, &ec)
             }
             ConstScalar::Unknown => None,
@@ -141,54 +143,6 @@ pub fn try_const_isize(db: &dyn HirDatabase, c: &Const) -> Option<i128> {
         ConstKind::Error(_) => None,
         ConstKind::Expr(_) => todo!(),
     }
-}
-
-pub(crate) fn const_eval_query(
-    db: &dyn HirDatabase,
-    def: GeneralConstId,
-    subst: Substitution,
-    trait_env: Option<Arc<TraitEnvironment>>,
-) -> Result<Const, ConstEvalError> {
-    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let body = match def {
-        GeneralConstId::ConstId(c) => {
-            db.monomorphized_mir_body(c.into(), subst, db.trait_environment(c.into()))?
-        }
-        GeneralConstId::StaticId(s) => {
-            let krate = s.module(db.upcast()).krate();
-            db.monomorphized_mir_body(s.into(), subst, TraitEnvironment::empty(krate))?
-        }
-        GeneralConstId::ConstBlockId(c) => {
-            let ConstBlockLoc { parent, root } = db.lookup_intern_anonymous_const(c);
-            let body = db.body(parent);
-            let infer = db.infer(parent);
-            Arc::new(monomorphize_mir_body_bad(
-                db,
-                lower_to_mir(db, parent, &body, &infer, root)?,
-                subst,
-                db.trait_environment_for_body(parent),
-            )?)
-        }
-        GeneralConstId::InTypeConstId(c) => db.mir_body(c.into())?,
-    };
-    let c = interpret_mir(db, body, false, trait_env)?.0?;
-    let c = c.to_nextsolver(fake_ir);
-    Ok(c)
-}
-
-pub(crate) fn const_eval_static_query(
-    db: &dyn HirDatabase,
-    def: StaticId,
-) -> Result<Const, ConstEvalError> {
-    let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let body = db.monomorphized_mir_body(
-        def.into(),
-        Substitution::empty(Interner),
-        db.trait_environment_for_body(def.into()),
-    )?;
-    let c = interpret_mir(db, body, false, None)?.0?;
-    let c = c.to_nextsolver(fake_ir);
-    Ok(c)
 }
 
 pub(crate) fn const_eval_discriminant_variant(

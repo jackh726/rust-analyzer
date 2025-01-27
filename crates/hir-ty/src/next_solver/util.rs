@@ -437,7 +437,7 @@ pub fn apply_args_to_binder<T: TypeFoldable<DbInterner>>(b: Binder<T>, args: Gen
         regions,
         consts,
     });
-    dbg!(b.skip_binder().fold_with(&mut instantiate))
+    b.skip_binder().fold_with(&mut instantiate)
 }
 
 pub fn mini_canonicalize<T: TypeFoldable<DbInterner>>(val: T) -> Canonical<DbInterner, T> {
