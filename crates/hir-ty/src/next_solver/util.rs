@@ -497,7 +497,7 @@ impl TypeFolder<DbInterner> for MiniCanonicalizer {
                 let var = *self.vars.entry(t.into()).or_insert(len);
                 Ty::new(TyKind::Bound(self.db, BoundTy { kind: super::BoundTyKind::Anon, var: BoundVar::from_usize(var) }))
             }
-            _ => t,
+            _ => t.super_fold_with(self),
         }
     }
 
@@ -531,7 +531,7 @@ impl TypeFolder<DbInterner> for MiniCanonicalizer {
                 let var = *self.vars.entry(c.into()).or_insert(len);
                 Const::new(ConstKind::Bound(self.db, BoundVar::from_usize(len)))
             }
-            _ => c,
+            _ => c.super_fold_with(self),
         }
     }
 }

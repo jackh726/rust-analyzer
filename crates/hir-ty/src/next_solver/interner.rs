@@ -1107,14 +1107,14 @@ impl<'cx> RustIr for DbIr<'cx> {
                         let datas = (*datas).as_ref().skip_binder();
                         let data = &datas.impl_traits[Idx::from_raw(idx)];
                         let predicates: Vec<Clause> = elaborate(self, data.predicates.clone()).collect();
-                        EarlyBinder::bind(dbg!(predicates))
+                        EarlyBinder::bind(predicates)
                     }
                     OpaqueTyLoc::TypeAliasImplTrait(alias, idx) => {
                         let datas = type_alias_impl_traits(self.db, alias).expect("impl trait id without impl traits");
                         let datas = (*datas).as_ref().skip_binder();
                         let data = &datas.impl_traits[Idx::from_raw(idx)];
                         let predicates: Vec<Clause> = elaborate(self, data.predicates.clone()).collect();
-                        EarlyBinder::bind(dbg!(predicates))
+                        EarlyBinder::bind(predicates)
                     }
                     OpaqueTyLoc::AsyncBlockTypeImplTrait(..) => {
                         if let Some((future_trait, future_output)) =

@@ -122,6 +122,7 @@ pub(crate) fn infer_query(db: &dyn HirDatabase, def: DefWithBodyId) -> Arc<Infer
 ///
 /// This is appropriate to use only after type-check: it assumes
 /// that normalization will succeed, for example.
+#[tracing::instrument(level = "debug", skip(db))]
 pub(crate) fn normalize(db: &dyn HirDatabase, trait_env: Arc<TraitEnvironment>, ty: Ty) -> Ty {
     // FIXME: TypeFlags::HAS_CT_PROJECTION is not implemented in chalk, so TypeFlags::HAS_PROJECTION only
     // works for the type case, so we check array unconditionally. Remove the array part
@@ -685,6 +686,7 @@ impl<'a> InferenceContext<'a> {
     // `InferenceResult` in the middle of inference. See the fixme comment in `consteval::eval_to_const`. If you
     // used this function for another workaround, mention it here. If you really need this function and believe that
     // there is no problem in it being `pub(crate)`, remove this comment.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn resolve_all(self) -> InferenceResult {
         let InferenceContext {
             mut table,

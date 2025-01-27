@@ -884,6 +884,7 @@ where
     Canonical { value, binders: chalk_ir::CanonicalVarKinds::from_iter(Interner, kinds) }
 }
 
+#[tracing::instrument(level = "debug" , skip(db))]
 pub fn callable_sig_from_fn_trait(
     self_ty: &Ty,
     trait_env: Arc<TraitEnvironment>,

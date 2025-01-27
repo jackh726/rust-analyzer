@@ -29,8 +29,11 @@ impl InferenceContext<'_> {
             }
             ValuePathResolution::NonGeneric(ty) => return Some(ty),
         };
+        tracing::debug!(?value_def, ?generic_def, ?substs);
         let substs = self.insert_type_vars(substs);
         let substs = self.normalize_associated_types_in(substs);
+
+        tracing::debug!(?substs);
 
         self.add_required_obligations_for_value_path(generic_def, &substs);
 

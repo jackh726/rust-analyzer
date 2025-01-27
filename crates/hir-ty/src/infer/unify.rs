@@ -34,6 +34,7 @@ impl InferenceContext<'_> {
         self.table.canonicalize(t)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(super) fn clauses_for_self_ty(
         &mut self,
         self_ty: InferenceVar,
@@ -117,9 +118,12 @@ impl<T: HasInterner<Interner = Interner>> Canonicalized<T> {
                 // e.g. from where clauses where this hasn't happened yet
                 //let ty = ctx.normalize_associated_types_in(new_vars.apply(ty.clone(), Interner));
                 let ty = new_vars.apply(ty.clone(), Interner);
+                tracing::debug!("unifying {:?} {:?}", var, ty);
                 ctx.unify(var.assert_ty_ref(Interner), &ty);
             } else {
-                let _ = ctx.try_unify(var, &new_vars.apply(v.clone(), Interner));
+                let v = new_vars.apply(v.clone(), Interner);
+                tracing::debug!("try_unifying {:?} {:?}", var, v);
+                let _ = ctx.try_unify(var, &v);
             }
         }
     }
@@ -143,6 +147,7 @@ pub fn could_unify(
 ///
 /// This means that placeholder types are not considered to unify if there are any bounds set on
 /// them. For example `Option<T>` and `Option<U>` do not unify as we cannot show that `T = U`
+#[tracing::instrument(level = "debug", skip(db))]
 pub fn could_unify_deeply(
     db: &dyn HirDatabase,
     env: Arc<TraitEnvironment>,
@@ -295,6 +300,7 @@ impl<'a> InferenceTable<'a> {
         .intern(Interner)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn canonicalize_with_free_vars<T>(&mut self, t: T) -> Canonicalized<T>
     where
         T: TypeFoldable<Interner> + HasInterner<Interner = Interner>,
@@ -311,6 +317,7 @@ impl<'a> InferenceTable<'a> {
         Canonicalized { value: result.quantified, free_vars }
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn canonicalize<T>(&mut self, t: T) -> Canonical<T>
     where
         T: TypeFoldable<Interner> + HasInterner<Interner = Interner>,
@@ -575,7 +582,11 @@ impl<'a> InferenceTable<'a> {
 
     /// If `ty` is a type variable with known type, returns that type;
     /// otherwise, return ty.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn resolve_ty_shallow(&mut self, ty: &Ty) -> Ty {
+        if !ty.data(Interner).flags.intersects(chalk_ir::TypeFlags::HAS_FREE_LOCAL_NAMES) {
+            return ty.clone();
+        }
         self.resolve_obligations_as_possible();
         self.var_unification_table.normalize_ty_shallow(Interner, ty).unwrap_or_else(|| ty.clone())
     }
@@ -605,6 +616,7 @@ impl<'a> InferenceTable<'a> {
     /// Checks an obligation without registering it. Useful mostly to check
     /// whether a trait *might* be implemented before deciding to 'lock in' the
     /// choice (during e.g. method resolution or deref).
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn try_obligation(&mut self, goal: Goal) -> NextTraitSolveResult {
         let in_env = InEnvironment::new(&self.trait_env.env, goal);
         let canonicalized = self.canonicalize(in_env);
@@ -617,9 +629,20 @@ impl<'a> InferenceTable<'a> {
         self.register_obligation_in_env(in_env)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     fn register_obligation_in_env(&mut self, goal: InEnvironment<Goal>) {
-        let canonicalized = self.canonicalize_with_free_vars(goal);
+        let canonicalized = {
+            let result = self.var_unification_table.canonicalize(Interner, goal);
+            let free_vars = result
+                .free_vars
+                .into_iter()
+                .map(|free_var| free_var.to_generic_arg(Interner))
+                .collect();
+            Canonicalized { value: result.quantified, free_vars }
+        };
+        tracing::debug!(?canonicalized);
         let solution = self.try_resolve_obligation(&canonicalized);
+        tracing::debug!(?solution);
         if solution.uncertain() {
             self.pending_obligations.push(canonicalized);
         }
@@ -637,7 +660,9 @@ impl<'a> InferenceTable<'a> {
             mem::swap(&mut self.pending_obligations, &mut obligations);
 
             for canonicalized in obligations.drain(..) {
+                tracing::debug!(obligation = ?canonicalized);
                 if !self.check_changed(&canonicalized) {
+                    tracing::debug!("not changed");
                     self.pending_obligations.push(canonicalized);
                     continue;
                 }
@@ -742,17 +767,23 @@ impl<'a> InferenceTable<'a> {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     fn try_resolve_obligation(
         &mut self,
         canonicalized: &Canonicalized<InEnvironment<Goal>>,
     ) -> NextTraitSolveResult {
-        //let solution = next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone());
-        let solution = match trait_solve_query(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone()) {
-            Some(chalk_solve::Solution::Unique(u)) => NextTraitSolveResult::Certain(u),
-            Some(chalk_solve::Solution::Ambig(_)) => NextTraitSolveResult::Uncertain,
-            None => NextTraitSolveResult::NoSolution,
+        let use_next_trait_solver = true;
+        let solution = if use_next_trait_solver {
+            next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone())
+        } else {
+            match trait_solve_query(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone()) {
+                Some(chalk_solve::Solution::Unique(u)) => NextTraitSolveResult::Certain(u),
+                Some(chalk_solve::Solution::Ambig(_)) => NextTraitSolveResult::Uncertain,
+                None => NextTraitSolveResult::NoSolution,
+            }
         };
 
+        tracing::debug!(?solution, ?canonicalized);
         match &solution {
             // FIXME: this is a weaker guarantee than Chalk's `Guidance::Unique`
             // was. Chalk's unique guidance at least guarantees that the real solution
@@ -789,6 +820,7 @@ impl<'a> InferenceTable<'a> {
         }
     }
 
+    #[tracing::instrument(level = "debug" , skip(self))]
     fn callable_sig_from_fn_trait(
         &mut self,
         ty: &Ty,

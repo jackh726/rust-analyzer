@@ -278,6 +278,7 @@ impl InferenceContext<'_> {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self, is_read), ret)]
     fn infer_expr_inner(
         &mut self,
         tgt_expr: ExprId,
@@ -1203,6 +1204,7 @@ impl InferenceContext<'_> {
         ty
     }
 
+    #[tracing::instrument(level = "debug", skip(self), ret)]
     fn infer_expr_path(&mut self, path: &Path, id: ExprOrPatId, scope_id: ExprId) -> Ty {
         let g = self.resolver.update_to_inner_scope(self.db.upcast(), self.owner, scope_id);
         let ty = match self.infer_path(path, id) {

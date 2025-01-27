@@ -3,7 +3,7 @@
 use core::fmt;
 use std::env::var;
 
-use chalk_ir::{fold::TypeFoldable, DebruijnIndex, GoalData};
+use chalk_ir::{fold::TypeFoldable, DebruijnIndex, GoalData, UCanonical};
 use chalk_recursive::Cache;
 use chalk_solve::{logging_db::LoggingRustIrDatabase, rust_ir, Solver};
 
@@ -230,17 +230,21 @@ fn solve_nextsolver(
         }
 
         let goal = goal.canonical.to_nextsolver(context.cx());
-        dbg!(&goal);
+        tracing::info!(?goal);
 
         let (goal, var_values) = context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
-        dbg!(&var_values);
+        tracing::info!(?var_values);
 
         let (res, _) =
-            context.evaluate_root_goal(goal, rustc_next_trait_solver::solve::GenerateProofTree::No);
+            context.evaluate_root_goal(goal.clone(), rustc_next_trait_solver::solve::GenerateProofTree::No);
 
-        let canonical_var_values: rustc_type_ir::Canonical<DbInterner, Vec<_>> = mini_canonicalize(var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect());
+        let canonical_var_values = mini_canonicalize(var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect());
 
-        res.map(|r| (r.0, r.1, canonical_var_values))
+        let res = res.map(|r| (r.0, r.1, canonical_var_values));
+
+        tracing::debug!("solve_nextsolver({:?}) => {:?}", goal, res);
+
+        res
     })
 }
 
@@ -303,7 +307,7 @@ pub fn next_trait_solve(
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
     let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
-    dbg!(&u_canonical);
+    tracing::info!(?u_canonical);
 
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
     let chalk_res = solve(db, krate, block, &u_canonical);

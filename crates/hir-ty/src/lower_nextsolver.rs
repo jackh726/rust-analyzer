@@ -455,7 +455,6 @@ impl<'a> TyLoweringContext<'a> {
         }
     }
 
-    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_ty_relative_path(
         &mut self,
         ty: Ty,
@@ -618,7 +617,6 @@ impl<'a> TyLoweringContext<'a> {
         self.lower_partly_resolved_path(resolution, resolved_segment, remaining_segments, false)
     }
 
-    #[tracing::instrument(skip(self))]
     fn select_associated_type(&mut self, res: Option<TypeNs>, segment: PathSegment<'_>) -> Ty {
         let Some((generics, res)) = self.generics().zip(res) else {
             return Ty::new_error(DbInterner, ErrorGuaranteed);
@@ -733,7 +731,6 @@ impl<'a> TyLoweringContext<'a> {
         )
     }
 
-    #[tracing::instrument(skip(self))]
     fn substs_from_args_and_bindings(
         &mut self,
         args_and_bindings: Option<&hir_def::path::GenericArgs>,
@@ -879,7 +876,6 @@ impl<'a> TyLoweringContext<'a> {
         GenericArgs::new_from_iter(substs)
     }
 
-    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_trait_ref_from_resolved_path(
         &mut self,
         resolved: TraitId,
@@ -891,7 +887,6 @@ impl<'a> TyLoweringContext<'a> {
         TraitRef::new_from_args(fake_ir, resolved.into(), substs)
     }
 
-    #[tracing::instrument(skip(self))]
     fn lower_trait_ref_from_path(&mut self, path: &Path, explicit_self_ty: Ty) -> Option<TraitRef> {
         let resolved = match self.resolver.resolve_path_in_type_ns_fully(self.db.upcast(), path)? {
             // FIXME(trait_alias): We need to handle trait alias here.
@@ -919,7 +914,6 @@ impl<'a> TyLoweringContext<'a> {
         self.substs_from_path_segment(segment, Some(resolved.into()), false, Some(explicit_self_ty))
     }
 
-    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_where_predicate<'b>(
         &'b mut self,
         where_predicate: &'b WherePredicate,
@@ -953,7 +947,6 @@ impl<'a> TyLoweringContext<'a> {
         .into_iter()
     }
 
-    #[tracing::instrument(skip(self))]
     pub(crate) fn lower_type_bound<'b>(
         &'b mut self,
         bound: &'b TypeBound,
