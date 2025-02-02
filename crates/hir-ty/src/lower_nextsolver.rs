@@ -204,6 +204,7 @@ impl<'a> TyLoweringContext<'a> {
             .as_ref()
     }
 
+    #[tracing::instrument(skip(self), ret)]
     pub fn lower_ty_ext(&mut self, type_ref_id: TypeRefId) -> (Ty, Option<TypeNs>) {
         let mut res = None;
         let type_ref = &self.types_map[type_ref_id];
@@ -476,6 +477,7 @@ impl<'a> TyLoweringContext<'a> {
         }
     }
 
+    #[tracing::instrument(skip(self), ret)]
     pub(crate) fn lower_partly_resolved_path(
         &mut self,
         resolution: TypeNs,
@@ -1724,7 +1726,7 @@ pub(crate) fn generic_predicates_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates {
-    generic_predicates_filtered_by(db, def, |_, _| true)
+    generic_predicates_filtered_by(db, def, |_| true)
 }
 
 /// Resolve the where clause(s) of an item with generics,
@@ -1733,7 +1735,7 @@ pub(crate) fn generic_predicates_without_parent_query(
     db: &dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates {
-    generic_predicates_filtered_by(db, def, |_, d| *d == def)
+    generic_predicates_filtered_by(db, def, |d| *d == def)
 }
 
 /// Resolve the where clause(s) of an item with generics,
@@ -1745,7 +1747,7 @@ pub(crate) fn generic_predicates_filtered_by<F>(
     filter: F,
 ) -> GenericPredicates
 where
-    F: Fn(&WherePredicate, &GenericDefId) -> bool,
+    F: Fn(&GenericDefId) -> bool,
 {
     let resolver = def.resolver(db.upcast());
     let impl_trait_lowering = match def {
@@ -1757,27 +1759,52 @@ where
 
     let mut predicates = Vec::new();
     for (params, def) in resolver.all_generic_params() {
+        if !filter(def) {
+            continue;
+        }
         ctx.types_map = &params.types_map;
         for pred in params.where_predicates() {
-            if filter(pred, def) {
-                predicates.extend(
-                    ctx.lower_where_predicate(pred, def, false),
-                );
-            }
+            predicates.extend(
+                ctx.lower_where_predicate(pred, def, false),
+            );
         }
     }
 
     let fake_ir = crate::next_solver::DbIr::new(db, CrateId::from_raw(la_arena::RawIdx::from_u32(0)), None);
-    let args = GenericArgs::identity_for_item(fake_ir, def);
-    if args.len() > 0 {
-        let explicitly_unsized_tys = ctx.unsized_types;
-        if let Some(implicitly_sized_predicates) =
-            implicitly_sized_clauses(db, def, &explicitly_unsized_tys, &args, &resolver)
-        {
-            predicates.extend(
-                implicitly_sized_predicates
-            );
-        };
+    let explicitly_unsized_tys = ctx.unsized_types;
+
+    let sized_trait = db
+        .lang_item(resolver.krate(), LangItem::Sized)
+        .and_then(|lang_item| lang_item.as_trait());
+
+    if let Some(sized_trait) = sized_trait {
+        for (params, def) in resolver.all_generic_params() {
+            if !filter(def) {
+                continue;
+            }
+            let len_lt = params.len_lifetimes() as u32;
+            for (idx, data) in params.iter_type_or_consts() {
+                if data.is_trait_self() {
+                    continue;
+                }
+                if let Some(param) = data.type_param() {
+                    //let idx = param.index() + start_idx;
+                    let idx = idx.into_raw().into_u32() + len_lt;
+                    let name = param
+                        .name
+                        .as_ref()
+                        .map(|n| n.symbol().clone())
+                        .unwrap_or_else(|| Name::missing().symbol().clone());
+                    let param_ty = Ty::new_param(idx, name).into();
+                    if explicitly_unsized_tys.contains(&param_ty) {
+                        continue;
+                    }
+                    let trait_ref = TraitRef::new_from_args(fake_ir, sized_trait.into(), GenericArgs::new_from_iter([param_ty.clone().into()]));
+                    let clause = Clause(Predicate::new(Binder::dummy(rustc_type_ir::PredicateKind::Clause(rustc_type_ir::ClauseKind::Trait(TraitPredicate { trait_ref, polarity: rustc_type_ir::PredicatePolarity::Positive })))));
+                    predicates.push(clause);
+                }
+            }
+        }
     }
     GenericPredicates(predicates.is_empty().not().then(|| predicates.into()))
 }

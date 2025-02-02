@@ -570,9 +570,24 @@ impl ChalkToNextSolver<Predicate> for chalk_ir::Goal<Interner> {
                     chalk_ir::WhereClause::LifetimeOutlives(lifetime_outlives) => todo!(),
                     chalk_ir::WhereClause::TypeOutlives(type_outlives) => todo!(),
                 },
+                chalk_ir::DomainGoal::Normalize(normalize) => {
+                    let proj_ty = match &normalize.alias {
+                        chalk_ir::AliasTy::Projection(proj) => proj,
+                        _ => todo!(),
+                    };
+                    let args: GenericArgs = proj_ty.substitution.to_nextsolver(ir);
+                    let alias = rustc_type_ir::AliasTerm::new(ir, from_assoc_type_id(proj_ty.associated_ty_id).into(), args);
+                    let term = normalize.ty.to_nextsolver(ir).into();
+                    let normalizes_to = rustc_type_ir::NormalizesTo { alias, term };
+                    let pred_kind = PredicateKind::NormalizesTo(normalizes_to);
+                    let pred_kind = Binder::bind_with_vars(
+                        shift_vars(DbInterner, pred_kind, 1),
+                        BoundVarKinds::new_from_iter([]),
+                    );
+                    Predicate::new(pred_kind)
+                }
                 chalk_ir::DomainGoal::WellFormed(well_formed) => todo!(),
                 chalk_ir::DomainGoal::FromEnv(_) => todo!(),
-                chalk_ir::DomainGoal::Normalize(normalize) => todo!(),
                 chalk_ir::DomainGoal::IsLocal(ty) => todo!(),
                 chalk_ir::DomainGoal::IsUpstream(ty) => todo!(),
                 chalk_ir::DomainGoal::IsFullyVisible(ty) => todo!(),

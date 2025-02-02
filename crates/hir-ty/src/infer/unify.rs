@@ -18,12 +18,7 @@ use triomphe::Arc;
 
 use super::{InferOk, InferResult, InferenceContext, TypeError};
 use crate::{
-    consteval::unknown_const, db::HirDatabase, fold_generic_args, fold_tys_and_consts,
-    to_chalk_trait_id, traits::{next_trait_solve, trait_solve_query, FnTrait, NextTraitSolveResult}, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue,
-    DebruijnIndex, DomainGoal, GenericArg, GenericArgData, Goal, GoalData, InEnvironment,
-    InferenceVar, Interner, Lifetime, OpaqueTyId, ParamKind, ProjectionTy, ProjectionTyExt, Scalar,
-    Substitution, TraitEnvironment, TraitRef, Ty, TyBuilder, TyExt, TyKind, VariableKind,
-    WhereClause,
+    consteval::unknown_const, db::HirDatabase, fold_generic_args, fold_tys_and_consts, to_chalk_trait_id, traits::{next_trait_solve, trait_solve_query, FnTrait, NextTraitSolveResult}, AliasEq, AliasTy, BoundVar, Canonical, Const, ConstValue, DebruijnIndex, DomainGoal, GenericArg, GenericArgData, Goal, GoalData, InEnvironment, InferenceVar, Interner, Lifetime, OpaqueTyId, ParamKind, ProjectionTy, ProjectionTyExt, Scalar, Substitution, TraitEnvironment, TraitRef, Ty, TyBuilder, TyExt, TyKind, VariableKind, WhereClause
 };
 
 impl InferenceContext<'_> {
@@ -116,8 +111,8 @@ impl<T: HasInterner<Interner = Interner>> Canonicalized<T> {
             if let Some(ty) = v.ty(Interner) {
                 // eagerly replace projections in the type; we may be getting types
                 // e.g. from where clauses where this hasn't happened yet
-                //let ty = ctx.normalize_associated_types_in(new_vars.apply(ty.clone(), Interner));
-                let ty = new_vars.apply(ty.clone(), Interner);
+                let ty = ctx.normalize_associated_types_in(new_vars.apply(ty.clone(), Interner));
+                //let ty = new_vars.apply(ty.clone(), Interner);
                 tracing::debug!("unifying {:?} {:?}", var, ty);
                 ctx.unify(var.assert_ty_ref(Interner), &ty);
             } else {
@@ -345,6 +340,37 @@ impl<'a> InferenceTable<'a> {
                     TyKind::Alias(AliasTy::Projection(proj_ty)) => {
                         self.normalize_projection_ty(proj_ty.clone())
                     }
+                    TyKind::AssociatedType(id, subst) => {
+                        ty
+                        //self.normalize_ty(*id, subst);
+                        /*
+                        let var = self.new_type_var();
+                        let proj_ty = chalk_ir::ProjectionTy { associated_ty_id: *id, substitution: subst.clone() };
+                        let normalize = chalk_ir::Normalize { alias: AliasTy::Projection(proj_ty), ty: var.clone() };
+                        let goal = chalk_ir::Goal::new(Interner, chalk_ir::GoalData::DomainGoal(chalk_ir::DomainGoal::Normalize(normalize)));
+                        let in_env = InEnvironment::new(&self.trait_env.env, goal);
+
+                        let canonicalized = {
+                            let result = self.var_unification_table.canonicalize(Interner, in_env);
+                            let free_vars = result
+                                .free_vars
+                                .into_iter()
+                                .map(|free_var| free_var.to_generic_arg(Interner))
+                                .collect();
+                            Canonicalized { value: result.quantified, free_vars }
+                        };
+                        let solution = next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized.value.clone());
+                        if let NextTraitSolveResult::Certain(canonical_subst) = solution {
+
+                        }
+                        let solution = self.try_resolve_obligation(&canonicalized);
+                        if solution.uncertain() {
+                            self.pending_obligations.push(canonicalized);
+                        }
+
+                        var
+                        */
+                    }
                     _ => ty,
                 }),
                 Either::Right(c) => Either::Right(match &c.data(Interner).value {
@@ -370,6 +396,15 @@ impl<'a> InferenceTable<'a> {
             },
             DebruijnIndex::INNERMOST,
         )
+    }
+
+    pub(crate) fn normalize_ty(&mut self, assoc_type_id: chalk_ir::AssocTypeId<Interner>, subst: &chalk_ir::Substitution<Interner>) -> Ty {
+        let proj_ty = chalk_ir::ProjectionTy { associated_ty_id: assoc_type_id, substitution: subst.clone() };
+        let alias = chalk_ir::AliasTy::Projection(proj_ty);
+        let var = self.new_type_var();
+        let goal = chalk_ir::GoalData::DomainGoal(chalk_ir::DomainGoal::Normalize(chalk_ir::Normalize { alias, ty: var })).intern(Interner);
+        let solution = self.try_obligation(goal);
+        todo!();
     }
 
     pub(crate) fn normalize_projection_ty(&mut self, proj_ty: ProjectionTy) -> Ty {

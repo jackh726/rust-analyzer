@@ -1174,6 +1174,7 @@ impl<'cx> RustIr for DbIr<'cx> {
         EarlyBinder::bind(predicates.into_iter())
     }
 
+    #[tracing::instrument(level = "debug", skip(self), ret)]
     fn own_predicates_of(
         self,
         def_id: <Self::Interner as rustc_type_ir::Interner>::DefId,
@@ -1198,7 +1199,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |def_id| {
             true
         }).iter().cloned().map(|p| (p, Span::dummy())).collect();
         rustc_type_ir::EarlyBinder::bind(predicates)
@@ -1216,7 +1217,7 @@ impl<'cx> RustIr for DbIr<'cx> {
             ),
         >,
     > {
-        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |p, def_id| {
+        let predicates: Vec<(Clause, Span)> = lower_nextsolver::generic_predicates_filtered_by(self.db, def_id, |def_id| {
             true
         }).iter().cloned().map(|p| (p, Span::dummy())).collect();
         rustc_type_ir::EarlyBinder::bind(predicates)
