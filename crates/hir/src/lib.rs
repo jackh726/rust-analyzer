@@ -42,24 +42,9 @@ use arrayvec::ArrayVec;
 use base_db::{CrateDisplayName, CrateOrigin, LangCrateOrigin};
 use either::Either;
 use hir_def::{
-    AdtId, AssocItemId, AssocItemLoc, AttrDefId, CallableDefId, ConstId, ConstParamId,
-    CrateRootModuleId, DefWithBodyId, EnumId, EnumVariantId, ExternBlockId, ExternCrateId,
-    FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, ItemContainerId, LifetimeParamId,
-    LocalFieldId, Lookup, MacroExpander, MacroId, ModuleId, StaticId, StructId, SyntheticSyntax,
-    TraitAliasId, TupleId, TypeAliasId, TypeOrConstParamId, TypeParamId, UnionId,
-    expr_store::{ExpressionStoreDiagnostics, ExpressionStoreSourceMap},
-    hir::{
-        BindingAnnotation, BindingId, Expr, ExprId, ExprOrPatId, LabelId, Pat,
-        generics::{LifetimeParamData, TypeOrConstParamData, TypeParamProvenance},
-    },
-    item_tree::ImportAlias,
-    layout::{self, ReprOptions, TargetDataLayout},
-    nameres::{self, assoc::TraitItems, diagnostics::DefDiagnostic},
-    per_ns::PerNs,
-    resolver::{HasResolver, Resolver},
-    signatures::{ImplFlags, StaticFlags, TraitFlags, VariantFields},
-    src::HasSource as _,
-    visibility::visibility_from_ast,
+    expr_store::{ExpressionStoreDiagnostics, ExpressionStoreSourceMap}, hir::{
+        generics::{LifetimeParamData, TypeOrConstParamData, TypeParamProvenance}, BindingAnnotation, BindingId, Expr, ExprId, ExprOrPatId, LabelId, Pat
+    }, item_tree::ImportAlias, layout::{self, ReprOptions, TargetDataLayout}, nameres::{assoc::TraitItems, diagnostics::{DefDiagnostic, DefDiagnosticKind}}, per_ns::PerNs, resolver::{HasResolver, Resolver}, signatures::{ImplFlags, StaticFlags, TraitFlags, VariantFields}, src::HasSource as _, visibility::visibility_from_ast, AdtId, AssocItemId, AssocItemLoc, AttrDefId, CallableDefId, ConstId, ConstParamId, CrateRootModuleId, DefWithBodyId, EnumId, EnumVariantId, ExternBlockId, ExternCrateId, FunctionId, GenericDefId, GenericParamId, HasModule, ImplId, ItemContainerId, LifetimeParamId, LocalFieldId, Lookup, MacroExpander, MacroId, ModuleId, StaticId, StructId, SyntheticSyntax, TraitAliasId, TupleId, TypeAliasId, TypeOrConstParamId, TypeParamId, UnionId
 };
 use hir_expand::{
     AstId, MacroCallKind, RenderedExpandError, ValueResult, attrs::collect_attrs,
@@ -77,10 +62,9 @@ use hir_ty::{
     method_resolution,
     mir::{MutBorrowKind, interpret_mir},
     primitive::UintTy,
-    traits::FnTrait,
+    traits::{FnTrait, next_trait_solve},
 };
 use itertools::Itertools;
-use nameres::diagnostics::DefDiagnosticKind;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use span::{AstIdNode, Edition, FileId};
@@ -5102,7 +5086,7 @@ impl<'db> Type<'db> {
             binders: CanonicalVarKinds::empty(Interner),
         };
 
-        db.trait_solve(self.env.krate, self.env.block, goal).is_some()
+        !next_trait_solve(db, self.env.krate, self.env.block, goal).no_solution()
     }
 
     pub fn normalize_trait_assoc_type(
