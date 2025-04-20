@@ -17,11 +17,21 @@ use std::{
 use base_db::Crate;
 use either::Either;
 use hir_def::{
+    AdtId, AssocItemId, CallableDefId, ConstParamId, EnumVariantId, FunctionId, GenericDefId,
+    GenericParamId, ImplId, ItemContainerId, LocalFieldId, Lookup, StructId, TypeAliasId,
+    TypeOrConstParamId, VariantId,
     expr_store::{
-        path::{GenericArg, Path}, ExpressionStore
-    }, hir::generics::{TypeOrConstParamData, WherePredicate}, lang_item::LangItem, resolver::{HasResolver, LifetimeNs, Resolver, TypeNs}, signatures::{FunctionSignature, TraitFlags, TypeAliasFlags}, type_ref::{
-        ConstRef, LifetimeRefId, LiteralConstRef, PathId, TraitBoundModifier, TraitRef as HirTraitRef, TypeBound, TypeRef, TypeRefId
-    }, AdtId, AssocItemId, CallableDefId, ConstParamId, EnumVariantId, FunctionId, GenericDefId, GenericParamId, ImplId, ItemContainerId, LocalFieldId, Lookup, StructId, TypeAliasId, TypeOrConstParamId, VariantId
+        ExpressionStore,
+        path::{GenericArg, Path},
+    },
+    hir::generics::{TypeOrConstParamData, WherePredicate},
+    lang_item::LangItem,
+    resolver::{HasResolver, LifetimeNs, Resolver, TypeNs},
+    signatures::{FunctionSignature, TraitFlags, TypeAliasFlags},
+    type_ref::{
+        ConstRef, LifetimeRefId, LiteralConstRef, PathId, TraitBoundModifier,
+        TraitRef as HirTraitRef, TypeBound, TypeRef, TypeRefId,
+    },
 };
 use hir_expand::name::Name;
 use intern::sym;
@@ -83,7 +93,6 @@ impl<'db> ImplTraitLoweringState<'db> {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum LifetimeElisionKind<'db> {
     /// Create a new anonymous lifetime parameter and reference it.
@@ -124,7 +133,10 @@ pub enum LifetimeElisionKind<'db> {
 
 impl<'db> LifetimeElisionKind<'db> {
     #[inline]
-    pub(crate) fn for_const(interner: DbInterner<'db>, const_parent: ItemContainerId) -> LifetimeElisionKind<'db> {
+    pub(crate) fn for_const(
+        interner: DbInterner<'db>,
+        const_parent: ItemContainerId,
+    ) -> LifetimeElisionKind<'db> {
         match const_parent {
             ItemContainerId::ExternBlockId(_) | ItemContainerId::ModuleId(_) => {
                 LifetimeElisionKind::Elided(Region::new_static(interner))
@@ -1179,8 +1191,7 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
     );
 
     // we have to filter out all other predicates *first*, before attempting to lower them
-    let predicate = |pred: &_, ctx: &mut TyLoweringContext<'_, '_>| match pred
-    {
+    let predicate = |pred: &_, ctx: &mut TyLoweringContext<'_, '_>| match pred {
         WherePredicate::ForLifetime { target, bound, .. }
         | WherePredicate::TypeBound { target, bound, .. } => {
             let invalid_target = { ctx.lower_ty_only_param(*target) != Some(param_id) };
@@ -1227,10 +1238,7 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
         ctx.store = maybe_parent_generics.store();
         for pred in maybe_parent_generics.where_predicates() {
             if predicate(pred, &mut ctx) {
-                predicates.extend(ctx.lower_where_predicate(
-                    pred,
-                    true,
-                ));
+                predicates.extend(ctx.lower_where_predicate(pred, true));
             }
         }
     }
@@ -1313,10 +1321,7 @@ where
             if filter(maybe_parent_generics.def()) {
                 // We deliberately use `generics` and not `maybe_parent_generics` here. This is not a mistake!
                 // If we use the parent generics
-                predicates.extend(ctx.lower_where_predicate(
-                    pred,
-                    false,
-                ));
+                predicates.extend(ctx.lower_where_predicate(pred, false));
             }
         }
     }

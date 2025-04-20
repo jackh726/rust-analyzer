@@ -17,7 +17,9 @@ use rustc_type_ir::{
 };
 use rustc_type_ir::{InferCtxtLike, TypeFoldable};
 
-use crate::lower_nextsolver::{return_type_impl_traits, type_alias_impl_traits, LifetimeElisionKind, TyLoweringContext};
+use crate::lower_nextsolver::{
+    LifetimeElisionKind, TyLoweringContext, return_type_impl_traits, type_alias_impl_traits,
+};
 use crate::{
     db::HirDatabase,
     from_foreign_def_id,
@@ -775,48 +777,5 @@ pub fn explicit_item_bounds<'db>(
             }
         }
         _ => panic!("Unexpected GeneridDefId"),
-    }
-}
-
-pub(crate) fn increment_params_by<'db, T: TypeFoldable<DbInterner<'db>>>(
-    t: T,
-    by: u32,
-    interner: DbInterner<'db>,
-) -> T {
-    t.fold_with(&mut ParamIncrementor { interner, by })
-}
-
-struct ParamIncrementor<'db> {
-    interner: DbInterner<'db>,
-    by: u32,
-}
-
-impl<'db> TypeFolder<DbInterner<'db>> for ParamIncrementor<'db> {
-    fn cx(&self) -> DbInterner<'db> {
-        self.interner
-    }
-    fn fold_ty(
-        &mut self,
-        t: <DbInterner<'db> as rustc_type_ir::Interner>::Ty,
-    ) -> <DbInterner<'db> as rustc_type_ir::Interner>::Ty {
-        match t.kind() {
-            rustc_type_ir::TyKind::Param(p) => {
-                Ty::new_param(self.interner, p.index + self.by, sym::MISSING_NAME.clone())
-            }
-            _ => t.super_fold_with(self),
-        }
-    }
-
-    fn fold_region(
-        &mut self,
-        r: <DbInterner<'db> as rustc_type_ir::Interner>::Region,
-    ) -> <DbInterner<'db> as rustc_type_ir::Interner>::Region {
-        match r.kind() {
-            RegionKind::ReEarlyParam(p) => Region::new_early_param(
-                self.interner,
-                super::EarlyParamRegion { index: p.index + self.by },
-            ),
-            _ => r,
-        }
     }
 }

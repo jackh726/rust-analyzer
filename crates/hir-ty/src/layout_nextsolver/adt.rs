@@ -3,7 +3,9 @@
 use std::cmp;
 
 use hir_def::{
-    layout::{Integer, ReprOptions, TargetDataLayout}, signatures::{StructFlags, VariantFields}, AdtId, VariantId
+    AdtId, VariantId,
+    layout::{Integer, ReprOptions, TargetDataLayout},
+    signatures::{StructFlags, VariantFields},
 };
 use rustc_index::IndexVec;
 use smallvec::SmallVec;

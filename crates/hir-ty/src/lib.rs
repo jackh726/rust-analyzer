@@ -64,7 +64,9 @@ mod variance;
 use std::hash::Hash;
 
 use chalk_ir::{
-    fold::{Shift, TypeFoldable}, interner::HasInterner, NoSolution, VariableKinds
+    NoSolution, VariableKinds,
+    fold::{Shift, TypeFoldable},
+    interner::HasInterner,
 };
 use either::Either;
 use hir_def::{CallableDefId, GeneralConstId, TypeOrConstParamId, hir::ExprId, type_ref::Rawness};

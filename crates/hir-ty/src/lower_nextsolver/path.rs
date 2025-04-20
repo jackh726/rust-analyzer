@@ -24,13 +24,24 @@ use smallvec::SmallVec;
 use stdx::never;
 
 use crate::{
-    consteval_nextsolver::{unknown_const, unknown_const_as_generic}, db::HirDatabase, generics::{generics, Generics}, lower::PathDiagnosticCallbackData, lower_nextsolver::{impl_self_ty_query, LifetimeElisionKind}, next_solver::{
-        mapping::{convert_binder_to_early_binder, ChalkToNextSolver}, AdtDef, Binder, Clause, Const, DbInterner, ErrorGuaranteed, Predicate, ProjectionPredicate, Region, SolverDefId, TraitRef, Ty
-    }, primitive, GenericArgsProhibitedReason, IncorrectGenericsLenKind, PathGenericsSource, PathLoweringDiagnostic, ValueTyDefId
+    GenericArgsProhibitedReason, IncorrectGenericsLenKind, PathGenericsSource,
+    PathLoweringDiagnostic, TyDefId, ValueTyDefId,
+    consteval_nextsolver::{unknown_const, unknown_const_as_generic},
+    db::HirDatabase,
+    generics::{Generics, generics},
+    lower::PathDiagnosticCallbackData,
+    lower_nextsolver::{LifetimeElisionKind, impl_self_ty_query},
+    next_solver::{
+        AdtDef, Binder, Clause, Const, DbInterner, ErrorGuaranteed, Predicate, ProjectionPredicate,
+        Region, SolverDefId, TraitRef, Ty,
+        mapping::{ChalkToNextSolver, convert_binder_to_early_binder},
+    },
+    primitive,
 };
 
 use super::{
-    associated_type_by_name_including_super_traits, const_param_ty_query, named_associated_type_shorthand_candidates, ty_query, ImplTraitLoweringMode, TyDefId, TyLoweringContext
+    ImplTraitLoweringMode, TyLoweringContext, associated_type_by_name_including_super_traits,
+    const_param_ty_query, named_associated_type_shorthand_candidates, ty_query,
 };
 
 type CallbackData<'a> =
@@ -1245,9 +1256,7 @@ pub(crate) fn substs_from_args_and_bindings<'db>(
                         LifetimeElisionKind::StaticIfNoLifetimeInScope { only_lint: _ } => {
                             Region::new_static(interner).into()
                         }
-                        &LifetimeElisionKind::Elided(lifetime) => {
-                            lifetime.into()
-                        }
+                        &LifetimeElisionKind::Elided(lifetime) => lifetime.into(),
                         LifetimeElisionKind::AnonymousCreateParameter { report_in_path: false }
                         | LifetimeElisionKind::Infer => {
                             // FIXME: With `AnonymousCreateParameter`, we need to create a new lifetime parameter here

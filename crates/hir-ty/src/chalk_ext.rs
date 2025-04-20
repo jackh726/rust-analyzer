@@ -12,7 +12,12 @@ use hir_def::{
 };
 
 use crate::{
-    db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id, from_placeholder_idx, generics::generics, to_chalk_trait_id, traits::next_trait_solve, utils::ClosureSubst, AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds, ClosureId, DynTy, FnPointer, ImplTraitId, InEnvironment, Interner, Lifetime, ProjectionTy, QuantifiedWhereClause, Substitution, ToChalk, TraitRef, Ty, TyBuilder, TyKind, TypeFlags, WhereClause
+    AdtId, AliasEq, AliasTy, Binders, CallableDefId, CallableSig, Canonical, CanonicalVarKinds,
+    ClosureId, DynTy, FnPointer, ImplTraitId, InEnvironment, Interner, Lifetime, ProjectionTy,
+    QuantifiedWhereClause, Substitution, ToChalk, TraitRef, Ty, TyBuilder, TyKind, TypeFlags,
+    WhereClause, db::HirDatabase, from_assoc_type_id, from_chalk_trait_id, from_foreign_def_id,
+    from_placeholder_idx, generics::generics, to_chalk_trait_id, traits::next_trait_solve,
+    utils::ClosureSubst,
 };
 
 pub trait TyExt {

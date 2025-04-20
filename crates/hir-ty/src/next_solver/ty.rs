@@ -2,7 +2,11 @@ use intern::{Interned, Symbol, sym};
 use rustc_abi::{Float, Integer, Size};
 use rustc_ast_ir::{try_visit, visit::VisitorResult};
 use rustc_type_ir::{
-    inherent::{BoundVarLike, GenericArgs as _, IntoKind, ParamLike, PlaceholderLike, SliceLike}, relate::Relate, walk::TypeWalker, BoundVar, ClosureKind, FlagComputation, Flags, FloatTy, FloatVid, InferTy, IntTy, IntVid, TypeFoldable, TypeSuperFoldable, TypeSuperVisitable, TypeVisitable, UintTy, WithCachedTypeInfo
+    BoundVar, ClosureKind, FlagComputation, Flags, FloatTy, FloatVid, InferTy, IntTy, IntVid,
+    TypeFoldable, TypeSuperFoldable, TypeSuperVisitable, TypeVisitable, UintTy, WithCachedTypeInfo,
+    inherent::{BoundVarLike, GenericArgs as _, IntoKind, ParamLike, PlaceholderLike, SliceLike},
+    relate::Relate,
+    walk::TypeWalker,
 };
 use salsa::plumbing::{AsId, FromId};
 use smallvec::SmallVec;

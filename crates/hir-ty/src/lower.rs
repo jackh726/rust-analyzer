@@ -46,10 +46,24 @@ use stdx::{impl_from, never};
 use triomphe::{Arc, ThinArc};
 
 use crate::{
-    all_super_traits, consteval::{intern_const_ref, path_to_const, unknown_const, unknown_const_as_generic}, db::HirDatabase, error_lifetime, generics::{generics, trait_self_param_idx, Generics}, lower::{
+    AliasTy, Binders, BoundVar, CallableSig, Const, DebruijnIndex, DomainGoal, DynTy, FnAbi,
+    FnPointer, FnSig, FnSubst, ImplTrait, ImplTraitId, ImplTraits, Interner, Lifetime,
+    LifetimeData, LifetimeOutlives, PolyFnSig, QuantifiedWhereClause, QuantifiedWhereClauses,
+    Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder, TyKind, WhereClause,
+    all_super_traits,
+    consteval::{intern_const_ref, path_to_const, unknown_const, unknown_const_as_generic},
+    db::HirDatabase,
+    error_lifetime,
+    generics::{Generics, generics, trait_self_param_idx},
+    lower::{
         diagnostics::*,
         path::{PathDiagnosticCallback, PathLoweringContext},
-    }, make_binders, mapping::{from_chalk_trait_id, lt_to_placeholder_idx, ToChalk}, static_lifetime, to_chalk_trait_id, to_placeholder_idx, utils::all_super_trait_refs, variable_kinds_from_iter, AliasTy, Binders, BoundVar, CallableSig, Const, DebruijnIndex, DomainGoal, DynTy, FnAbi, FnPointer, FnSig, FnSubst, ImplTrait, ImplTraitId, ImplTraits, Interner, Lifetime, LifetimeData, LifetimeOutlives, PolyFnSig, QuantifiedWhereClause, QuantifiedWhereClauses, Substitution, TraitEnvironment, TraitRef, TraitRefExt, Ty, TyBuilder, TyKind, WhereClause
+    },
+    make_binders,
+    mapping::{ToChalk, from_chalk_trait_id, lt_to_placeholder_idx},
+    static_lifetime, to_chalk_trait_id, to_placeholder_idx,
+    utils::all_super_trait_refs,
+    variable_kinds_from_iter,
 };
 
 #[derive(Debug, Default)]
