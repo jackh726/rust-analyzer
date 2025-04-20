@@ -227,6 +227,8 @@ define_symbols! {
     async_fn_once_output,
     async_fn_mut,
     async_fn,
+    call_ref_future,
+    call_once_future,
     fn_ptr_addr,
     fn_ptr_trait,
     format_alignment,
