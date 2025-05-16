@@ -1256,7 +1256,7 @@ pub(crate) fn substs_from_args_and_bindings<'db>(
                         LifetimeElisionKind::StaticIfNoLifetimeInScope { only_lint: _ } => {
                             Region::new_static(interner).into()
                         }
-                        &LifetimeElisionKind::Elided(lifetime) => lifetime.into(),
+                        LifetimeElisionKind::Elided(lifetime) => (*lifetime).into(),
                         LifetimeElisionKind::AnonymousCreateParameter { report_in_path: false }
                         | LifetimeElisionKind::Infer => {
                             // FIXME: With `AnonymousCreateParameter`, we need to create a new lifetime parameter here
