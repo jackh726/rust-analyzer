@@ -17,7 +17,7 @@ use smallvec::SmallVec;
 use triomphe::Arc;
 
 use crate::{
-    Binders, Const, ImplTraitId, ImplTraits, InferenceResult, Interner, PolyFnSig, Substitution,
+    Binders, Const, ImplTraitId, ImplTraits, InferenceResult, PolyFnSig, Substitution,
     TraitEnvironment, TraitRef, Ty, TyDefId, ValueTyDefId, chalk_db,
     consteval::ConstEvalError,
     drop::DropGlue,
@@ -26,6 +26,7 @@ use crate::{
     lower::{Diagnostics, GenericDefaults, GenericPredicates},
     method_resolution::{InherentImpls, TraitImpls, TyFingerprint},
     mir::{BorrowckResult, MirBody, MirLowerError},
+    traits::NextTraitSolveResult,
 };
 
 #[query_group::query_group]
@@ -300,15 +301,7 @@ pub trait HirDatabase: DefDatabase + std::fmt::Debug {
         krate: Crate,
         block: Option<BlockId>,
         goal: crate::Canonical<crate::InEnvironment<crate::Goal>>,
-    ) -> Option<crate::Solution>;
-
-    #[salsa::invoke(chalk_db::program_clauses_for_chalk_env_query)]
-    fn program_clauses_for_chalk_env(
-        &self,
-        krate: Crate,
-        block: Option<BlockId>,
-        env: chalk_ir::Environment<Interner>,
-    ) -> chalk_ir::ProgramClauses<Interner>;
+    ) -> NextTraitSolveResult;
 
     #[salsa::invoke(crate::drop::has_drop_glue)]
     #[salsa::cycle(cycle_result = crate::drop::has_drop_glue_cycle_result)]

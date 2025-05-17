@@ -421,10 +421,8 @@ fn infer_with_mismatches(content: &str, include_mismatches: bool) -> String {
     });
     for (def, krate) in defs {
         let (body, source_map) = db.body_with_source_map(def);
-        crate::tls::set_current_program(&db, || {
-            let infer = db.infer(def);
-            infer_def(infer, body, source_map, krate);
-        })
+        let infer = db.infer(def);
+        infer_def(infer, body, source_map, krate);
     }
 
     buf.truncate(buf.trim_end().len());

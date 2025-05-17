@@ -1,4 +1,3 @@
-use chalk_solve::Solver;
 use hir_def::{
     AdtId, ConstId, EnumId, EnumVariantId, FunctionId, GenericDefId, ImplId, StaticId, StructId,
     TraitAliasId, TraitId, TypeAliasId, UnionId,

@@ -25,7 +25,7 @@ use crate::{
     consteval::unknown_const,
     db::HirDatabase,
     fold_generic_args, fold_tys_and_consts, to_chalk_trait_id,
-    traits::{FnTrait, NextTraitSolveResult, next_trait_solve, trait_solve_query},
+    traits::{FnTrait, NextTraitSolveResult, next_trait_solve},
 };
 
 impl InferenceContext<'_> {
@@ -923,26 +923,12 @@ impl<'a> InferenceTable<'a> {
         &mut self,
         canonicalized: &Canonicalized<InEnvironment<Goal>>,
     ) -> NextTraitSolveResult {
-        let use_next_trait_solver = true;
-        let solution = if use_next_trait_solver {
-            next_trait_solve(
-                self.db,
-                self.trait_env.krate,
-                self.trait_env.block,
-                canonicalized.value.clone(),
-            )
-        } else {
-            match trait_solve_query(
-                self.db,
-                self.trait_env.krate,
-                self.trait_env.block,
-                canonicalized.value.clone(),
-            ) {
-                Some(chalk_solve::Solution::Unique(u)) => NextTraitSolveResult::Certain(u),
-                Some(chalk_solve::Solution::Ambig(_)) => NextTraitSolveResult::Uncertain,
-                None => NextTraitSolveResult::NoSolution,
-            }
-        };
+        let solution = next_trait_solve(
+            self.db,
+            self.trait_env.krate,
+            self.trait_env.block,
+            canonicalized.value.clone(),
+        );
 
         tracing::debug!(?solution, ?canonicalized);
         match &solution {

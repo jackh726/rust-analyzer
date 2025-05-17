@@ -1,11 +1,9 @@
 //! Trait solving using Chalk.
 
 use core::fmt;
-use std::env::var;
 
 use chalk_ir::{DebruijnIndex, GoalData, fold::TypeFoldable};
-use chalk_recursive::Cache;
-use chalk_solve::{Solver, logging_db::LoggingRustIrDatabase, rust_ir};
+use chalk_solve::rust_ir;
 
 use base_db::Crate;
 use hir_def::{BlockId, TraitId, lang_item::LangItem};
@@ -18,12 +16,12 @@ use rustc_type_ir::{
     solve::Certainty,
 };
 use span::Edition;
-use stdx::{never, panic_context};
+use stdx::never;
 use triomphe::Arc;
 
 use crate::{
-    AliasEq, AliasTy, Canonical, DomainGoal, Goal, Guidance, InEnvironment, Interner, ProjectionTy,
-    ProjectionTyExt, Solution, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
+    AliasEq, AliasTy, Canonical, DomainGoal, Goal, InEnvironment, Interner, ProjectionTy,
+    ProjectionTyExt, TraitRefExt, Ty, TyKind, TypeFlags, WhereClause,
     db::HirDatabase,
     infer::unify::InferenceTable,
     next_solver::{
@@ -34,23 +32,6 @@ use crate::{
     },
     utils::UnevaluatedConstEvaluatorFolder,
 };
-
-/// This controls how much 'time' we give the Chalk solver before giving up.
-const CHALK_SOLVER_FUEL: i32 = 1000;
-
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct ChalkContext<'a> {
-    pub(crate) db: &'a dyn HirDatabase,
-    pub(crate) krate: Crate,
-    pub(crate) block: Option<BlockId>,
-}
-
-fn create_chalk_solver() -> chalk_recursive::RecursiveSolver<Interner> {
-    let overflow_depth =
-        var("CHALK_OVERFLOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(500);
-    let max_size = var("CHALK_SOLVER_MAX_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or(150);
-    chalk_recursive::RecursiveSolver::new(overflow_depth, max_size, Some(Cache::new()))
-}
 
 /// A set of clauses that we assume to be true. E.g. if we are inside this function:
 /// ```rust
@@ -123,7 +104,7 @@ pub(crate) fn trait_solve_query(
     krate: Crate,
     block: Option<BlockId>,
     goal: Canonical<InEnvironment<Goal>>,
-) -> Option<Solution> {
+) -> NextTraitSolveResult {
     let _p = tracing::info_span!("trait_solve_query", detail = ?match &goal.value.goal.data(Interner) {
         GoalData::DomainGoal(DomainGoal::Holds(WhereClause::Implemented(it))) => db
             .trait_signature(it.hir_trait_id())
@@ -142,7 +123,7 @@ pub(crate) fn trait_solve_query(
     {
         if let TyKind::BoundVar(_) = projection_ty.self_type_parameter(db).kind(Interner) {
             // Hack: don't ask Chalk to normalize with an unknown self type, it'll say that's impossible
-            return Some(Solution::Ambig(Guidance::Unknown));
+            return NextTraitSolveResult::Uncertain;
         }
     }
 
@@ -154,74 +135,7 @@ pub(crate) fn trait_solve_query(
 
     // We currently don't deal with universes (I think / hope they're not yet
     // relevant for our use cases?)
-    let u_canonical = chalk_ir::UCanonical { canonical: goal, universes: 1 };
-    let check = false;
-    match check {
-        true => {
-            let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
-            let chalk_res = solve(db, krate, block, &u_canonical);
-            match (&chalk_res, &next_solver_res) {
-                (Some(Solution::Unique(_)), Err(_)) => panic!(
-                    "Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n",
-                    u_canonical, chalk_res, next_solver_res
-                ),
-                (None, Ok((_, Certainty::Yes, _))) => panic!(
-                    "Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n",
-                    u_canonical, chalk_res, next_solver_res
-                ),
-                _ => {}
-            }
-            chalk_res
-        }
-        false => solve(db, krate, block, &u_canonical),
-    }
-}
-
-fn solve(
-    db: &dyn HirDatabase,
-    krate: Crate,
-    block: Option<BlockId>,
-    goal: &chalk_ir::UCanonical<chalk_ir::InEnvironment<chalk_ir::Goal<Interner>>>,
-) -> Option<chalk_solve::Solution<Interner>> {
-    let _p = tracing::info_span!("solve", ?krate, ?block).entered();
-    let context = ChalkContext { db, krate, block };
-    tracing::debug!("solve goal: {:?}", goal);
-    let mut solver = create_chalk_solver();
-
-    let fuel = std::cell::Cell::new(CHALK_SOLVER_FUEL);
-
-    let should_continue = || {
-        db.unwind_if_revision_cancelled();
-        let remaining = fuel.get();
-        fuel.set(remaining - 1);
-        if remaining == 0 {
-            tracing::debug!("fuel exhausted");
-        }
-        remaining > 0
-    };
-
-    let mut solve = || {
-        let _ctx = if is_chalk_debug() || is_chalk_print() {
-            Some(panic_context::enter(format!("solving {goal:?}")))
-        } else {
-            None
-        };
-        let solution = if is_chalk_print() {
-            let logging_db =
-                LoggingRustIrDatabaseLoggingOnDrop(LoggingRustIrDatabase::new(context));
-            solver.solve_limited(&logging_db.0, goal, &should_continue)
-        } else {
-            solver.solve_limited(&context, goal, &should_continue)
-        };
-
-        tracing::debug!("solve({:?}) => {:?}", goal, solution);
-
-        solution
-    };
-
-    // don't set the TLS for Chalk unless Chalk debugging is active, to make
-    // extra sure we only use it for debugging
-    if is_chalk_debug() { crate::tls::set_current_program(db, solve) } else { solve() }
+    next_trait_solve(db, krate, block, goal)
 }
 
 fn solve_nextsolver<'db>(
@@ -274,7 +188,7 @@ fn solve_nextsolver<'db>(
     })
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum NextTraitSolveResult {
     Certain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
     Uncertain,
@@ -336,22 +250,6 @@ pub fn next_trait_solve(
     tracing::info!(?u_canonical);
 
     let next_solver_res = solve_nextsolver(db, krate, block, &u_canonical);
-    let chalk_res = solve(db, krate, block, &u_canonical);
-    match (&chalk_res, &next_solver_res) {
-        (Some(Solution::Unique(_)), Err(_)) => eprintln!(
-            "Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n",
-            u_canonical, chalk_res, next_solver_res
-        ),
-        (Some(Solution::Unique(_)), Ok((_, Certainty::Maybe(_), _))) => eprintln!(
-            "Next solver failed when Chalk did not.\n{:?}\n{:?}\n{:?}\n",
-            u_canonical, chalk_res, next_solver_res
-        ),
-        (None, Ok((_, Certainty::Yes, _))) => eprintln!(
-            "Next solver passed when Chalk did not.\n{:?}\n{:?}\n{:?}\n",
-            u_canonical, chalk_res, next_solver_res
-        ),
-        _ => {}
-    }
 
     crate::next_solver::tls::with_db(db, || match next_solver_res {
         Err(_) => NextTraitSolveResult::NoSolution,
@@ -360,22 +258,6 @@ pub fn next_trait_solve(
         ),
         Ok((_, Certainty::Maybe(_), _)) => NextTraitSolveResult::Uncertain,
     })
-}
-
-struct LoggingRustIrDatabaseLoggingOnDrop<'a>(LoggingRustIrDatabase<Interner, ChalkContext<'a>>);
-
-impl Drop for LoggingRustIrDatabaseLoggingOnDrop<'_> {
-    fn drop(&mut self) {
-        tracing::info!("chalk program:\n{}", self.0);
-    }
-}
-
-fn is_chalk_debug() -> bool {
-    std::env::var("CHALK_DEBUG").is_ok()
-}
-
-fn is_chalk_print() -> bool {
-    std::env::var("CHALK_PRINT").is_ok()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
