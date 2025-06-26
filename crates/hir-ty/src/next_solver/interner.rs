@@ -1612,6 +1612,8 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         let trait_ref = impl_trait_query(db, impl_id)
             // ImplIds for impls where the trait ref can't be resolved should never reach trait solving
             .expect("invalid impl passed to trait solver");
+        let trait_ref: EarlyBinder<DbInterner<'db>, TraitRef<DbInterner<'db>>> =
+            unsafe { std::mem::transmute(trait_ref) };
         trait_ref
     }
 

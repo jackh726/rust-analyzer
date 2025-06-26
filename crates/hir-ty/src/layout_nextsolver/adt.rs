@@ -23,7 +23,7 @@ use super::{LayoutCx, field_ty, layout_of_ty_query};
 pub fn layout_of_adt_query<'db>(
     db: &'db dyn HirDatabase,
     def: AdtId,
-    args: &GenericArgs<'db>,
+    args: GenericArgs<'db>,
     trait_env: Arc<TraitEnvironment>,
 ) -> Result<Arc<Layout>, LayoutError> {
     let krate = trait_env.krate;
@@ -35,7 +35,7 @@ pub fn layout_of_adt_query<'db>(
     let handle_variant = |def: VariantId, var: &VariantFields| {
         var.fields()
             .iter()
-            .map(|(fd, _)| layout_of_ty_query(db, field_ty(db, def, fd, args), trait_env.clone()))
+            .map(|(fd, _)| layout_of_ty_query(db, field_ty(db, def, fd, &args), trait_env.clone()))
             .collect::<Result<Vec<_>, _>>()
     };
     let (variants, repr, is_special_no_niche) = match def {
@@ -104,6 +104,15 @@ pub fn layout_of_adt_query<'db>(
         )?
     };
     Ok(Arc::new(result))
+}
+
+pub(crate) fn layout_of_adt_cycle_result<'db>(
+    _: &dyn HirDatabase,
+    def: AdtId,
+    args: GenericArgs<'db>,
+    trait_env: Arc<TraitEnvironment>,
+) -> Result<Arc<Layout>, LayoutError> {
+    Err(LayoutError::RecursiveTypeWithoutIndirection)
 }
 
 /// Finds the appropriate Integer type and signedness for the given

@@ -1,6 +1,7 @@
 //! Compute the binary representation of a type
 
-use adt::layout_of_adt_query;
+pub(crate) use adt::layout_of_adt_cycle_result;
+pub use adt::layout_of_adt_query;
 use hir_def::{
     AdtId, LocalFieldId, StructId,
     layout::{
@@ -97,7 +98,7 @@ pub fn layout_of_ty_query<'a>(
                 }
                 _ => {}
             }
-            return layout_of_adt_query(db, def.inner().id, &args, trait_env);
+            return layout_of_adt_query(db, def.inner().id, args, trait_env);
         }
         TyKind::Bool => Layout::scalar(
             dl,
@@ -293,6 +294,14 @@ pub fn layout_of_ty_query<'a>(
         TyKind::UnsafeBinder(..) => todo!(),
     };
     Ok(Arc::new(result))
+}
+
+pub(crate) fn layout_of_ty_cycle_result<'db>(
+    _: &dyn HirDatabase,
+    _: Ty<'db>,
+    _: Arc<TraitEnvironment>,
+) -> Result<Arc<Layout>, LayoutError> {
+    Err(LayoutError::RecursiveTypeWithoutIndirection)
 }
 
 fn struct_tail_erasing_lifetimes<'a>(db: &'a dyn HirDatabase, pointee: Ty<'a>) -> Ty<'a> {
