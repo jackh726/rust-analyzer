@@ -80,7 +80,7 @@ use hir_ty::{
     method_resolution,
     mir::{MutBorrowKind, interpret_mir},
     primitive::UintTy,
-    traits::{FnTrait, next_trait_solve},
+    traits::FnTrait,
 };
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
@@ -5104,7 +5104,7 @@ impl<'db> Type<'db> {
             binders: CanonicalVarKinds::empty(Interner),
         };
 
-        !next_trait_solve(db, self.env.krate, self.env.block, goal).no_solution()
+        !db.trait_solve(self.env.krate, self.env.block, goal).no_solution()
     }
 
     pub fn normalize_trait_assoc_type(

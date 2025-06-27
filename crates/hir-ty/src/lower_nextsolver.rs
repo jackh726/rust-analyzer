@@ -912,8 +912,7 @@ pub(crate) fn named_associated_type_shorthand_candidates<'a>(
                 }
             }
 
-            let predicates =
-                generic_predicates_for_param_query(db, def, param_id.into(), assoc_name);
+            let predicates = db.generic_predicates_for_param_ns(def, param_id.into(), assoc_name);
             let res = predicates.iter().find_map(|pred| match pred.clone().kind().skip_binder() {
                 rustc_type_ir::ClauseKind::Trait(trait_predicate) => {
                     let trait_ref = trait_predicate.trait_ref;
@@ -950,7 +949,7 @@ pub(crate) fn impl_trait_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
 ) -> Option<EarlyBinder<'static, TraitRef<'static>>> {
-    impl_trait_with_diagnostics_query(db, impl_id).map(|it| it.0)
+    db.impl_trait_with_diagnostics_ns(impl_id).map(|it| it.0)
 }
 
 // FIXME(next-solver): 'static -> 'db
@@ -967,7 +966,7 @@ pub(crate) fn impl_trait_with_diagnostics_query<'db>(
         impl_id.into(),
         LifetimeElisionKind::AnonymousCreateParameter { report_in_path: true },
     );
-    let self_ty = impl_self_ty_query(db, impl_id).skip_binder();
+    let self_ty = db.impl_self_ty_ns(impl_id).skip_binder();
     let target_trait = impl_data.target_trait.as_ref()?;
     let trait_ref = EarlyBinder::bind(ctx.lower_trait_ref(target_trait, self_ty)?);
     Some((unsafe { std::mem::transmute(trait_ref) }, create_diagnostics(ctx.diagnostics)))
@@ -1039,7 +1038,7 @@ pub(crate) fn ty_query<'db>(
             AdtDef::new(it, interner),
             GenericArgs::identity_for_item(interner, it.into()),
         )),
-        TyDefId::TypeAliasId(it) => type_for_type_alias_with_diagnostics_query(db, it).0,
+        TyDefId::TypeAliasId(it) => db.type_for_type_alias_with_diagnostics_ns(it).0,
     };
     unsafe { std::mem::transmute(ret) }
 }
@@ -1097,7 +1096,7 @@ pub(crate) fn impl_self_ty_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
 ) -> EarlyBinder<'static, Ty<'static>> {
-    impl_self_ty_with_diagnostics_query(db, impl_id).0
+    db.impl_self_ty_with_diagnostics_ns(impl_id).0
 }
 
 // FIXME(next-solver): 'static -> 'db
@@ -1155,7 +1154,7 @@ pub(crate) fn const_param_ty_query<'db>(
     db: &'db dyn HirDatabase,
     def: ConstParamId,
 ) -> Ty<'static> {
-    const_param_ty_with_diagnostics_query(db, def).0
+    db.const_param_ty_with_diagnostics_ns(def).0
 }
 
 // returns None if def is a type arg
@@ -1189,7 +1188,7 @@ pub(crate) fn field_types_query<'db>(
     db: &'db dyn HirDatabase,
     variant_id: VariantId,
 ) -> Arc<ArenaMap<LocalFieldId, EarlyBinder<'static, Ty<'static>>>> {
-    field_types_with_diagnostics_query(db, variant_id).0
+    db.field_types_with_diagnostics_ns(variant_id).0
 }
 
 /// Build the type of all specific fields of a struct or enum variant.
@@ -1307,7 +1306,11 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
             predicates.extend(implicitly_sized_predicates);
         };
     }
-    unsafe { std::mem::transmute(GenericPredicates(predicates.is_empty().not().then(|| predicates.into()))) }
+    unsafe {
+        std::mem::transmute(GenericPredicates(
+            predicates.is_empty().not().then(|| predicates.into()),
+        ))
+    }
 }
 
 // FIXME(next-solver): 'static -> 'db
@@ -1441,7 +1444,11 @@ where
     }
 
     (
-        unsafe { std::mem::transmute(GenericPredicates(predicates.is_empty().not().then(|| predicates.into()))) },
+        unsafe {
+            std::mem::transmute(GenericPredicates(
+                predicates.is_empty().not().then(|| predicates.into()),
+            ))
+        },
         create_diagnostics(ctx.diagnostics),
     )
 }
@@ -1561,14 +1568,17 @@ pub(crate) fn lower_generic_arg<'a, 'db, T>(
 }
 
 /// Build the signature of a callable item (function, struct or enum variant).
-pub(crate) fn callable_item_sig<'db>(
+// FIXME(next-solver): 'static -> 'db
+pub(crate) fn callable_item_signature_query<'db>(
     db: &'db dyn HirDatabase,
     def: CallableDefId,
-) -> EarlyBinder<'db, PolyFnSig<'db>> {
-    match def {
-        CallableDefId::FunctionId(f) => fn_sig_for_fn(db, f),
-        CallableDefId::StructId(s) => fn_sig_for_struct_constructor(db, s),
-        CallableDefId::EnumVariantId(e) => fn_sig_for_enum_variant_constructor(db, e),
+) -> EarlyBinder<'static, PolyFnSig<'static>> {
+    unsafe {
+        std::mem::transmute(match def {
+            CallableDefId::FunctionId(f) => fn_sig_for_fn(db, f),
+            CallableDefId::StructId(s) => fn_sig_for_struct_constructor(db, s),
+            CallableDefId::EnumVariantId(e) => fn_sig_for_enum_variant_constructor(db, e),
+        })
     }
 }
 
@@ -1624,7 +1634,7 @@ fn fn_sig_for_struct_constructor<'db>(
     db: &'db dyn HirDatabase,
     def: StructId,
 ) -> EarlyBinder<'db, PolyFnSig<'db>> {
-    let field_tys = field_types_query(db, def.into());
+    let field_tys = db.field_types_ns(def.into());
     let params = field_tys.iter().map(|(_, ty)| ty.skip_binder().clone());
     let ret = type_for_adt(db, def.into()).skip_binder();
 
@@ -1641,7 +1651,7 @@ fn fn_sig_for_enum_variant_constructor<'db>(
     db: &'db dyn HirDatabase,
     def: EnumVariantId,
 ) -> EarlyBinder<'db, PolyFnSig<'db>> {
-    let field_tys = field_types_query(db, def.into());
+    let field_tys = db.field_types_ns(def.into());
     let params = field_tys.iter().map(|(_, ty)| ty.skip_binder().clone());
     let parent = def.lookup(db).parent;
     let ret = type_for_adt(db, parent.into()).skip_binder();

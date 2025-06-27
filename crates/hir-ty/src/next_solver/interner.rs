@@ -40,11 +40,7 @@ use rustc_type_ir::{
 };
 
 use crate::lower::generic_predicates_filtered_by;
-use crate::lower_nextsolver::{
-    self, TyLoweringContext, callable_item_sig, field_types_query, generic_predicates_query,
-    generic_predicates_without_parent_query, impl_trait_query, return_type_impl_traits, ty_query,
-    type_alias_impl_traits,
-};
+use crate::lower_nextsolver::{self, TyLoweringContext};
 use crate::method_resolution::{ALL_FLOAT_FPS, ALL_INT_FPS, TyFingerprint};
 use crate::next_solver::FxIndexMap;
 use crate::next_solver::util::{explicit_item_bounds, for_trait_impls};
@@ -611,7 +607,7 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
         let id: VariantId = struct_id.into();
         let variant_data = &id.variant_data(db);
         let Some((last_idx, _)) = variant_data.fields().iter().last() else { return None };
-        let field_types = field_types_query(interner.db(), id);
+        let field_types = interner.db().field_types_ns(id);
 
         let last_ty = field_types[last_idx].clone();
         Some(last_ty)
@@ -631,7 +627,7 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
             let fields = if variant_data.fields().is_empty() {
                 vec![]
             } else {
-                let field_types = field_types_query(db, id);
+                let field_types = db.field_types_ns(id);
                 variant_data
                     .fields()
                     .iter()
@@ -942,7 +938,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             }
             _ => todo!(),
         };
-        ty_query(self.db(), def_id)
+        self.db().ty_ns(def_id)
     }
 
     fn adt_def(self, adt_def_id: Self::DefId) -> Self::AdtDef {
@@ -1075,7 +1071,13 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             },
             def => unreachable!("{:?}", def),
         };
-        callable_item_sig(self.db(), id)
+        let ret: EarlyBinder<
+            DbInterner<'static>,
+            rustc_type_ir::Binder<DbInterner<'static>, rustc_type_ir::FnSig<DbInterner<'static>>>,
+        > = self.db().callable_item_signature_ns(id);
+        let ret: EarlyBinder<Self, rustc_type_ir::Binder<Self, rustc_type_ir::FnSig<Self>>> =
+            unsafe { std::mem::transmute(ret) };
+        ret
     }
 
     fn coroutine_movability(self, def_id: Self::DefId) -> rustc_ast_ir::Movability {
@@ -1163,7 +1165,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        let predicates = generic_predicates_query(self.db(), def_id.try_into().unwrap());
+        let predicates = self.db().generic_predicates_ns(def_id.try_into().unwrap());
         let predicates: Vec<_> = predicates.iter().cloned().collect();
         EarlyBinder::bind(predicates.into_iter())
     }
@@ -1173,8 +1175,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         self,
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        let predicates =
-            generic_predicates_without_parent_query(self.db(), def_id.try_into().unwrap());
+        let predicates = self.db().generic_predicates_without_parent_ns(def_id.try_into().unwrap());
         let predicates: Vec<_> = predicates.iter().cloned().collect();
         EarlyBinder::bind(predicates.into_iter())
     }
@@ -1184,13 +1185,9 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
     {
-        let predicates: Vec<(Clause<'db>, Span)> =
-            lower_nextsolver::generic_predicates_filtered_by(
-                self.db(),
-                def_id.try_into().unwrap(),
-                |_| true,
-            )
-            .0
+        let predicates: Vec<(Clause<'db>, Span)> = self
+            .db()
+            .generic_predicates_ns(def_id.try_into().unwrap())
             .iter()
             .cloned()
             .map(|p| (p, Span::dummy()))
@@ -1203,13 +1200,9 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         def_id: Self::DefId,
     ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = (Self::Clause, Self::Span)>>
     {
-        let predicates: Vec<(Clause<'db>, Span)> =
-            lower_nextsolver::generic_predicates_filtered_by(
-                self.db(),
-                def_id.try_into().unwrap(),
-                |_| true,
-            )
-            .0
+        let predicates: Vec<(Clause<'db>, Span)> = self
+            .db()
+            .generic_predicates_ns(def_id.try_into().unwrap())
             .iter()
             .cloned()
             .map(|p| (p, Span::dummy()))
@@ -1609,7 +1602,8 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
 
         let db = self.db();
 
-        let trait_ref = impl_trait_query(db, impl_id)
+        let trait_ref = db
+            .impl_trait_ns(impl_id)
             // ImplIds for impls where the trait ref can't be resolved should never reach trait solving
             .expect("invalid impl passed to trait solver");
         let trait_ref: EarlyBinder<DbInterner<'db>, TraitRef<DbInterner<'db>>> =
@@ -1721,7 +1715,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             return UnsizingParams(DenseBitSet::new_empty(num_params));
         };
 
-        let field_types = field_types_query(self.db(), variant.id());
+        let field_types = self.db().field_types_ns(variant.id());
         let mut unsizing_params = DenseBitSet::new_empty(num_params);
         let ty = field_types[tail_field.0].clone();
         for arg in ty.instantiate_identity().walk() {

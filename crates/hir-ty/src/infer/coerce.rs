@@ -21,7 +21,7 @@ use crate::{
         Adjust, Adjustment, AutoBorrow, InferOk, InferenceContext, OverloadedDeref, PointerCast,
         TypeError, TypeMismatch,
     },
-    traits::{NextTraitSolveResult, next_trait_solve},
+    traits::NextTraitSolveResult,
     utils::ClosureSubst,
 };
 
@@ -722,8 +722,7 @@ impl InferenceTable<'_> {
         // solve `CoerceUnsized` and `Unsize` goals at this point and leaves the
         // rest for later. Also, there's some logic about sized type variables.
         // Need to find out in what cases this is necessary
-        let solution = next_trait_solve(
-            self.db,
+        let solution = self.db.trait_solve(
             krate,
             self.trait_env.block,
             canonicalized.value.clone().cast(Interner),

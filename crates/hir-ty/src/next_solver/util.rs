@@ -17,9 +17,7 @@ use rustc_type_ir::{
 };
 use rustc_type_ir::{InferCtxtLike, TypeFoldable};
 
-use crate::lower_nextsolver::{
-    LifetimeElisionKind, TyLoweringContext, return_type_impl_traits, type_alias_impl_traits,
-};
+use crate::lower_nextsolver::{LifetimeElisionKind, TyLoweringContext};
 use crate::{
     db::HirDatabase,
     from_foreign_def_id,
@@ -672,14 +670,16 @@ pub fn explicit_item_bounds<'db>(
             let full_id = db.lookup_intern_impl_trait_id(id);
             match full_id {
                 crate::ImplTraitId::ReturnTypeImplTrait(func, idx) => {
-                    let datas = return_type_impl_traits(db, func)
+                    let datas = db
+                        .return_type_impl_traits_ns(func)
                         .expect("impl trait id without impl traits");
                     let datas = (*datas).as_ref().skip_binder();
                     let data = &datas.impl_traits[Idx::from_raw(idx.into_raw())];
                     EarlyBinder::bind(Clauses::new_from_iter(interner, data.predicates.clone()))
                 }
                 crate::ImplTraitId::TypeAliasImplTrait(alias, idx) => {
-                    let datas = type_alias_impl_traits(db, alias)
+                    let datas = db
+                        .type_alias_impl_traits_ns(alias)
                         .expect("impl trait id without impl traits");
                     let datas = (*datas).as_ref().skip_binder();
                     let data = &datas.impl_traits[Idx::from_raw(idx.into_raw())];

@@ -30,7 +30,7 @@ use crate::{
     db::HirDatabase,
     generics::{Generics, generics},
     lower::PathDiagnosticCallbackData,
-    lower_nextsolver::{LifetimeElisionKind, impl_self_ty_query},
+    lower_nextsolver::LifetimeElisionKind,
     next_solver::{
         AdtDef, Binder, Clause, Const, DbInterner, ErrorGuaranteed, Predicate, ProjectionPredicate,
         Region, SolverDefId, TraitRef, Ty,
@@ -281,7 +281,7 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
                     }
                 }
             }
-            TypeNs::SelfType(impl_id) => impl_self_ty_query(self.ctx.db, impl_id).skip_binder(),
+            TypeNs::SelfType(impl_id) => self.ctx.db.impl_self_ty_ns(impl_id).skip_binder(),
             TypeNs::AdtSelfType(adt) => {
                 let args = crate::next_solver::GenericArgs::identity_for_item(
                     self.ctx.interner,

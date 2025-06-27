@@ -22,7 +22,6 @@ use crate::{
     from_assoc_type_id, from_chalk_trait_id,
     generics::{generics, trait_self_param_idx},
     to_chalk_trait_id,
-    traits::next_trait_solve,
     utils::elaborate_clause_supertraits,
 };
 
@@ -560,7 +559,7 @@ fn receiver_is_dispatchable(
     let mut table = chalk_solve::infer::InferenceTable::<Interner>::new();
     let canonicalized = table.canonicalize(Interner, in_env);
 
-    next_trait_solve(db, krate, None, canonicalized.quantified).certain()
+    db.trait_solve(krate, None, canonicalized.quantified).certain()
 }
 
 fn receiver_for_self_ty(db: &dyn HirDatabase, func: FunctionId, ty: Ty) -> Option<Ty> {

@@ -33,7 +33,7 @@ use crate::{
     next_solver::SolverDefId,
     primitive::{FloatTy, IntTy, UintTy},
     to_chalk_trait_id,
-    traits::{NextTraitSolveResult, next_trait_solve},
+    traits::NextTraitSolveResult,
     utils::all_super_traits,
 };
 
@@ -1403,7 +1403,7 @@ fn iterate_trait_method_candidates(
                 };
             if !known_implemented {
                 let goal = generic_implements_goal(db, &table.trait_env, t, &canonical_self_ty);
-                if next_trait_solve(db, krate, block, goal.cast(Interner)).no_solution() {
+                if db.trait_solve(krate, block, goal.cast(Interner)).no_solution() {
                     continue 'traits;
                 }
             }
@@ -1586,7 +1586,8 @@ pub(crate) fn resolve_indexing_op(
     let deref_chain = autoderef_method_receiver(&mut table, ty);
     for (ty, adj) in deref_chain {
         let goal = generic_implements_goal(db, &table.trait_env, index_trait, &ty);
-        if !next_trait_solve(db, table.trait_env.krate, table.trait_env.block, goal.cast(Interner))
+        if !db
+            .trait_solve(table.trait_env.krate, table.trait_env.block, goal.cast(Interner))
             .no_solution()
         {
             return Some(adj);
@@ -1774,8 +1775,7 @@ fn is_valid_impl_fn_candidate(
         for goal in goals.clone() {
             let in_env = InEnvironment::new(&table.trait_env.env, goal);
             let canonicalized = table.canonicalize_with_free_vars(in_env);
-            let solution = next_trait_solve(
-                table.db,
+            let solution = table.db.trait_solve(
                 table.trait_env.krate,
                 table.trait_env.block,
                 canonicalized.value.clone(),
@@ -1813,7 +1813,7 @@ pub fn implements_trait(
     trait_: TraitId,
 ) -> bool {
     let goal = generic_implements_goal(db, env, trait_, ty);
-    !next_trait_solve(db, env.krate, env.block, goal.cast(Interner)).no_solution()
+    !db.trait_solve(env.krate, env.block, goal.cast(Interner)).no_solution()
 }
 
 pub fn implements_trait_unique(
@@ -1823,7 +1823,7 @@ pub fn implements_trait_unique(
     trait_: TraitId,
 ) -> bool {
     let goal = generic_implements_goal(db, env, trait_, ty);
-    next_trait_solve(db, env.krate, env.block, goal.cast(Interner)).certain()
+    db.trait_solve(env.krate, env.block, goal.cast(Interner)).certain()
 }
 
 /// This creates Substs for a trait with the given Self type and type variables

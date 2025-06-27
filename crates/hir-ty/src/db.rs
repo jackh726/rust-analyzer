@@ -405,6 +405,12 @@ pub trait HirDatabase: DefDatabase + std::fmt::Debug {
         >,
     >;
 
+    #[salsa::invoke(crate::lower_nextsolver::callable_item_signature_query)]
+    fn callable_item_signature_ns(
+        &self,
+        def: CallableDefId,
+    ) -> crate::next_solver::EarlyBinder<'static, crate::next_solver::PolyFnSig<'static>>;
+
     #[salsa::invoke(crate::lower_nextsolver::return_type_impl_traits)]
     fn return_type_impl_traits_ns(
         &self,
@@ -431,9 +437,14 @@ pub trait HirDatabase: DefDatabase + std::fmt::Debug {
     ) -> crate::lower_nextsolver::GenericPredicates<'static>;
 
     #[salsa::invoke(crate::lower_nextsolver::generic_predicates_query)]
-    fn generic_predicates_ns(&self, def: GenericDefId) -> crate::lower_nextsolver::GenericPredicates<'static>;
+    fn generic_predicates_ns(
+        &self,
+        def: GenericDefId,
+    ) -> crate::lower_nextsolver::GenericPredicates<'static>;
 
-    #[salsa::invoke(crate::lower_nextsolver::generic_predicates_without_parent_with_diagnostics_query)]
+    #[salsa::invoke(
+        crate::lower_nextsolver::generic_predicates_without_parent_with_diagnostics_query
+    )]
     fn generic_predicates_without_parent_with_diagnostics_ns(
         &self,
         def: GenericDefId,
@@ -441,7 +452,10 @@ pub trait HirDatabase: DefDatabase + std::fmt::Debug {
 
     #[salsa::invoke(crate::lower_nextsolver::generic_predicates_without_parent_query)]
     #[salsa::transparent]
-    fn generic_predicates_without_parent_ns(&self, def: GenericDefId) -> crate::lower_nextsolver::GenericPredicates<'static>;
+    fn generic_predicates_without_parent_ns(
+        &self,
+        def: GenericDefId,
+    ) -> crate::lower_nextsolver::GenericPredicates<'static>;
 }
 
 #[test]

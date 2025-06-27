@@ -23,9 +23,8 @@ use crate::{
     consteval_nextsolver::try_const_usize,
     db::HirDatabase,
     layout::{Layout, LayoutError},
-    lower_nextsolver::field_types_query,
     next_solver::{
-        DbInterner, GenericArgs, SolverDefId, Ty,
+        Const, DbInterner, GenericArgs, SolverDefId, Ty, Tys,
         mapping::{ChalkToNextSolver, convert_binder_to_early_binder},
     },
 };
@@ -56,18 +55,20 @@ fn layout_of_simd_ty<'db>(
     // * #[repr(simd)] struct S([T; 4])
     //
     // where T is a primitive scalar (integer/float/pointer).
-    let fields = field_types_query(db, id.into());
+    let fields = db.field_types_ns(id.into());
     let mut fields = fields.iter();
     let Some(TyKind::Array(e_ty, e_len)) = fields
         .next()
         .filter(|_| fields.next().is_none())
-        .map(|f| f.1.clone().instantiate(DbInterner::new(), args).kind().clone())
+        .map(|f| f.1.clone().instantiate(DbInterner::new_with(db, None, None), args).kind())
     else {
         return Err(LayoutError::InvalidSimdType);
     };
 
+    let e_len: Const<'static> = unsafe { std::mem::transmute(e_len) };
+    let e_ty: Ty<'static> = unsafe { std::mem::transmute(e_ty) };
     let e_len = try_const_usize(db, &e_len).ok_or(LayoutError::HasErrorConst)? as u64;
-    let e_ly = layout_of_ty_query(db, e_ty, env)?;
+    let e_ly = db.layout_of_ty_ns(e_ty, env)?;
 
     let cx = LayoutCx::new(dl);
     Ok(Arc::new(cx.calc.simd_type(e_ly, e_len, repr_packed)?))
@@ -98,7 +99,8 @@ pub fn layout_of_ty_query<'a>(
                 }
                 _ => {}
             }
-            return layout_of_adt_query(db, def.inner().id, args, trait_env);
+            let args: GenericArgs<'static> = unsafe { std::mem::transmute(args) };
+            return db.layout_of_adt_ns(def.inner().id, args, trait_env);
         }
         TyKind::Bool => Layout::scalar(
             dl,
@@ -164,9 +166,10 @@ pub fn layout_of_ty_query<'a>(
             let kind =
                 if tys.len() == 0 { StructKind::AlwaysSized } else { StructKind::MaybeUnsized };
 
+            let tys: Tys<'static> = unsafe { std::mem::transmute(tys) };
             let fields = tys
                 .iter()
-                .map(|k| layout_of_ty_query(db, k, trait_env.clone()))
+                .map(|k| db.layout_of_ty_ns(k, trait_env.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
             let fields = fields.iter().map(|it| &**it).collect::<Vec<_>>();
             let fields = fields.iter().collect::<IndexVec<_, _>>();
@@ -174,11 +177,13 @@ pub fn layout_of_ty_query<'a>(
         }
         TyKind::Array(element, count) => {
             let count = try_const_usize(db, &count).ok_or(LayoutError::HasErrorConst)? as u64;
-            let element = layout_of_ty_query(db, element.clone(), trait_env)?;
+            let element: Ty<'static> = unsafe { std::mem::transmute(element) };
+            let element = db.layout_of_ty_ns(element, trait_env)?;
             cx.calc.array_like::<_, _, ()>(&element, Some(count))?
         }
         TyKind::Slice(element) => {
-            let element = layout_of_ty_query(db, element.clone(), trait_env)?;
+            let element: Ty<'static> = unsafe { std::mem::transmute(element) };
+            let element = db.layout_of_ty_ns(element, trait_env)?;
             cx.calc.array_like::<_, _, ()>(&element, None)?
         }
         TyKind::Str => {
@@ -268,15 +273,13 @@ pub fn layout_of_ty_query<'a>(
             let fields = captures
                 .iter()
                 .map(|it| {
-                    layout_of_ty_query(
-                        db,
-                        convert_binder_to_early_binder(
-                            interner,
-                            it.ty.to_nextsolver(interner).clone(),
-                        )
-                        .instantiate(interner, args.clone()),
-                        trait_env.clone(),
+                    let ty = convert_binder_to_early_binder(
+                        interner,
+                        it.ty.to_nextsolver(interner).clone(),
                     )
+                    .instantiate(interner, args.clone());
+                    let ty: Ty<'static> = unsafe { std::mem::transmute(ty) };
+                    db.layout_of_ty_ns(ty, trait_env.clone())
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let fields = fields.iter().map(|it| &**it).collect::<Vec<_>>();
@@ -338,7 +341,7 @@ fn field_ty<'a>(
     fd: LocalFieldId,
     args: &GenericArgs<'a>,
 ) -> Ty<'a> {
-    field_types_query(db, def)[fd].clone().instantiate(DbInterner::new(), args)
+    db.field_types_ns(def)[fd].clone().instantiate(DbInterner::new(), args)
 }
 
 fn scalar_unit(dl: &TargetDataLayout, value: Primitive) -> Scalar {

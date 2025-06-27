@@ -25,7 +25,7 @@ use crate::{
     consteval::unknown_const,
     db::HirDatabase,
     fold_generic_args, fold_tys_and_consts, to_chalk_trait_id,
-    traits::{FnTrait, NextTraitSolveResult, next_trait_solve},
+    traits::{FnTrait, NextTraitSolveResult},
 };
 
 impl InferenceContext<'_> {
@@ -381,8 +381,7 @@ impl<'a> InferenceTable<'a> {
                                     .collect();
                                 Canonicalized { value: result.quantified, free_vars }
                             };
-                            let solution = next_trait_solve(
-                                self.db,
+                            let solution = self.db.trait_solve(
                                 self.trait_env.krate,
                                 self.trait_env.block,
                                 canonicalized.value.clone(),
@@ -748,7 +747,7 @@ impl<'a> InferenceTable<'a> {
         let in_env = InEnvironment::new(&self.trait_env.env, goal);
         let canonicalized = self.canonicalize(in_env);
 
-        next_trait_solve(self.db, self.trait_env.krate, self.trait_env.block, canonicalized)
+        self.db.trait_solve(self.trait_env.krate, self.trait_env.block, canonicalized)
     }
 
     pub(crate) fn register_obligation(&mut self, goal: Goal) {
@@ -923,8 +922,7 @@ impl<'a> InferenceTable<'a> {
         &mut self,
         canonicalized: &Canonicalized<InEnvironment<Goal>>,
     ) -> NextTraitSolveResult {
-        let solution = next_trait_solve(
-            self.db,
+        let solution = self.db.trait_solve(
             self.trait_env.krate,
             self.trait_env.block,
             canonicalized.value.clone(),
@@ -1016,7 +1014,9 @@ impl<'a> InferenceTable<'a> {
                 environment: trait_env.clone(),
             };
             let canonical = self.canonicalize(obligation.clone());
-            if !next_trait_solve(self.db, krate, self.trait_env.block, canonical.cast(Interner))
+            if !self
+                .db
+                .trait_solve(krate, self.trait_env.block, canonical.cast(Interner))
                 .no_solution()
             {
                 self.register_obligation(obligation.goal);
@@ -1030,13 +1030,10 @@ impl<'a> InferenceTable<'a> {
                             environment: trait_env.clone(),
                         };
                     let canonical = self.canonicalize(obligation.clone());
-                    if !next_trait_solve(
-                        self.db,
-                        krate,
-                        self.trait_env.block,
-                        canonical.cast(Interner),
-                    )
-                    .no_solution()
+                    if !self
+                        .db
+                        .trait_solve(krate, self.trait_env.block, canonical.cast(Interner))
+                        .no_solution()
                     {
                         return Some((fn_x, arg_tys, return_ty));
                     }
