@@ -388,27 +388,30 @@ impl<'a> InferenceTable<'a> {
                             );
                             if let NextTraitSolveResult::Certain(canonical_subst) = solution {
                                 // This is not great :) But let's just assert this for now and come back to it later.
-                                assert!(canonical_subst.value.subst.len(Interner) == 1);
-                                let normalized = canonical_subst.value.subst.as_slice(Interner)[0]
-                                    .assert_ty_ref(Interner);
-                                match normalized.kind(Interner) {
-                                    TyKind::Alias(AliasTy::Projection(proj_ty)) => {
-                                        if id == &proj_ty.associated_ty_id
-                                            && subst == &proj_ty.substitution
-                                        {
-                                            ty
-                                        } else {
-                                            normalized.clone()
+                                if canonical_subst.value.subst.len(Interner) != 1 {
+                                    ty
+                                } else {
+                                    let normalized = canonical_subst.value.subst.as_slice(Interner)[0]
+                                        .assert_ty_ref(Interner);
+                                    match normalized.kind(Interner) {
+                                        TyKind::Alias(AliasTy::Projection(proj_ty)) => {
+                                            if id == &proj_ty.associated_ty_id
+                                                && subst == &proj_ty.substitution
+                                            {
+                                                ty
+                                            } else {
+                                                normalized.clone()
+                                            }
                                         }
-                                    }
-                                    TyKind::AssociatedType(new_id, new_subst) => {
-                                        if new_id == id && new_subst == subst {
-                                            ty
-                                        } else {
-                                            normalized.clone()
+                                        TyKind::AssociatedType(new_id, new_subst) => {
+                                            if new_id == id && new_subst == subst {
+                                                ty
+                                            } else {
+                                                normalized.clone()
+                                            }
                                         }
+                                        _ => normalized.clone(),
                                     }
-                                    _ => normalized.clone(),
                                 }
                             } else {
                                 ty

@@ -1292,11 +1292,13 @@ pub(crate) fn convert_ty_for_result<'db>(interner: DbInterner<'db>, ty: Ty<'db>)
         }
         rustc_type_ir::TyKind::FnDef(def_id, args) => {
             let id = match def_id {
-                SolverDefId::FunctionId(id) => id,
+                SolverDefId::FunctionId(id) => CallableDefId::FunctionId(id),
+                SolverDefId::Ctor(Ctor::Struct(id)) => CallableDefId::StructId(id),
+                SolverDefId::Ctor(Ctor::Enum(id)) => CallableDefId::EnumVariantId(id),
                 _ => unreachable!(),
             };
             let subst = convert_args_for_result(interner, args.as_slice());
-            TyKind::FnDef(CallableDefId::FunctionId(id).to_chalk(interner.db()), subst)
+            TyKind::FnDef(id.to_chalk(interner.db()), subst)
         }
 
         rustc_type_ir::TyKind::Closure(def_id, args) => {
