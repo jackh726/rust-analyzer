@@ -4951,3 +4951,46 @@ where
         "#]],
     );
 }
+
+#[test]
+fn new_solver_crash_2() {
+    check_infer(
+        r#"
+//- minicore: deref, send, sync
+use core::ops::Deref;
+
+trait Error {}
+
+struct AnyhowError;
+
+impl Deref for AnyhowError {
+    type Target = dyn Error + Send + Sync;
+
+    fn deref(&self) -> &Self::Target { loop {} }
+}
+
+impl AnyhowError {
+    fn downcast<T>(self) {}
+}
+
+
+fn main() {
+    let e = AnyhowError;
+    e.downcast::<()>();
+}
+"#,
+        expect![[r#"
+            147..151 'self': &'? AnyhowError
+            170..181 '{ loop {} }': &'? (dyn Error + Send + Sync + 'static)
+            172..179 'loop {}': !
+            177..179 '{}': ()
+            223..227 'self': AnyhowError
+            229..231 '{}': ()
+            246..298 '{     ...>(); }': ()
+            256..257 'e': AnyhowError
+            260..271 'AnyhowError': AnyhowError
+            277..278 'e': AnyhowError
+            277..295 'e.down...<()>()': ()
+        "#]],
+    );
+}
