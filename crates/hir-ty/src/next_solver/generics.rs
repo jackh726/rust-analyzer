@@ -57,28 +57,41 @@ pub(crate) fn generics(db: &dyn HirDatabase, def: SolverDefId) -> Generics {
     };
     let parent_generics = parent.map(|def| Box::new(generics(db, def.into())));
 
-    let own_params = params
-        .iter_lt()
-        .enumerate()
-        .map(|(index, (_, lt))| {
-            let name = lt.name.symbol().clone();
-            let index = index as u32;
-            let kind = GenericParamDefKind::Lifetime;
-            GenericParamDef { name, index, kind }
-        })
-        .chain(params.iter_type_or_consts().enumerate().map(|(index, (_, p))| {
-            let name = p
-                .name()
-                .map(|n| n.symbol().clone())
-                .unwrap_or_else(|| Name::missing().symbol().clone());
-            let index = (params.len_lifetimes() + index) as u32;
-            let kind = match p {
-                TypeOrConstParamData::TypeParamData(_) => GenericParamDefKind::Type,
-                TypeOrConstParamData::ConstParamData(_) => GenericParamDefKind::Const,
-            };
-            GenericParamDef { name, index, kind }
-        }))
-        .collect();
+    let mk_lt = |(index, (_, lt)): (usize, (_, &LifetimeParamData))| {
+        let name = lt.name.symbol().clone();
+        let index = index as u32;
+        let kind = GenericParamDefKind::Lifetime;
+        GenericParamDef { name, index, kind }
+    };
+    let mk_ty = |(index, (_, p)): (usize, (_, &TypeOrConstParamData))| {
+        let name = p
+            .name()
+            .map(|n| n.symbol().clone())
+            .unwrap_or_else(|| Name::missing().symbol().clone());
+        let index = (params.len_lifetimes() + index) as u32;
+        let kind = match p {
+            TypeOrConstParamData::TypeParamData(_) => GenericParamDefKind::Type,
+            TypeOrConstParamData::ConstParamData(_) => GenericParamDefKind::Const,
+        };
+        GenericParamDef { name, index, kind }
+    };
+    let own_params = if params.trait_self_param().is_some() {
+        params
+            .iter_type_or_consts()
+            .take(1)
+            .enumerate()
+            .map(mk_ty)
+            .chain(params.iter_lt().enumerate().map(mk_lt))
+            .chain(params.iter_type_or_consts().skip(1).enumerate().map(mk_ty))
+            .collect()
+    } else {
+        params
+            .iter_lt()
+            .enumerate()
+            .map(mk_lt)
+            .chain(params.iter_type_or_consts().enumerate().map(mk_ty))
+            .collect()
+    };
 
     Generics {
         parent,

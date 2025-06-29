@@ -4930,3 +4930,24 @@ fn main() {
         "#]],
     );
 }
+
+#[test]
+fn new_solver_crash_1() {
+    check_infer(
+        r#"
+pub trait Deserializer<'de> {
+    type Error;
+}
+
+fn deserialize_abs_pathbuf<'de, D>(de: D) -> D::Error
+where
+    D: Deserializer<'de>,
+{
+}
+"#,
+        expect![[r#"
+            84..86 'de': D
+            135..138 '{ }': Deserializer::Error<'de, D>
+        "#]],
+    );
+}
