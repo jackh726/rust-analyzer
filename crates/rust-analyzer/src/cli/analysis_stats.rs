@@ -784,6 +784,8 @@ impl flags::AnalysisStats {
                         eprintln!("infer panicked for {}: {}", full_name(), s);
                     } else if let Some(s) = p.downcast_ref::<String>() {
                         eprintln!("infer panicked for {}: {}", full_name(), s);
+                    } else {
+                        eprintln!("infer panicked for {}", full_name());
                     }
                     panics += 1;
                     bar.inc(1);

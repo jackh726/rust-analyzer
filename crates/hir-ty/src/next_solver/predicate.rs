@@ -812,6 +812,7 @@ impl<'db> rustc_type_ir::inherent::Clause<DbInterner<'db>> for Clause<'db> {
         cx: DbInterner<'db>,
         trait_ref: rustc_type_ir::Binder<DbInterner<'db>, rustc_type_ir::TraitRef<DbInterner<'db>>>,
     ) -> Self {
+        tracing::debug!(?self, ?trait_ref);
         // See the rustc impl for a long comment
         let bound_pred = self.kind();
         let pred_bound_vars = bound_pred.bound_vars();

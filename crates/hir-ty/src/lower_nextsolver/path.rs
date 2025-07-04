@@ -1,8 +1,10 @@
 //! A wrapper around [`TyLoweringContext`] specifically for lowering paths.
 
+use std::ops::Deref;
+
 use either::Either;
 use hir_def::{
-    GenericDefId, GenericParamId, Lookup, TraitId,
+    AssocItemId, GenericDefId, GenericParamId, Lookup, TraitId,
     builtin_type::BuiltinType,
     expr_store::{
         ExpressionStore, HygieneId,
@@ -16,11 +18,12 @@ use hir_def::{
     type_ref::{TypeRef, TypeRefId},
 };
 use intern::sym;
+use rustc_hash::FxHashSet;
 use rustc_type_ir::{
-    AliasTerm, AliasTy, AliasTyKind,
-    inherent::{GenericArgs as _, Region as _, SliceLike, Ty as _},
+    AliasTerm, AliasTy, AliasTyKind, TypeVisitableExt,
+    inherent::{GenericArgs as _, IntoKind, Region as _, SliceLike, Ty as _},
 };
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 use stdx::never;
 
 use crate::{
@@ -30,7 +33,7 @@ use crate::{
     db::HirDatabase,
     generics::{Generics, generics},
     lower::PathDiagnosticCallbackData,
-    lower_nextsolver::LifetimeElisionKind,
+    lower_nextsolver::{LifetimeElisionKind, PredicateFilter, generic_predicates_filtered_by},
     next_solver::{
         AdtDef, Binder, Clause, Const, DbInterner, ErrorGuaranteed, Predicate, ProjectionPredicate,
         Region, SolverDefId, TraitRef, Ty,
@@ -41,7 +44,7 @@ use crate::{
 
 use super::{
     ImplTraitLoweringMode, TyLoweringContext, associated_type_by_name_including_super_traits,
-    const_param_ty_query, named_associated_type_shorthand_candidates, ty_query,
+    const_param_ty_query, ty_query,
 };
 
 type CallbackData<'a> =
@@ -497,37 +500,133 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
             return Ty::new_error(self.ctx.interner, ErrorGuaranteed);
         };
         let segment = self.current_or_prev_segment;
-        let ty = named_associated_type_shorthand_candidates(
-            self.ctx.db,
-            self.ctx.resolver.krate(),
-            self.ctx.def,
-            res,
-            Some(segment.name.clone()),
-            move |name, t, associated_ty| {
-                if name != segment.name {
+        let assoc_name = segment.name;
+        let db = self.ctx.db;
+        let def = self.ctx.def;
+        let mut search = |t: TraitRef<'db>| {
+            let trait_id = match t.def_id {
+                SolverDefId::TraitId(id) => id,
+                _ => unreachable!(),
+            };
+            let mut checked_traits = FxHashSet::default();
+            let mut check_trait = |trait_id: TraitId| {
+                if !checked_traits.insert(trait_id) {
                     return None;
                 }
+                let data = trait_id.trait_items(db);
 
-                // FIXME: `substs_from_path_segment()` pushes `TyKind::Error` for every parent
-                // generic params. It's inefficient to splice the `Substitution`s, so we may want
-                // that method to optionally take parent `Substitution` as we already know them at
-                // this point (`t.substitution`).
-                let substs = self.substs_from_path_segment(associated_ty.into(), false, None, true);
+                for (name, assoc_id) in &data.items {
+                    if let &AssocItemId::TypeAliasId(alias) = assoc_id {
+                        if name != assoc_name {
+                            continue;
+                        }
 
-                let substs = crate::next_solver::GenericArgs::new_from_iter(
-                    interner,
-                    t.args.iter().chain(substs.iter().skip(t.args.len())),
+                        // FIXME: `substs_from_path_segment()` pushes `TyKind::Error` for every parent
+                        // generic params. It's inefficient to splice the `Substitution`s, so we may want
+                        // that method to optionally take parent `Substitution` as we already know them at
+                        // this point (`t.substitution`).
+                        let substs = self.substs_from_path_segment(alias.into(), false, None, true);
+
+                        let substs = crate::next_solver::GenericArgs::new_from_iter(
+                            interner,
+                            t.args.iter().chain(substs.iter().skip(t.args.len())),
+                        );
+
+                        return Some(Ty::new_alias(
+                            interner,
+                            AliasTyKind::Projection,
+                            AliasTy::new(interner, alias.into(), substs),
+                        ));
+                    }
+                }
+                None
+            };
+            let mut stack: SmallVec<[GenericDefId; 4]> = smallvec![GenericDefId::TraitId(trait_id)];
+            while let Some(trait_def_id) = stack.pop() {
+                if let Some(alias) = check_trait(trait_id) {
+                    return alias;
+                }
+                for pred in generic_predicates_filtered_by(
+                    db,
+                    trait_def_id,
+                    PredicateFilter::SelfTrait,
+                    |pred| pred == trait_def_id,
+                )
+                .0
+                .deref()
+                {
+                    let trait_id = match pred.kind().skip_binder() {
+                        rustc_type_ir::ClauseKind::Trait(trait_id) => trait_id.def_id(),
+                        _ => continue,
+                    };
+                    let trait_id = match trait_id {
+                        SolverDefId::TraitId(trait_id) => trait_id,
+                        _ => continue,
+                    };
+                    stack.push(GenericDefId::TraitId(trait_id));
+                }
+            }
+
+            Ty::new_error(interner, ErrorGuaranteed)
+        };
+
+        match res {
+            TypeNs::SelfType(impl_id) => {
+                let trait_ref = db.impl_trait_ns(impl_id);
+                let Some(trait_ref) = trait_ref else {
+                    return Ty::new_error(interner, ErrorGuaranteed);
+                };
+
+                // we're _in_ the impl -- the binders get added back later. Correct,
+                // but it would be nice to make this more explicit
+                let trait_ref: rustc_type_ir::EarlyBinder<
+                    DbInterner<'db>,
+                    rustc_type_ir::TraitRef<DbInterner<'db>>,
+                > = unsafe { std::mem::transmute(trait_ref) };
+                search(trait_ref.skip_binder())
+            }
+            TypeNs::GenericParam(param_id) => {
+                // Handle `Self::Type` referring to own associated type in trait definitions
+                // This *must* be done first to avoid cycles with
+                // `generic_predicates_for_param`, but not sure that it's sufficient,
+                // see FIXME in `search`.
+                if let GenericDefId::TraitId(trait_id) = param_id.parent() {
+                    let trait_generics = generics(db, trait_id.into());
+                    tracing::debug!(?trait_generics);
+                    if trait_generics[param_id.local_id()].is_trait_self() {
+                        let args = crate::next_solver::GenericArgs::identity_for_item(
+                            interner,
+                            trait_id.into(),
+                        );
+                        let trait_ref = TraitRef::new_from_args(interner, trait_id.into(), args);
+                        tracing::debug!(?args, ?trait_ref);
+                        return search(trait_ref);
+                    }
+                }
+
+                let predicates = db.generic_predicates_for_param_ns(
+                    def,
+                    param_id.into(),
+                    Some(segment.name.clone()),
                 );
-
-                Some(Ty::new_alias(
-                    self.ctx.interner,
-                    AliasTyKind::Projection,
-                    AliasTy::new(self.ctx.interner, associated_ty.into(), substs),
-                ))
-            },
-        );
-
-        ty.unwrap_or_else(|| Ty::new_error(interner, ErrorGuaranteed))
+                predicates
+                    .iter()
+                    .find_map(|pred| match pred.clone().kind().skip_binder() {
+                        rustc_type_ir::ClauseKind::Trait(trait_predicate) => Some(trait_predicate),
+                        _ => None,
+                    })
+                    .map(|trait_predicate| {
+                        let trait_ref = trait_predicate.trait_ref;
+                        assert!(
+                            !trait_ref.has_escaping_bound_vars(),
+                            "FIXME unexpected higher-ranked trait bound"
+                        );
+                        search(trait_ref)
+                    })
+                    .unwrap_or_else(|| Ty::new_error(interner, ErrorGuaranteed))
+            }
+            _ => Ty::new_error(interner, ErrorGuaranteed),
+        }
     }
 
     fn lower_path_inner(&mut self, typeable: TyDefId, infer_args: bool) -> Ty<'db> {

@@ -391,8 +391,9 @@ impl<'a> InferenceTable<'a> {
                                 if canonical_subst.value.subst.len(Interner) != 1 {
                                     ty
                                 } else {
-                                    let normalized = canonical_subst.value.subst.as_slice(Interner)[0]
-                                        .assert_ty_ref(Interner);
+                                    let normalized = canonical_subst.value.subst.as_slice(Interner)
+                                        [0]
+                                    .assert_ty_ref(Interner);
                                     match normalized.kind(Interner) {
                                         TyKind::Alias(AliasTy::Projection(proj_ty)) => {
                                             if id == &proj_ty.associated_ty_id

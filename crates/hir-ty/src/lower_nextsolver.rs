@@ -528,12 +528,27 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
         &'b mut self,
         where_predicate: &'b WherePredicate,
         ignore_bindings: bool,
+        predicate_filter: PredicateFilter,
     ) -> impl Iterator<Item = Clause<'db>> + use<'a, 'b, 'db> {
         match where_predicate {
             WherePredicate::ForLifetime { target, bound, .. }
             | WherePredicate::TypeBound { target, bound } => {
+                if let PredicateFilter::SelfTrait = predicate_filter {
+                    let target_type = &self.store[*target];
+                    let self_type = 'is_self: {
+                        if let TypeRef::Path(path) = target_type {
+                            if path.is_self_type() {
+                                break 'is_self true;
+                            }
+                        }
+                        false
+                    };
+                    if !self_type {
+                        return Either::Left(Either::Left(iter::empty()));
+                    }
+                }
                 let self_ty = self.lower_ty(*target);
-                Either::Left(self.lower_type_bound(bound, self_ty, ignore_bindings))
+                Either::Left(Either::Right(self.lower_type_bound(bound, self_ty, ignore_bindings)))
             }
             &WherePredicate::Lifetime { bound, target } => {
                 Either::Right(iter::once(Clause(Predicate::new(
@@ -834,102 +849,6 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
             },
             None => Region::error(self.interner),
         }
-    }
-}
-
-pub(crate) fn named_associated_type_shorthand_candidates<'a>(
-    db: &'a dyn HirDatabase,
-    krate: Crate,
-    // If the type parameter is defined in an impl and we're in a method, there
-    // might be additional where clauses to consider
-    def: GenericDefId,
-    res: TypeNs,
-    assoc_name: Option<Name>,
-    // Do NOT let `cb` touch `TraitRef` outside of `TyLoweringContext`. Its substitution contains
-    // free `BoundVar`s that need to be shifted and only `TyLoweringContext` knows how to do that
-    // properly (see `TyLoweringContext::select_associated_type()`).
-    mut cb: impl FnMut(&Name, &TraitRef<'a>, TypeAliasId) -> Option<Ty<'a>>,
-) -> Option<Ty<'a>> {
-    let interner = DbInterner::new_with(db, Some(krate), None);
-    let mut check_trait_ref = |t: &TraitRef<'a>| {
-        let trait_id = match t.def_id {
-            SolverDefId::TraitId(id) => id,
-            _ => unreachable!(),
-        };
-        let data = trait_id.trait_items(db);
-
-        for (name, assoc_id) in &data.items {
-            if let AssocItemId::TypeAliasId(alias) = assoc_id {
-                if let Some(result) = cb(name, t, *alias) {
-                    return Some(result);
-                }
-            }
-        }
-        None
-    };
-    let mut search = |t: TraitRef<'a>| {
-        // Before elaborating supertraits, check the current one first.
-        // This is because `elaborate::supertraits` gets the super predicates
-        // *before* returning here. So, if the associated type is on the
-        // current trait, we will end up in a cycle.
-        // FIXME: this is not quite correct for a couple reasons:
-        // 1) This only avoids cycle at the first trait ref - so, if there would
-        //    be a cycle in the super trait refs, this doesn't avoid it
-        // 2) I think this is still an incomplete solution when there are *other*
-        //    associated types and predicates around and we could get into a
-        //    double-cycle - I think we *always* need to avoid calling the
-        //    `generic_predicates_for_param` and instead follow rustc's approach
-        //    like filtering for traits that *could* define the associated type
-        //    first.
-        if let Some(ty) = check_trait_ref(&t) {
-            return Some(ty);
-        }
-        rustc_type_ir::elaborate::supertraits(interner, Binder::dummy(t))
-            .find_map(|t| check_trait_ref(t.as_ref().skip_binder()))
-    };
-
-    match res {
-        TypeNs::SelfType(impl_id) => {
-            // we're _in_ the impl -- the binders get added back later. Correct,
-            // but it would be nice to make this more explicit
-            let trait_ref: rustc_type_ir::EarlyBinder<
-                DbInterner<'a>,
-                rustc_type_ir::TraitRef<DbInterner<'a>>,
-            > = unsafe { std::mem::transmute(db.impl_trait_ns(impl_id)?) };
-            search(trait_ref.skip_binder())
-        }
-        TypeNs::GenericParam(param_id) => {
-            // Handle `Self::Type` referring to own associated type in trait definitions
-            // This *must* be done first to avoid cycles with
-            // `generic_predicates_for_param`, but not sure that it's sufficient,
-            // see FIXME in `search`.
-            if let GenericDefId::TraitId(trait_id) = param_id.parent() {
-                let trait_generics = generics(db, trait_id.into());
-                if trait_generics[param_id.local_id()].is_trait_self() {
-                    let args = GenericArgs::identity_for_item(interner, trait_id.into());
-                    let trait_ref = TraitRef::new_from_args(interner, trait_id.into(), args);
-                    return search(trait_ref);
-                }
-            }
-
-            let predicates = db.generic_predicates_for_param_ns(def, param_id.into(), assoc_name);
-            let res = predicates.iter().find_map(|pred| match pred.clone().kind().skip_binder() {
-                rustc_type_ir::ClauseKind::Trait(trait_predicate) => {
-                    let trait_ref = trait_predicate.trait_ref;
-                    assert!(
-                        !trait_ref.has_escaping_bound_vars(),
-                        "FIXME unexpected higher-ranked trait bound"
-                    );
-                    search(trait_ref)
-                }
-                _ => None,
-            });
-            if res.is_some() {
-                return res;
-            }
-            None
-        }
-        _ => None,
     }
 }
 
@@ -1252,7 +1171,7 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
             if invalid_target {
                 // If this is filtered out without lowering, `?Sized` is not gathered into `ctx.unsized_types`
                 if let TypeBound::Path(_, TraitBoundModifier::Maybe) = bound {
-                    ctx.lower_where_predicate(pred, true).for_each(drop);
+                    ctx.lower_where_predicate(pred, true, PredicateFilter::All).for_each(drop);
                 }
                 return false;
             }
@@ -1292,7 +1211,7 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
         ctx.store = maybe_parent_generics.store();
         for pred in maybe_parent_generics.where_predicates() {
             if predicate(pred, &mut ctx) {
-                predicates.extend(ctx.lower_where_predicate(pred, true));
+                predicates.extend(ctx.lower_where_predicate(pred, true, PredicateFilter::All));
             }
         }
     }
@@ -1334,13 +1253,20 @@ impl<'db> ops::Deref for GenericPredicates<'db> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum PredicateFilter {
+    SelfTrait,
+    All,
+}
+
 /// Resolve the where clause(s) of an item with generics.
 // FIXME(next-solver): 'static -> 'db
+#[tracing::instrument(skip(db))]
 pub(crate) fn generic_predicates_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates<'static> {
-    generic_predicates_filtered_by(db, def, |_| true).0
+    generic_predicates_filtered_by(db, def, PredicateFilter::All, |_| true).0
 }
 
 // FIXME(next-solver): 'static -> 'db
@@ -1348,7 +1274,7 @@ pub(crate) fn generic_predicates_without_parent_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
 ) -> GenericPredicates<'static> {
-    generic_predicates_filtered_by(db, def, |d| d == def).0
+    generic_predicates_filtered_by(db, def, PredicateFilter::All, |d| d == def).0
 }
 
 /// Resolve the where clause(s) of an item with generics,
@@ -1358,7 +1284,7 @@ pub(crate) fn generic_predicates_without_parent_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
 ) -> (GenericPredicates<'static>, Diagnostics) {
-    generic_predicates_filtered_by(db, def, |d| d == def)
+    generic_predicates_filtered_by(db, def, PredicateFilter::All, |d| d == def)
 }
 
 /// Resolve the where clause(s) of an item with generics,
@@ -1368,6 +1294,7 @@ pub(crate) fn generic_predicates_without_parent_with_diagnostics_query<'db>(
 pub(crate) fn generic_predicates_filtered_by<'db, F>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
+    predicate_filter: PredicateFilter,
     filter: F,
 ) -> (GenericPredicates<'static>, Diagnostics)
 where
@@ -1390,10 +1317,11 @@ where
     {
         ctx.store = maybe_parent_generics.store();
         for pred in maybe_parent_generics.where_predicates() {
+            tracing::debug!(?pred);
             if filter(maybe_parent_generics.def()) {
                 // We deliberately use `generics` and not `maybe_parent_generics` here. This is not a mistake!
                 // If we use the parent generics
-                predicates.extend(ctx.lower_where_predicate(pred, false));
+                predicates.extend(ctx.lower_where_predicate(pred, false, predicate_filter));
             }
         }
     }

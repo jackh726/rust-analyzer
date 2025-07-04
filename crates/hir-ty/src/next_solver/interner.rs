@@ -1179,6 +1179,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         EarlyBinder::bind(predicates.into_iter())
     }
 
+    #[tracing::instrument(skip(self), ret)]
     fn explicit_super_predicates_of(
         self,
         def_id: Self::DefId,
@@ -1194,6 +1195,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         rustc_type_ir::EarlyBinder::bind(predicates)
     }
 
+    #[tracing::instrument(skip(self), ret)]
     fn explicit_implied_predicates_of(
         self,
         def_id: Self::DefId,
@@ -2009,9 +2011,9 @@ pub mod tls {
 
 pub(crate) use tls_cache::with_new_cache;
 mod tls_cache {
-    use std::cell::RefCell;
-    use rustc_type_ir::search_graph::GlobalCache;
     use super::DbInterner;
+    use rustc_type_ir::search_graph::GlobalCache;
+    use std::cell::RefCell;
 
     scoped_tls::scoped_thread_local!(static GLOBAL_CACHE: RefCell<rustc_type_ir::search_graph::GlobalCache<DbInterner<'static>>>);
 
