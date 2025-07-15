@@ -16,6 +16,22 @@ pub(crate) struct OpaqueTypeStorage<'db> {
     pub opaque_types: OpaqueTypeMap<'db>,
 }
 
+/// The number of entries in the opaque type storage at a given point.
+///
+/// Used to check that we haven't added any new opaque types after checking
+/// the opaque types currently in the storage.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpaqueTypeStorageEntries {
+    opaque_types: usize,
+    duplicate_entries: usize,
+}
+
+impl rustc_type_ir::inherent::OpaqueTypeStorageEntries for OpaqueTypeStorageEntries {
+    fn needs_reevaluation(self, canonicalized: usize) -> bool {
+        self.opaque_types != canonicalized
+    }
+}
+
 impl<'db> OpaqueTypeStorage<'db> {
     #[instrument(level = "debug")]
     pub(crate) fn remove(&mut self, key: OpaqueTypeKey<'db>, idx: Option<OpaqueHiddenType<'db>>) {

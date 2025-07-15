@@ -22,9 +22,9 @@
 //! [c]: https://rust-lang.github.io/chalk/book/canonical_queries/canonicalization.html
 
 use crate::next_solver::{
-    AliasTy, Binder, Canonical, CanonicalVarInfo, CanonicalVarValues, CanonicalVars, Const,
-    DbInterner, DbIr, GenericArg, Goal, ParamEnv, PlaceholderConst, PlaceholderRegion,
-    PlaceholderTy, Predicate, PredicateKind, Region, Span, Ty, TyKind,
+    AliasTy, Binder, Canonical, CanonicalVarValues, CanonicalVars, Const, DbInterner, DbIr,
+    GenericArg, Goal, ParamEnv, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate,
+    PredicateKind, Region, Span, Ty, TyKind,
     infer::{
         DefineOpaqueTypes, InferCtxt, SubregionOrigin, TypeTrace,
         traits::{Obligation, PredicateObligations},
@@ -117,10 +117,10 @@ impl<'db> InferCtxt<'db> {
     pub fn instantiate_canonical_var(
         &self,
         span: Span,
-        cv_info: CanonicalVarInfo<'db>,
+        cv_info: CanonicalVarKind<DbInterner<'db>>,
         universe_map: impl Fn(UniverseIndex) -> UniverseIndex,
     ) -> GenericArg<'db> {
-        match cv_info.kind {
+        match cv_info {
             CanonicalVarKind::Ty(ty_kind) => {
                 let ty = match ty_kind {
                     CanonicalTyVarKind::General(ui) => {

@@ -579,10 +579,6 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
 
                 // we're _in_ the impl -- the binders get added back later. Correct,
                 // but it would be nice to make this more explicit
-                let trait_ref: rustc_type_ir::EarlyBinder<
-                    DbInterner<'db>,
-                    rustc_type_ir::TraitRef<DbInterner<'db>>,
-                > = unsafe { std::mem::transmute(trait_ref) };
                 search(trait_ref.skip_binder())
             }
             TypeNs::GenericParam(param_id) => {

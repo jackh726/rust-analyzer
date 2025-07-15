@@ -6,7 +6,7 @@ use rustc_type_ir::{
 
 use crate::next_solver::{
     Binder, Const, DbInterner, DbIr, ErrorGuaranteed, GenericArgs, ParamEnv, Region, SolverDefId,
-    Span, Ty,
+    Span, Ty, infer::opaque_types::table::OpaqueTypeStorageEntries,
 };
 
 ///! Definition of `InferCtxtLike` from the librarified type layer.
@@ -230,5 +230,65 @@ impl<'db> rustc_type_ir::InferCtxtLike for InferCtxt<'db> {
 
     fn register_ty_outlives(&self, ty: Ty<'db>, r: Region<'db>, span: Span) {
         //self.register_region_obligation_with_cause(ty, r, &ObligationCause::dummy_with_span(Span::dummy()));
+    }
+
+    fn is_changed_arg(&self, arg: <Self::Interner as rustc_type_ir::Interner>::GenericArg) -> bool {
+        todo!()
+    }
+
+    type OpaqueTypeStorageEntries = OpaqueTypeStorageEntries;
+
+    fn opaque_types_storage_num_entries(&self) -> Self::OpaqueTypeStorageEntries {
+        todo!()
+    }
+
+    fn clone_opaque_types_lookup_table(
+        &self,
+    ) -> Vec<(
+        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
+        <Self::Interner as rustc_type_ir::Interner>::Ty,
+    )> {
+        todo!()
+    }
+
+    fn clone_duplicate_opaque_types(
+        &self,
+    ) -> Vec<(
+        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
+        <Self::Interner as rustc_type_ir::Interner>::Ty,
+    )> {
+        todo!()
+    }
+
+    fn clone_opaque_types_added_since(
+        &self,
+        prev_entries: Self::OpaqueTypeStorageEntries,
+    ) -> Vec<(
+        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
+        <Self::Interner as rustc_type_ir::Interner>::Ty,
+    )> {
+        todo!()
+    }
+
+    fn register_hidden_type_in_storage(
+        &self,
+        opaque_type_key: rustc_type_ir::OpaqueTypeKey<Self::Interner>,
+        hidden_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
+        span: <Self::Interner as rustc_type_ir::Interner>::Span,
+    ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Ty> {
+        todo!()
+    }
+
+    fn add_duplicate_opaque_type(
+        &self,
+        opaque_type_key: rustc_type_ir::OpaqueTypeKey<Self::Interner>,
+        hidden_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
+        span: <Self::Interner as rustc_type_ir::Interner>::Span,
+    ) {
+        todo!()
+    }
+
+    fn reset_opaque_types(&self) {
+        todo!()
     }
 }

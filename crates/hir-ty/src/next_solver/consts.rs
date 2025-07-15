@@ -279,9 +279,18 @@ impl<'db> rustc_type_ir::inherent::Const<DbInterner<'db>> for Const<'db> {
     fn new_error(interner: DbInterner<'db>, guar: ErrorGuaranteed) -> Self {
         Const::new(interner, ConstKind::Error(guar))
     }
+
+    fn new_placeholder(
+        interner: DbInterner<'db>,
+        param: <DbInterner<'db> as rustc_type_ir::Interner>::PlaceholderConst,
+    ) -> Self {
+        Const::new(interner, ConstKind::Placeholder(param))
+    }
 }
 
-impl PlaceholderLike for PlaceholderConst {
+impl<'db> PlaceholderLike<DbInterner<'db>> for PlaceholderConst {
+    type Bound = rustc_type_ir::BoundVar;
+
     fn universe(self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
@@ -295,6 +304,9 @@ impl PlaceholderLike for PlaceholderConst {
     }
 
     fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
+        Placeholder { universe: ui, bound: var }
+    }
+    fn new_anon(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
         Placeholder { universe: ui, bound: var }
     }
 }

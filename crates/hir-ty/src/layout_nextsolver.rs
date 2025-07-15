@@ -24,7 +24,7 @@ use crate::{
     db::HirDatabase,
     layout::{Layout, LayoutError},
     next_solver::{
-        Const, DbInterner, GenericArgs, SolverDefId, Ty, Tys,
+        DbInterner, GenericArgs, SolverDefId, Ty,
         mapping::{ChalkToNextSolver, convert_binder_to_early_binder},
     },
 };
@@ -65,8 +65,6 @@ fn layout_of_simd_ty<'db>(
         return Err(LayoutError::InvalidSimdType);
     };
 
-    let e_len: Const<'static> = unsafe { std::mem::transmute(e_len) };
-    let e_ty: Ty<'static> = unsafe { std::mem::transmute(e_ty) };
     let e_len = try_const_usize(db, &e_len).ok_or(LayoutError::HasErrorConst)? as u64;
     let e_ly = db.layout_of_ty_ns(e_ty, env)?;
 
@@ -74,9 +72,9 @@ fn layout_of_simd_ty<'db>(
     Ok(Arc::new(cx.calc.simd_type(e_ly, e_len, repr_packed)?))
 }
 
-pub fn layout_of_ty_query<'a>(
-    db: &dyn HirDatabase,
-    ty: Ty<'a>,
+pub fn layout_of_ty_query<'db>(
+    db: &'db dyn HirDatabase,
+    ty: Ty<'db>,
     trait_env: Arc<TraitEnvironment>,
 ) -> Result<Arc<Layout>, LayoutError> {
     let krate = trait_env.krate;
@@ -99,7 +97,6 @@ pub fn layout_of_ty_query<'a>(
                 }
                 _ => {}
             }
-            let args: GenericArgs<'static> = unsafe { std::mem::transmute(args) };
             return db.layout_of_adt_ns(def.inner().id, args, trait_env);
         }
         TyKind::Bool => Layout::scalar(
@@ -166,7 +163,6 @@ pub fn layout_of_ty_query<'a>(
             let kind =
                 if tys.len() == 0 { StructKind::AlwaysSized } else { StructKind::MaybeUnsized };
 
-            let tys: Tys<'static> = unsafe { std::mem::transmute(tys) };
             let fields = tys
                 .iter()
                 .map(|k| db.layout_of_ty_ns(k, trait_env.clone()))
@@ -177,12 +173,10 @@ pub fn layout_of_ty_query<'a>(
         }
         TyKind::Array(element, count) => {
             let count = try_const_usize(db, &count).ok_or(LayoutError::HasErrorConst)? as u64;
-            let element: Ty<'static> = unsafe { std::mem::transmute(element) };
             let element = db.layout_of_ty_ns(element, trait_env)?;
             cx.calc.array_like::<_, _, ()>(&element, Some(count))?
         }
         TyKind::Slice(element) => {
-            let element: Ty<'static> = unsafe { std::mem::transmute(element) };
             let element = db.layout_of_ty_ns(element, trait_env)?;
             cx.calc.array_like::<_, _, ()>(&element, None)?
         }
@@ -192,7 +186,7 @@ pub fn layout_of_ty_query<'a>(
         }
         // Potentially-wide pointers.
         TyKind::Ref(_, pointee, _) | TyKind::RawPtr(pointee, _) => {
-            let mut data_ptr = scalar_unit(dl, Primitive::Pointer(AddressSpace::DATA));
+            let mut data_ptr = scalar_unit(dl, Primitive::Pointer(AddressSpace::ZERO));
             if matches!(ty.clone().kind(), TyKind::Ref(..)) {
                 data_ptr.valid_range_mut().start = 1;
             }
@@ -220,7 +214,7 @@ pub fn layout_of_ty_query<'a>(
                     scalar_unit(dl, Primitive::Int(dl.ptr_sized_integer(), false))
                 }
                 TyKind::Dynamic(..) => {
-                    let mut vtable = scalar_unit(dl, Primitive::Pointer(AddressSpace::DATA));
+                    let mut vtable = scalar_unit(dl, Primitive::Pointer(AddressSpace::ZERO));
                     vtable.valid_range_mut().start = 1;
                     vtable
                 }
@@ -278,7 +272,6 @@ pub fn layout_of_ty_query<'a>(
                         it.ty.to_nextsolver(interner).clone(),
                     )
                     .instantiate(interner, args.clone());
-                    let ty: Ty<'static> = unsafe { std::mem::transmute(ty) };
                     db.layout_of_ty_ns(ty, trait_env.clone())
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -314,7 +307,7 @@ fn struct_tail_erasing_lifetimes<'a>(db: &'a dyn HirDatabase, pointee: Ty<'a>) -
                 AdtId::StructId(id) => id,
                 _ => return pointee,
             };
-            let data = db.variant_fields(struct_id.into());
+            let data = struct_id.fields(db);
             let mut it = data.fields().iter().rev();
             match it.next() {
                 Some((f, _)) => {

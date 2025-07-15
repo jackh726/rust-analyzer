@@ -7,7 +7,7 @@ use crate::next_solver::{
     TypingMode, util::BottomUpFolder,
 };
 
-mod table;
+pub(crate) mod table;
 
 pub(crate) type OpaqueTypeMap<'db> = FxIndexMap<OpaqueTypeKey<'db>, OpaqueTypeDecl<'db>>;
 pub(crate) use table::{OpaqueTypeStorage, OpaqueTypeTable};

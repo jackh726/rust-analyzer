@@ -45,7 +45,7 @@ pub fn layout_of_adt_query<'db>(
             AdtId::StructId(s) => {
                 let data = db.struct_signature(s);
                 let mut r = SmallVec::<[_; 1]>::new();
-                r.push(handle_variant(s.into(), &db.variant_fields(s.into()))?);
+                r.push(handle_variant(s.into(), s.fields(db))?);
                 (
                     r,
                     data.repr.unwrap_or_default(),
@@ -56,7 +56,7 @@ pub fn layout_of_adt_query<'db>(
             AdtId::UnionId(id) => {
                 let data = db.union_signature(id);
                 let mut r = SmallVec::new();
-                r.push(handle_variant(id.into(), &db.variant_fields(id.into()))?);
+                r.push(handle_variant(id.into(), id.fields(db))?);
                 (r, data.repr.unwrap_or_default(), false)
             }
             AdtId::EnumId(e) => {
@@ -64,7 +64,7 @@ pub fn layout_of_adt_query<'db>(
                 let r = variants
                     .variants
                     .iter()
-                    .map(|&(v, _, _)| handle_variant(v.into(), &db.variant_fields(v.into())))
+                    .map(|&(v, _, _)| handle_variant(v.into(), v.fields(db)))
                     .collect::<Result<SmallVec<_>, _>>()?;
                 (r, db.enum_signature(e).repr.unwrap_or_default(), false)
             }
@@ -113,10 +113,10 @@ pub fn layout_of_adt_query<'db>(
 }
 
 pub(crate) fn layout_of_adt_cycle_result<'db>(
-    _: &dyn HirDatabase,
-    def: AdtId,
-    args: GenericArgs<'db>,
-    trait_env: Arc<TraitEnvironment>,
+    _: &'db dyn HirDatabase,
+    _def: AdtId,
+    _args: GenericArgs<'db>,
+    _trait_env: Arc<TraitEnvironment>,
 ) -> Result<Arc<Layout>, LayoutError> {
     Err(LayoutError::RecursiveTypeWithoutIndirection)
 }

@@ -346,12 +346,12 @@ impl VariantDef {
     }
 
     pub fn fields(&self, db: &dyn HirDatabase) -> Vec<(Idx<FieldData>, FieldData)> {
-        let id = match self {
+        let id: VariantId = match self {
             VariantDef::Struct(it) => (*it).into(),
             VariantDef::Union(it) => (*it).into(),
             VariantDef::Enum(it) => (*it).into(),
         };
-        db.variant_fields(id).fields().iter().map(|(id, data)| (id, data.clone())).collect()
+        id.fields(db).fields().iter().map(|(id, data)| (id, data.clone())).collect()
     }
 }
 
@@ -605,7 +605,7 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
             return None;
         };
         let id: VariantId = struct_id.into();
-        let variant_data = &id.variant_data(db);
+        let variant_data = id.fields(db);
         let Some((last_idx, _)) = variant_data.fields().iter().last() else { return None };
         let field_types = interner.db().field_types_ns(id);
 
@@ -623,7 +623,7 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
         let db = interner.db();
         // FIXME: this is disabled just to match the behavior with chalk right now
         let field_tys = |id: VariantId| {
-            let variant_data = id.variant_data(db);
+            let variant_data = id.fields(db);
             let fields = if variant_data.fields().is_empty() {
                 vec![]
             } else {
@@ -1073,13 +1073,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             },
             def => unreachable!("{:?}", def),
         };
-        let ret: EarlyBinder<
-            DbInterner<'static>,
-            rustc_type_ir::Binder<DbInterner<'static>, rustc_type_ir::FnSig<DbInterner<'static>>>,
-        > = self.db().callable_item_signature_ns(id);
-        let ret: EarlyBinder<Self, rustc_type_ir::Binder<Self, rustc_type_ir::FnSig<Self>>> =
-            unsafe { std::mem::transmute(ret) };
-        ret
+        self.db().callable_item_signature_ns(id)
     }
 
     fn coroutine_movability(self, def_id: Self::DefId) -> rustc_ast_ir::Movability {

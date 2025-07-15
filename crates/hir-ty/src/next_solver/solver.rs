@@ -9,8 +9,8 @@ use rustc_type_ir::{
 use crate::{TraitRefExt, db::HirDatabase};
 
 use super::{
-    Canonical, CanonicalVarInfo, CanonicalVarValues, Const, DbInterner, DbIr, ErrorGuaranteed,
-    GenericArg, GenericArgs, ParamEnv, Predicate, SolverDefId, Span, Ty, UnevaluatedConst,
+    Canonical, CanonicalVarValues, Const, DbInterner, DbIr, ErrorGuaranteed, GenericArg,
+    GenericArgs, ParamEnv, Predicate, SolverDefId, Span, Ty, UnevaluatedConst,
     infer::{DbInternerInferExt, InferCtxt, canonical::instantiate::CanonicalExt},
 };
 
@@ -63,7 +63,7 @@ impl<'db> SolverDelegate for SolverContext<'db> {
     fn well_formed_goals(
         &self,
         param_env: <Self::Interner as rustc_type_ir::Interner>::ParamEnv,
-        arg: <Self::Interner as rustc_type_ir::Interner>::GenericArg,
+        arg: <Self::Interner as rustc_type_ir::Interner>::Term,
     ) -> Option<
         Vec<
             rustc_type_ir::solve::Goal<
@@ -73,16 +73,6 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         >,
     > {
         todo!()
-    }
-
-    fn clone_opaque_types_for_query_response(
-        &self,
-    ) -> Vec<(
-        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        <Self::Interner as rustc_type_ir::Interner>::Ty,
-    )> {
-        // FIXME
-        vec![]
     }
 
     fn make_deduplicated_outlives_constraints(
@@ -110,20 +100,11 @@ impl<'db> SolverDelegate for SolverContext<'db> {
 
     fn instantiate_canonical_var_with_infer(
         &self,
-        cv_info: rustc_type_ir::CanonicalVarInfo<Self::Interner>,
+        cv_info: rustc_type_ir::CanonicalVarKind<Self::Interner>,
         span: <Self::Interner as rustc_type_ir::Interner>::Span,
         universe_map: impl Fn(rustc_type_ir::UniverseIndex) -> rustc_type_ir::UniverseIndex,
     ) -> <Self::Interner as rustc_type_ir::Interner>::GenericArg {
         self.0.instantiate_canonical_var(Span::dummy(), cv_info, universe_map)
-    }
-
-    fn register_hidden_type_in_storage(
-        &self,
-        opaque_type_key: rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        hidden_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
-        span: <Self::Interner as rustc_type_ir::Interner>::Span,
-    ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Ty> {
-        todo!()
     }
 
     fn add_item_bounds_for_hidden_type(
@@ -140,10 +121,6 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         >,
     ) {
         todo!()
-    }
-
-    fn reset_opaque_types(&self) {
-        std::mem::take(&mut self.inner.borrow_mut().opaque_type_storage.opaque_types);
     }
 
     fn fetch_eligible_assoc_item(
@@ -200,5 +177,16 @@ impl<'db> SolverDelegate for SolverContext<'db> {
         uv: rustc_type_ir::UnevaluatedConst<Self::Interner>,
     ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Const> {
         todo!()
+    }
+
+    fn compute_goal_fast_path(
+        &self,
+        goal: rustc_type_ir::solve::Goal<
+            Self::Interner,
+            <Self::Interner as rustc_type_ir::Interner>::Predicate,
+        >,
+        span: <Self::Interner as rustc_type_ir::Interner>::Span,
+    ) -> Option<Certainty> {
+        None
     }
 }

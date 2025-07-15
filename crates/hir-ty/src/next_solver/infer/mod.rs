@@ -969,8 +969,8 @@ impl<'db> InferCtxt<'db> {
     #[inline(always)]
     pub fn can_define_opaque_ty(&self, id: impl Into<SolverDefId>) -> bool {
         match self.typing_mode_unchecked() {
-            TypingMode::Analysis { defining_opaque_types } => {
-                defining_opaque_types.contains(&id.into())
+            TypingMode::Analysis { defining_opaque_types_and_generators } => {
+                defining_opaque_types_and_generators.contains(&id.into())
             }
             TypingMode::Coherence | TypingMode::PostAnalysis => false,
             TypingMode::Borrowck { defining_opaque_types } => todo!(),

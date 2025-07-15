@@ -744,7 +744,7 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
                         if lhs_id == rhs_id {
                             multiple_same_projection = true;
                         }
-                        lhs_id.as_id().as_u32().cmp(&rhs_id.as_id().as_u32())
+                        lhs_id.as_id().index().cmp(&rhs_id.as_id().index())
                     }
                 }
             });
@@ -863,19 +863,17 @@ fn unknown_const(_ty: Ty<'_>) -> Const<'_> {
     Const::new(DbInterner::new(), ConstKind::Error(ErrorGuaranteed))
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn impl_trait_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
-) -> Option<EarlyBinder<'static, TraitRef<'static>>> {
+) -> Option<EarlyBinder<'db, TraitRef<'db>>> {
     db.impl_trait_with_diagnostics_ns(impl_id).map(|it| it.0)
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn impl_trait_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
-) -> Option<(EarlyBinder<'static, TraitRef<'static>>, Diagnostics)> {
+) -> Option<(EarlyBinder<'db, TraitRef<'db>>, Diagnostics)> {
     let impl_data = db.impl_signature(impl_id);
     let resolver = impl_id.resolver(db);
     let mut ctx = TyLoweringContext::new(
@@ -888,14 +886,13 @@ pub(crate) fn impl_trait_with_diagnostics_query<'db>(
     let self_ty = db.impl_self_ty_ns(impl_id).skip_binder();
     let target_trait = impl_data.target_trait.as_ref()?;
     let trait_ref = EarlyBinder::bind(ctx.lower_trait_ref(target_trait, self_ty)?);
-    Some((unsafe { std::mem::transmute(trait_ref) }, create_diagnostics(ctx.diagnostics)))
+    Some((trait_ref, create_diagnostics(ctx.diagnostics)))
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn return_type_impl_traits<'db>(
     db: &'db dyn HirDatabase,
     def: hir_def::FunctionId,
-) -> Option<Arc<EarlyBinder<'static, ImplTraits<'static>>>> {
+) -> Option<Arc<EarlyBinder<'db, ImplTraits<'db>>>> {
     // FIXME unify with fn_sig_for_fn instead of doing lowering twice, maybe
     let data = db.function_signature(def);
     let resolver = def.resolver(db);
@@ -910,15 +907,14 @@ pub(crate) fn return_type_impl_traits<'db>(
     if return_type_impl_traits.impl_traits.is_empty() {
         None
     } else {
-        unsafe { std::mem::transmute(Some(Arc::new(EarlyBinder::bind(return_type_impl_traits)))) }
+        Some(Arc::new(EarlyBinder::bind(return_type_impl_traits)))
     }
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn type_alias_impl_traits<'db>(
     db: &'db dyn HirDatabase,
     def: hir_def::TypeAliasId,
-) -> Option<Arc<EarlyBinder<'static, ImplTraits<'static>>>> {
+) -> Option<Arc<EarlyBinder<'db, ImplTraits<'db>>>> {
     let data = db.type_alias_signature(def);
     let resolver = def.resolver(db);
     let mut ctx = TyLoweringContext::new(
@@ -936,7 +932,7 @@ pub(crate) fn type_alias_impl_traits<'db>(
     if type_alias_impl_traits.impl_traits.is_empty() {
         None
     } else {
-        unsafe { std::mem::transmute(Some(Arc::new(EarlyBinder::bind(type_alias_impl_traits)))) }
+        Some(Arc::new(EarlyBinder::bind(type_alias_impl_traits)))
     }
 }
 
@@ -944,13 +940,9 @@ pub(crate) fn type_alias_impl_traits<'db>(
 /// `struct Foo(usize)`, we have two types: The type of the struct itself, and
 /// the constructor function `(usize) -> Foo` which lives in the values
 /// namespace.
-// FIXME(next-solver): 'static -> 'db
-pub(crate) fn ty_query<'db>(
-    db: &'db dyn HirDatabase,
-    def: TyDefId,
-) -> EarlyBinder<'static, Ty<'static>> {
+pub(crate) fn ty_query<'db>(db: &'db dyn HirDatabase, def: TyDefId) -> EarlyBinder<'db, Ty<'db>> {
     let interner = DbInterner::new_with(db, None, None);
-    let ret = match def {
+    match def {
         TyDefId::BuiltinType(it) => EarlyBinder::bind(builtin(interner, it)),
         TyDefId::AdtId(it) => EarlyBinder::bind(Ty::new_adt(
             interner,
@@ -958,15 +950,13 @@ pub(crate) fn ty_query<'db>(
             GenericArgs::identity_for_item(interner, it.into()),
         )),
         TyDefId::TypeAliasId(it) => db.type_for_type_alias_with_diagnostics_ns(it).0,
-    };
-    unsafe { std::mem::transmute(ret) }
+    }
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn type_for_type_alias_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     t: TypeAliasId,
-) -> (EarlyBinder<'static, Ty<'static>>, Diagnostics) {
+) -> (EarlyBinder<'db, Ty<'db>>, Diagnostics) {
     let type_alias_data = db.type_alias_signature(t);
     let mut diags = None;
     let inner = if type_alias_data.flags.contains(TypeAliasFlags::IS_EXTERN) {
@@ -990,39 +980,27 @@ pub(crate) fn type_for_type_alias_with_diagnostics_query<'db>(
         diags = create_diagnostics(ctx.diagnostics);
         res
     };
-    let inner = unsafe { std::mem::transmute(inner) };
     (inner, diags)
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn type_for_type_alias_with_diagnostics_cycle_result<'db>(
     db: &'db dyn HirDatabase,
     _adt: TypeAliasId,
-) -> (EarlyBinder<'static, Ty<'static>>, Diagnostics) {
-    (
-        unsafe {
-            std::mem::transmute(EarlyBinder::bind(Ty::new_error(
-                DbInterner::new_with(db, None, None),
-                ErrorGuaranteed,
-            )))
-        },
-        None,
-    )
+) -> (EarlyBinder<'db, Ty<'db>>, Diagnostics) {
+    (EarlyBinder::bind(Ty::new_error(DbInterner::new_with(db, None, None), ErrorGuaranteed)), None)
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn impl_self_ty_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
-) -> EarlyBinder<'static, Ty<'static>> {
+) -> EarlyBinder<'db, Ty<'db>> {
     db.impl_self_ty_with_diagnostics_ns(impl_id).0
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn impl_self_ty_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     impl_id: ImplId,
-) -> (EarlyBinder<'static, Ty<'static>>, Diagnostics) {
+) -> (EarlyBinder<'db, Ty<'db>>, Diagnostics) {
     // HACK HACK HACK delete pls
     thread_local! {
         static REENTRANT_MAP: std::cell::RefCell<HashSet<ImplId>> = std::cell::RefCell::new(HashSet::new());
@@ -1049,39 +1027,25 @@ pub(crate) fn impl_self_ty_with_diagnostics_query<'db>(
     REENTRANT_MAP.with_borrow_mut(|m| {
         m.remove(&impl_id);
     });
-    (unsafe { std::mem::transmute(EarlyBinder::bind(ty)) }, create_diagnostics(ctx.diagnostics))
+    (EarlyBinder::bind(ty), create_diagnostics(ctx.diagnostics))
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn impl_self_ty_with_diagnostics_cycle_result(
     db: &dyn HirDatabase,
     _impl_id: ImplId,
-) -> (EarlyBinder<'static, Ty<'static>>, Diagnostics) {
-    (
-        unsafe {
-            std::mem::transmute(EarlyBinder::bind(Ty::new_error(
-                DbInterner::new_with(db, None, None),
-                ErrorGuaranteed,
-            )))
-        },
-        None,
-    )
+) -> (EarlyBinder<'_, Ty<'_>>, Diagnostics) {
+    (EarlyBinder::bind(Ty::new_error(DbInterner::new_with(db, None, None), ErrorGuaranteed)), None)
 }
 
-// FIXME(next-solver): 'static -> 'db
-pub(crate) fn const_param_ty_query<'db>(
-    db: &'db dyn HirDatabase,
-    def: ConstParamId,
-) -> Ty<'static> {
+pub(crate) fn const_param_ty_query<'db>(db: &'db dyn HirDatabase, def: ConstParamId) -> Ty<'db> {
     db.const_param_ty_with_diagnostics_ns(def).0
 }
 
 // returns None if def is a type arg
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn const_param_ty_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     def: ConstParamId,
-) -> (Ty<'static>, Diagnostics) {
+) -> (Ty<'db>, Diagnostics) {
     let (parent_data, store) = db.generic_params_and_store(def.parent());
     let data = &parent_data[def.local_id()];
     let resolver = def.parent().resolver(db);
@@ -1099,24 +1063,27 @@ pub(crate) fn const_param_ty_with_diagnostics_query<'db>(
         }
         TypeOrConstParamData::ConstParamData(d) => ctx.lower_ty(d.ty),
     };
-    (unsafe { std::mem::transmute(ty) }, create_diagnostics(ctx.diagnostics))
+    (ty, create_diagnostics(ctx.diagnostics))
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn field_types_query<'db>(
     db: &'db dyn HirDatabase,
     variant_id: VariantId,
-) -> Arc<ArenaMap<LocalFieldId, EarlyBinder<'static, Ty<'static>>>> {
+) -> Arc<ArenaMap<LocalFieldId, EarlyBinder<'db, Ty<'db>>>> {
     db.field_types_with_diagnostics_ns(variant_id).0
 }
 
 /// Build the type of all specific fields of a struct or enum variant.
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn field_types_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     variant_id: VariantId,
-) -> (Arc<ArenaMap<LocalFieldId, EarlyBinder<'static, Ty<'static>>>>, Diagnostics) {
-    let var_data = variant_id.variant_data(db);
+) -> (Arc<ArenaMap<LocalFieldId, EarlyBinder<'db, Ty<'db>>>>, Diagnostics) {
+    let var_data = variant_id.fields(db);
+    let fields = var_data.fields();
+    if fields.is_empty() {
+        return (Arc::new(ArenaMap::default()), None);
+    }
+
     let (resolver, def): (_, GenericDefId) = match variant_id {
         VariantId::StructId(it) => (it.resolver(db), it.into()),
         VariantId::UnionId(it) => (it.resolver(db), it.into()),
@@ -1133,7 +1100,7 @@ pub(crate) fn field_types_with_diagnostics_query<'db>(
     for (field_id, field_data) in var_data.fields().iter() {
         res.insert(field_id, EarlyBinder::bind(ctx.lower_ty(field_data.type_ref)));
     }
-    (unsafe { std::mem::transmute(Arc::new(res)) }, create_diagnostics(ctx.diagnostics))
+    (Arc::new(res), create_diagnostics(ctx.diagnostics))
 }
 
 /// This query exists only to be used when resolving short-hand associated types
@@ -1144,14 +1111,13 @@ pub(crate) fn field_types_with_diagnostics_query<'db>(
 /// This is a query mostly to handle cycles somewhat gracefully; e.g. the
 /// following bounds are disallowed: `T: Foo<U::Item>, U: Foo<T::Item>`, but
 /// these are fine: `T: Foo<U::Item>, U: Foo<()>`.
-// FIXME(next-solver): 'static -> 'db
 #[tracing::instrument(skip(db), ret)]
 pub(crate) fn generic_predicates_for_param_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
     param_id: TypeOrConstParamId,
     assoc_name: Option<Name>,
-) -> GenericPredicates<'static> {
+) -> GenericPredicates<'db> {
     let generics = generics(db, def);
     let interner = DbInterner::new_with(db, None, None);
     let resolver = def.resolver(db);
@@ -1225,20 +1191,15 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
             predicates.extend(implicitly_sized_predicates);
         };
     }
-    unsafe {
-        std::mem::transmute(GenericPredicates(
-            predicates.is_empty().not().then(|| predicates.into()),
-        ))
-    }
+    GenericPredicates(predicates.is_empty().not().then(|| predicates.into()))
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn generic_predicates_for_param_cycle_result(
     _db: &dyn HirDatabase,
     _def: GenericDefId,
     _param_id: TypeOrConstParamId,
     _assoc_name: Option<Name>,
-) -> GenericPredicates<'static> {
+) -> GenericPredicates<'_> {
     GenericPredicates(None)
 }
 
@@ -1260,43 +1221,39 @@ pub(crate) enum PredicateFilter {
 }
 
 /// Resolve the where clause(s) of an item with generics.
-// FIXME(next-solver): 'static -> 'db
 #[tracing::instrument(skip(db))]
 pub(crate) fn generic_predicates_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
-) -> GenericPredicates<'static> {
+) -> GenericPredicates<'db> {
     generic_predicates_filtered_by(db, def, PredicateFilter::All, |_| true).0
 }
 
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn generic_predicates_without_parent_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
-) -> GenericPredicates<'static> {
+) -> GenericPredicates<'db> {
     generic_predicates_filtered_by(db, def, PredicateFilter::All, |d| d == def).0
 }
 
 /// Resolve the where clause(s) of an item with generics,
 /// except the ones inherited from the parent
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn generic_predicates_without_parent_with_diagnostics_query<'db>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
-) -> (GenericPredicates<'static>, Diagnostics) {
+) -> (GenericPredicates<'db>, Diagnostics) {
     generic_predicates_filtered_by(db, def, PredicateFilter::All, |d| d == def)
 }
 
 /// Resolve the where clause(s) of an item with generics,
 /// with a given filter
-// FIXME(next-solver): 'static -> 'db
 #[tracing::instrument(skip(db, filter), ret)]
 pub(crate) fn generic_predicates_filtered_by<'db, F>(
     db: &'db dyn HirDatabase,
     def: GenericDefId,
     predicate_filter: PredicateFilter,
     filter: F,
-) -> (GenericPredicates<'static>, Diagnostics)
+) -> (GenericPredicates<'db>, Diagnostics)
 where
     F: Fn(GenericDefId) -> bool,
 {
@@ -1372,11 +1329,7 @@ where
     }
 
     (
-        unsafe {
-            std::mem::transmute(GenericPredicates(
-                predicates.is_empty().not().then(|| predicates.into()),
-            ))
-        },
+        GenericPredicates(predicates.is_empty().not().then(|| predicates.into())),
         create_diagnostics(ctx.diagnostics),
     )
 }
@@ -1496,17 +1449,14 @@ pub(crate) fn lower_generic_arg<'a, 'db, T>(
 }
 
 /// Build the signature of a callable item (function, struct or enum variant).
-// FIXME(next-solver): 'static -> 'db
 pub(crate) fn callable_item_signature_query<'db>(
     db: &'db dyn HirDatabase,
     def: CallableDefId,
-) -> EarlyBinder<'static, PolyFnSig<'static>> {
-    unsafe {
-        std::mem::transmute(match def {
-            CallableDefId::FunctionId(f) => fn_sig_for_fn(db, f),
-            CallableDefId::StructId(s) => fn_sig_for_struct_constructor(db, s),
-            CallableDefId::EnumVariantId(e) => fn_sig_for_enum_variant_constructor(db, e),
-        })
+) -> EarlyBinder<'db, PolyFnSig<'db>> {
+    match def {
+        CallableDefId::FunctionId(f) => fn_sig_for_fn(db, f),
+        CallableDefId::StructId(s) => fn_sig_for_struct_constructor(db, s),
+        CallableDefId::EnumVariantId(e) => fn_sig_for_enum_variant_constructor(db, e),
     }
 }
 

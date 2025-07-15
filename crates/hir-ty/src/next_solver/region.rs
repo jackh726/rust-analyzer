@@ -273,9 +273,18 @@ impl<'db> rustc_type_ir::inherent::Region<DbInterner<'db>> for Region<'db> {
     fn new_static(interner: DbInterner<'db>) -> Self {
         Region::new(interner, RegionKind::ReStatic)
     }
+
+    fn new_placeholder(
+        interner: DbInterner<'db>,
+        var: <DbInterner<'db> as rustc_type_ir::Interner>::PlaceholderRegion,
+    ) -> Self {
+        Region::new(interner, RegionKind::RePlaceholder(var))
+    }
 }
 
-impl PlaceholderLike for PlaceholderRegion {
+impl<'db> PlaceholderLike<DbInterner<'db>> for PlaceholderRegion {
+    type Bound = BoundRegion;
+
     fn universe(self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
@@ -288,7 +297,11 @@ impl PlaceholderLike for PlaceholderRegion {
         Placeholder { universe: ui, bound: self.bound.clone() }
     }
 
-    fn new(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
-        Placeholder { universe: ui, bound: BoundRegion { var, kind: BoundRegionKind::Anon } }
+    fn new(ui: rustc_type_ir::UniverseIndex, bound: Self::Bound) -> Self {
+        Placeholder { universe: ui, bound }
+    }
+
+    fn new_anon(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
+        Placeholder { universe: ui, bound: BoundRegion { var: var, kind: BoundRegionKind::Anon } }
     }
 }

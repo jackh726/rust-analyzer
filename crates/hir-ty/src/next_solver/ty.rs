@@ -631,14 +631,6 @@ impl<'db> rustc_type_ir::inherent::Ty<DbInterner<'db>> for Ty<'db> {
         }
     }
 
-    fn async_destructor_ty(
-        self,
-        interner: DbInterner<'db>,
-    ) -> <DbInterner<'db> as rustc_type_ir::Interner>::Ty {
-        // Very complicated
-        Ty::new_unit(interner)
-    }
-
     fn new_unsafe_binder(
         interner: DbInterner<'db>,
         ty: rustc_type_ir::Binder<
@@ -734,7 +726,9 @@ impl<'db> BoundVarLike<DbInterner<'db>> for BoundTy {
     }
 }
 
-impl PlaceholderLike for PlaceholderTy {
+impl<'db> PlaceholderLike<DbInterner<'db>> for PlaceholderTy {
+    type Bound = BoundTy;
+
     fn universe(self) -> rustc_type_ir::UniverseIndex {
         self.universe
     }
@@ -747,7 +741,11 @@ impl PlaceholderLike for PlaceholderTy {
         Placeholder { universe: ui, bound: self.bound.clone() }
     }
 
-    fn new(ui: rustc_type_ir::UniverseIndex, var: BoundVar) -> Self {
+    fn new(ui: rustc_type_ir::UniverseIndex, bound: BoundTy) -> Self {
+        Placeholder { universe: ui, bound }
+    }
+
+    fn new_anon(ui: rustc_type_ir::UniverseIndex, var: rustc_type_ir::BoundVar) -> Self {
         Placeholder { universe: ui, bound: BoundTy { var, kind: BoundTyKind::Anon } }
     }
 }

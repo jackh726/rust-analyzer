@@ -20,7 +20,10 @@ use salsa::plumbing::AsId;
 
 use crate::{
     ConstScalar, ImplTraitId, Interner,
-    db::{HirDatabase, InternedClosureId, InternedCoroutineId, InternedOpaqueTyId},
+    db::{
+        HirDatabase, InternedClosureId, InternedCoroutineId, InternedOpaqueTyId,
+        InternedTypeOrConstParamId,
+    },
     from_assoc_type_id, from_chalk_trait_id,
     mapping::ToChalk,
     next_solver::{
@@ -32,11 +35,10 @@ use crate::{
 
 use super::{
     BoundExistentialPredicate, BoundExistentialPredicates, BoundRegion, BoundRegionKind, BoundTy,
-    BoundTyKind, Canonical, CanonicalVarInfo, CanonicalVars, Clause, Clauses, Const, Ctor, DbIr,
-    EarlyParamRegion, ErrorGuaranteed, ExistentialPredicate, GenericArg, GenericArgs, ParamConst,
-    ParamEnv, ParamTy, Placeholder, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate,
-    PredicateKind, Region, SolverDefId, SubtypePredicate, Term, TraitRef, Ty, Tys, ValueConst,
-    VariancesOf,
+    BoundTyKind, Canonical, CanonicalVars, Clause, Clauses, Const, Ctor, DbIr, EarlyParamRegion,
+    ErrorGuaranteed, ExistentialPredicate, GenericArg, GenericArgs, ParamConst, ParamEnv, ParamTy,
+    Placeholder, PlaceholderConst, PlaceholderRegion, PlaceholderTy, Predicate, PredicateKind,
+    Region, SolverDefId, SubtypePredicate, Term, TraitRef, Ty, Tys, ValueConst, VariancesOf,
 };
 
 pub fn to_placeholder_idx<T: Clone + std::fmt::Debug>(
@@ -44,10 +46,10 @@ pub fn to_placeholder_idx<T: Clone + std::fmt::Debug>(
     id: TypeOrConstParamId,
     map: impl Fn(BoundVar) -> T,
 ) -> Placeholder<T> {
-    let interned_id = db.intern_type_or_const_param_id(id);
+    let interned_id = InternedTypeOrConstParamId::new(db, id);
     Placeholder {
         universe: UniverseIndex::ZERO,
-        bound: map(BoundVar::from_usize(interned_id.as_id().as_u32() as usize)),
+        bound: map(BoundVar::from_usize(interned_id.as_id().index() as usize)),
     }
 }
 
@@ -254,7 +256,7 @@ impl<'db> ChalkToNextSolver<'db, Ty<'db>> for chalk_ir::Ty<Interner> {
                 }
                 chalk_ir::TyKind::Error => rustc_type_ir::TyKind::Error(ErrorGuaranteed),
                 chalk_ir::TyKind::Placeholder(placeholder_index) => {
-                    rustc_type_ir::TyKind::Placeholder(PlaceholderTy::new(
+                    rustc_type_ir::TyKind::Placeholder(PlaceholderTy::new_anon(
                         placeholder_index.ui.to_nextsolver(interner),
                         rustc_type_ir::BoundVar::from_usize(placeholder_index.idx),
                     ))
@@ -426,7 +428,7 @@ impl<'db> ChalkToNextSolver<'db, Region<'db>> for chalk_ir::Lifetime<Interner> {
                     ))
                 }
                 chalk_ir::LifetimeData::Placeholder(placeholder_index) => {
-                    rustc_type_ir::RegionKind::RePlaceholder(PlaceholderRegion::new(
+                    rustc_type_ir::RegionKind::RePlaceholder(PlaceholderRegion::new_anon(
                         rustc_type_ir::UniverseIndex::from_u32(placeholder_index.ui.counter as u32),
                         rustc_type_ir::BoundVar::from_u32(placeholder_index.idx as u32),
                     ))
@@ -640,14 +642,14 @@ impl<'db> ChalkToNextSolver<'db, Canonical<'db, Goal<DbInterner<'db>, Predicate<
                             rustc_type_ir::CanonicalTyVarKind::Float,
                         ),
                     };
-                    CanonicalVarInfo { kind }
+                    kind
                 }
-                chalk_ir::VariableKind::Lifetime => CanonicalVarInfo {
-                    kind: rustc_type_ir::CanonicalVarKind::Region(UniverseIndex::ROOT),
-                },
-                chalk_ir::VariableKind::Const(ty) => CanonicalVarInfo {
-                    kind: rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ROOT),
-                },
+                chalk_ir::VariableKind::Lifetime => {
+                    rustc_type_ir::CanonicalVarKind::Region(UniverseIndex::ROOT)
+                }
+                chalk_ir::VariableKind::Const(ty) => {
+                    rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ROOT)
+                }
             }),
         );
         Canonical {
@@ -886,7 +888,7 @@ impl<'db> ChalkToNextSolver<'db, PredicateKind<'db>>
                     PredicateKind::Clause(ClauseKind::Trait(predicate))
                 }
                 chalk_ir::FromEnv::Ty(ty) => PredicateKind::Clause(ClauseKind::WellFormed(
-                    GenericArg::Ty(ty.to_nextsolver(interner)),
+                    Term::Ty(ty.to_nextsolver(interner)),
                 )),
             },
             chalk_ir::DomainGoal::Normalize(normalize) => todo!(),
@@ -952,7 +954,7 @@ pub fn convert_canonical_args_for_result<'db>(
     let Canonical { value, variables, max_universe } = args;
     let binders = CanonicalVarKinds::from_iter(
         Interner,
-        variables.iter().map(|v| match v.kind {
+        variables.iter().map(|v| match v {
             rustc_type_ir::CanonicalVarKind::Ty(rustc_type_ir::CanonicalTyVarKind::General(_)) => {
                 CanonicalVarKind::new(
                     chalk_ir::VariableKind::Ty(TyVariableKind::General),
@@ -1149,7 +1151,7 @@ pub(crate) fn convert_ty_for_result<'db>(interner: DbInterner<'db>, ty: Ty<'db>)
                 }))
             }
             rustc_type_ir::AliasTyKind::Inherent => todo!(),
-            rustc_type_ir::AliasTyKind::Weak => todo!(),
+            rustc_type_ir::AliasTyKind::Free => todo!(),
         },
 
         rustc_type_ir::TyKind::Placeholder(placeholder) => {
