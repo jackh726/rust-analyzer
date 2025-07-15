@@ -5,7 +5,7 @@ use std::ops::Range;
 use ena::snapshot_vec as sv;
 use ena::undo_log::Rollback;
 use ena::unify as ut;
-use rustc_index_in_tree::IndexVec;
+use rustc_index::IndexVec;
 use rustc_type_ir::TyVid;
 use rustc_type_ir::UniverseIndex;
 use rustc_type_ir::inherent::Ty as _;

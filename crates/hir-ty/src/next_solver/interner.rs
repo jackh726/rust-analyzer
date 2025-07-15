@@ -11,12 +11,13 @@ use intern::{Interned, impl_internable, sym};
 use la_arena::Idx;
 use rustc_abi::{Align, ReprFlags, ReprOptions};
 use rustc_hash::FxHashSet;
-use rustc_index_in_tree::bit_set::DenseBitSet;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_type_ir::elaborate::elaborate;
 use rustc_type_ir::inherent::{
     AdtDef as _, GenericArgs as _, GenericsOf, IntoKind, SliceLike, Span as _,
 };
 use rustc_type_ir::lang_items::TraitSolverLangItem;
+use rustc_type_ir::solve::SizedTraitKind;
 use rustc_type_ir::{
     AliasTerm, AliasTermKind, AliasTy, EarlyBinder, Flags, ImplPolarity, InferTy,
     ProjectionPredicate, TraitPredicate, TraitRef,
@@ -30,7 +31,7 @@ use tls::with_db_out_of_thin_air;
 use triomphe::Arc;
 
 use rustc_ast_ir::visit::VisitorResult;
-use rustc_index_in_tree::IndexVec;
+use rustc_index::IndexVec;
 use rustc_type_ir::TypeVisitableExt;
 use rustc_type_ir::{
     BoundVar, CollectAndApply, DebruijnIndex, GenericArgKind, RegionKind, TermKind, UniverseIndex,
@@ -42,19 +43,18 @@ use rustc_type_ir::{
 use crate::lower::generic_predicates_filtered_by;
 use crate::lower_nextsolver::{self, TyLoweringContext};
 use crate::method_resolution::{ALL_FLOAT_FPS, ALL_INT_FPS, TyFingerprint};
-use crate::next_solver::FxIndexMap;
 use crate::next_solver::util::{explicit_item_bounds, for_trait_impls};
+use crate::next_solver::{CanonicalVarKind, FxIndexMap, SolverDefIds};
 use crate::{ConstScalar, FnAbi, Interner, db::HirDatabase};
 
 use super::generics::generics;
-use super::util::sized_constraint_for_ty;
+use super::util::sizedness_constraint_for_ty;
 use super::{
-    Binder, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy, BoundTyKind,
-    CanonicalVarInfo, Clause, Clauses, Const, ConstKind, DefiningOpaqueTypes, ErrorGuaranteed,
-    ExprConst, ExternalConstraints, ExternalConstraintsData, GenericArg, GenericArgs,
-    InternedClausesWrapper, ParamConst, ParamEnv, ParamTy, PlaceholderConst, PlaceholderTy,
-    PredefinedOpaques, PredefinedOpaquesData, Predicate, PredicateKind, Term, Ty, TyKind, Tys,
-    ValueConst,
+    Binder, BoundExistentialPredicate, BoundExistentialPredicates, BoundTy, BoundTyKind, Clause,
+    Clauses, Const, ConstKind, ErrorGuaranteed, ExprConst, ExternalConstraints,
+    ExternalConstraintsData, GenericArg, GenericArgs, InternedClausesWrapper, ParamConst, ParamEnv,
+    ParamTy, PlaceholderConst, PlaceholderTy, PredefinedOpaques, PredefinedOpaquesData, Predicate,
+    PredicateKind, Term, Ty, TyKind, Tys, ValueConst,
     abi::Safety,
     fold::{BoundVarReplacer, BoundVarReplacerDelegate, FnMutDelegate},
     generics::Generics,
@@ -307,7 +307,7 @@ impl BoundVarKind {
     }
 }
 
-interned_vec_db!(CanonicalVars, CanonicalVarInfo, nofold);
+interned_vec_db!(CanonicalVars, CanonicalVarKind, nofold);
 
 pub struct DepNodeIndex;
 
@@ -653,9 +653,10 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
         rustc_type_ir::EarlyBinder::bind(tys)
     }
 
-    fn sized_constraint(
+    fn sizedness_constraint(
         self,
         interner: DbInterner<'db>,
+        sizedness: SizedTraitKind,
     ) -> Option<
         rustc_type_ir::EarlyBinder<
             DbInterner<'db>,
@@ -665,7 +666,7 @@ impl<'db> inherent::AdtDef<DbInterner<'db>> for AdtDef {
         if self.is_struct() {
             let tail_ty = self.all_field_tys(interner).skip_binder().into_iter().last()?;
 
-            let constraint_ty = sized_constraint_for_ty(interner, tail_ty)?;
+            let constraint_ty = sizedness_constraint_for_ty(interner, sizedness, tail_ty)?;
 
             Some(EarlyBinder::bind(constraint_ty))
         } else {
@@ -766,9 +767,12 @@ impl<'db> rustc_type_ir::relate::Relate<DbInterner<'db>> for Pattern<'db> {
     }
 }
 
+interned_vec_db!(PatList, Pattern);
+
 impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
     type DefId = SolverDefId;
     type LocalDefId = SolverDefId;
+    type LocalDefIds = SolverDefIds;
     type Span = Span;
 
     type GenericArgs = GenericArgs<'db>;
@@ -789,15 +793,13 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         PredefinedOpaques::new(self, data)
     }
 
-    type DefiningOpaqueTypes = DefiningOpaqueTypes;
+    type CanonicalVarKinds = CanonicalVars<'db>;
 
-    type CanonicalVars = CanonicalVars<'db>;
-
-    fn mk_canonical_var_infos(
+    fn mk_canonical_var_kinds(
         self,
-        infos: &[rustc_type_ir::CanonicalVarInfo<Self>],
-    ) -> Self::CanonicalVars {
-        CanonicalVars::new_from_iter(self, infos.iter().cloned())
+        kinds: &[rustc_type_ir::CanonicalVarKind<Self>],
+    ) -> Self::CanonicalVarKinds {
+        CanonicalVars::new_from_iter(self, kinds.iter().cloned())
     }
 
     type ExternalConstraints = ExternalConstraints<'db>;
@@ -824,6 +826,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
     type BoundExistentialPredicates = BoundExistentialPredicates<'db>;
     type AllocId = AllocId;
     type Pat = Pattern<'db>;
+    type PatList = PatList<'db>;
     type Safety = Safety;
     type Abi = FnAbi;
 
@@ -1230,7 +1233,6 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         lang_item: rustc_type_ir::lang_items::TraitSolverLangItem,
     ) -> Self::DefId {
         let lang_item = match lang_item {
-            rustc_type_ir::lang_items::TraitSolverLangItem::AsyncDestruct => todo!(),
             rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFn => todo!(),
             rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnKindHelper => todo!(),
             rustc_type_ir::lang_items::TraitSolverLangItem::AsyncFnKindUpvars => todo!(),
@@ -1268,6 +1270,8 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             rustc_type_ir::lang_items::TraitSolverLangItem::PointeeTrait => LangItem::PointeeTrait,
             rustc_type_ir::lang_items::TraitSolverLangItem::Poll => LangItem::Poll,
             rustc_type_ir::lang_items::TraitSolverLangItem::Sized => LangItem::Sized,
+            rustc_type_ir::lang_items::TraitSolverLangItem::MetaSized => LangItem::MetaSized,
+            rustc_type_ir::lang_items::TraitSolverLangItem::PointeeSized => LangItem::PointeeSized,
             rustc_type_ir::lang_items::TraitSolverLangItem::TransmuteTrait => {
                 LangItem::TransmuteTrait
             }
@@ -1304,7 +1308,6 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
 
         // FIXME: derive PartialEq on TraitSolverLangItem
         self.as_lang_item(def_id).map_or(false, |l| match (l, lang_item) {
-            (AsyncDestruct, AsyncDestruct) => true,
             (AsyncFn, AsyncFn) => true,
             (AsyncFnKindHelper, AsyncFnKindHelper) => true,
             (AsyncFnKindUpvars, AsyncFnKindUpvars) => true,
@@ -1359,6 +1362,8 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         let lang_item = self.db().lang_attr(def_id)?;
         Some(match lang_item {
             LangItem::Sized => rustc_type_ir::lang_items::TraitSolverLangItem::Sized,
+            LangItem::MetaSized => rustc_type_ir::lang_items::TraitSolverLangItem::MetaSized,
+            LangItem::PointeeSized => rustc_type_ir::lang_items::TraitSolverLangItem::PointeeSized,
             LangItem::Unsize => rustc_type_ir::lang_items::TraitSolverLangItem::Unsize,
             LangItem::StructuralPeq => return None,
             LangItem::StructuralTeq => return None,
@@ -1738,14 +1743,6 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         UnsizingParams(unsizing_params)
     }
 
-    fn find_const_ty_from_env(
-        self,
-        param_env: Self::ParamEnv,
-        placeholder: Self::PlaceholderConst,
-    ) -> Self::Ty {
-        todo!()
-    }
-
     fn anonymize_bound_vars<T: rustc_type_ir::TypeFoldable<Self>>(
         self,
         value: rustc_type_ir::Binder<Self, T>,
@@ -1794,10 +1791,7 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         Binder::bind_with_vars(inner, bound_vars)
     }
 
-    fn opaque_types_defined_by(
-        self,
-        defining_anchor: Self::LocalDefId,
-    ) -> Self::DefiningOpaqueTypes {
+    fn opaque_types_defined_by(self, defining_anchor: Self::LocalDefId) -> Self::LocalDefIds {
         todo!()
     }
 
@@ -1845,7 +1839,10 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
     fn coroutine_hidden_types(
         self,
         def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, rustc_type_ir::Binder<Self, Self::Tys>> {
+    ) -> rustc_type_ir::EarlyBinder<
+        Self,
+        rustc_type_ir::Binder<Self, rustc_type_ir::CoroutineWitnessTypes<Self>>,
+    > {
         todo!()
     }
 
@@ -1871,6 +1868,37 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
 
     fn impl_self_is_guaranteed_unsized(self, def_id: Self::DefId) -> bool {
         false
+    }
+
+    fn canonical_param_env_cache_get_or_insert<R>(
+        self,
+        param_env: Self::ParamEnv,
+        f: impl FnOnce() -> rustc_type_ir::CanonicalParamEnvCacheEntry<Self>,
+        from_entry: impl FnOnce(&rustc_type_ir::CanonicalParamEnvCacheEntry<Self>) -> R,
+    ) -> R {
+        todo!()
+    }
+
+    fn impl_specializes(self, impl_def_id: Self::DefId, victim_def_id: Self::DefId) -> bool {
+        false
+    }
+
+    fn impl_super_outlives(
+        self,
+        impl_def_id: Self::DefId,
+    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
+        rustc_type_ir::EarlyBinder::bind([todo!()])
+    }
+
+    fn next_trait_solver_globally(self) -> bool {
+        true
+    }
+
+    fn opaque_types_and_coroutines_defined_by(
+        self,
+        defining_anchor: Self::LocalDefId,
+    ) -> Self::LocalDefIds {
+        todo!()
     }
 }
 

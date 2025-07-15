@@ -31,7 +31,7 @@ use crate::next_solver::{
     },
 };
 use instantiate::CanonicalExt;
-use rustc_index_in_tree::IndexVec;
+use rustc_index::IndexVec;
 use rustc_type_ir::{
     AliasRelationDirection, AliasTyKind, CanonicalTyVarKind, CanonicalVarKind, InferTy,
     TypeFoldable, UniverseIndex, Upcast, Variance,

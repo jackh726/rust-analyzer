@@ -10,6 +10,7 @@ use la_arena::Idx;
 use rustc_abi::{Float, HasDataLayout, Integer, IntegerType, Primitive, ReprOptions};
 use rustc_type_ir::data_structures::IndexMap;
 use rustc_type_ir::inherent::{AdtDef, GenericArg as _, GenericArgs as _, SliceLike, Ty as _};
+use rustc_type_ir::solve::SizedTraitKind;
 use rustc_type_ir::{BoundVar, Canonical, DebruijnIndex, GenericArgKind};
 use rustc_type_ir::{
     ConstKind, CoroutineArgs, FloatTy, IntTy, RegionKind, TypeFolder, TypeSuperFoldable,
@@ -18,6 +19,7 @@ use rustc_type_ir::{
 use rustc_type_ir::{InferCtxtLike, TypeFoldable};
 
 use crate::lower_nextsolver::{LifetimeElisionKind, TyLoweringContext};
+use crate::next_solver::CanonicalVarKind;
 use crate::{
     db::HirDatabase,
     from_foreign_def_id,
@@ -28,9 +30,9 @@ use super::fold::{BoundVarReplacer, FnMutDelegate};
 use super::generics::generics;
 use super::{
     AliasTerm, AliasTy, Binder, BoundRegion, BoundTy, BoundTyKind, BoundVarKind, BoundVarKinds,
-    CanonicalVarInfo, CanonicalVars, Clause, ClauseKind, Clauses, Const, DbInterner, DbIr,
-    EarlyBinder, GenericArg, GenericArgs, Predicate, PredicateKind, ProjectionPredicate, Region,
-    SolverContext, SolverDefId, Term, TraitPredicate, TraitRef, Ty, TyKind,
+    CanonicalVars, Clause, ClauseKind, Clauses, Const, DbInterner, DbIr, EarlyBinder, GenericArg,
+    GenericArgs, Predicate, PredicateKind, ProjectionPredicate, Region, SolverContext, SolverDefId,
+    Term, TraitPredicate, TraitRef, Ty, TyKind,
 };
 
 #[derive(Clone, Debug)]
@@ -399,50 +401,59 @@ pub(crate) fn for_trait_impls(
     ControlFlow::Continue(())
 }
 
-pub fn sized_constraint_for_ty<'db>(interner: DbInterner<'db>, ty: Ty<'db>) -> Option<Ty<'db>> {
+// FIXME(next-trait-solver): uplift
+pub fn sizedness_constraint_for_ty<'db>(
+    interner: DbInterner<'db>,
+    sizedness: SizedTraitKind,
+    ty: Ty<'db>,
+) -> Option<Ty<'db>> {
     use rustc_type_ir::TyKind::*;
 
     match ty.clone().kind() {
         // these are always sized
-        Bool
-        | Char
-        | Int(..)
-        | Uint(..)
-        | Float(..)
-        | RawPtr(..)
-        | Ref(..)
-        | FnDef(..)
-        | FnPtr(..)
-        | Array(..)
-        | Closure(..)
-        | CoroutineClosure(..)
-        | Coroutine(..)
-        | CoroutineWitness(..)
-        | Never
-        | Dynamic(_, _, rustc_type_ir::DynKind::DynStar) => None,
+        Bool | Char | Int(..) | Uint(..) | Float(..) | RawPtr(..) | Ref(..) | FnDef(..)
+        | FnPtr(..) | Array(..) | Closure(..) | CoroutineClosure(..) | Coroutine(..)
+        | CoroutineWitness(..) | Never => None,
 
         // these are never sized
-        Str | Slice(..) | Dynamic(_, _, rustc_type_ir::DynKind::Dyn) | Foreign(..) => Some(ty),
+        Str | Slice(..) | Dynamic(_, _, rustc_type_ir::DynKind::Dyn) => match sizedness {
+            // Never `Sized`
+            SizedTraitKind::Sized => Some(ty),
+            // Always `MetaSized`
+            SizedTraitKind::MetaSized => None,
+        },
 
-        Pat(ty, _) => sized_constraint_for_ty(interner, ty),
+        // Maybe `Sized` or `MetaSized`
+        Param(..) | Alias(..) | Error(_) => Some(ty),
 
-        Tuple(tys) => tys.into_iter().last().and_then(|ty| sized_constraint_for_ty(interner, ty)),
+        // We cannot instantiate the binder, so just return the *original* type back,
+        // but only if the inner type has a sized constraint. Thus we skip the binder,
+        // but don't actually use the result from `sized_constraint_for_ty`.
+        UnsafeBinder(inner_ty) => {
+            sizedness_constraint_for_ty(interner, sizedness, inner_ty.skip_binder()).map(|_| ty)
+        }
 
-        // recursive case
+        // Never `MetaSized` or `Sized`
+        Foreign(..) => Some(ty),
+
+        // Recursive cases
+        Pat(ty, _) => sizedness_constraint_for_ty(interner, sizedness, ty),
+
+        Tuple(tys) => tys
+            .into_iter()
+            .last()
+            .and_then(|ty| sizedness_constraint_for_ty(interner, sizedness, ty)),
+
         Adt(adt, args) => {
             let tail_ty =
                 EarlyBinder::bind(adt.all_field_tys(interner).skip_binder().into_iter().last()?)
                     .instantiate(interner, args);
-            sized_constraint_for_ty(interner, tail_ty)
+            sizedness_constraint_for_ty(interner, sizedness, tail_ty)
         }
-
-        // these can be sized or unsized
-        Param(..) | Alias(..) | Error(_) => Some(ty),
 
         Placeholder(..) | Bound(..) | Infer(..) => {
-            panic!("unexpected type `{ty:?}` in sized_constraint_for_ty")
+            panic!("unexpected type `{ty:?}` in sizedness_constraint_for_ty")
         }
-        UnsafeBinder(..) => todo!(),
     }
 }
 
@@ -494,7 +505,7 @@ pub fn mini_canonicalize<'db, T: TypeFoldable<DbInterner<'db>>>(
                         rustc_type_ir::CanonicalVarKind::Const(UniverseIndex::ZERO)
                     }
                 };
-                CanonicalVarInfo { kind }
+                kind
             }),
         ),
     }

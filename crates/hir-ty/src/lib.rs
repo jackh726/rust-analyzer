@@ -9,9 +9,6 @@ extern crate rustc_index;
 #[cfg(not(feature = "in-rust-tree"))]
 extern crate ra_ap_rustc_index as rustc_index;
 
-#[cfg(not(feature = "in-rust-tree"))]
-extern crate rustc_index as rustc_index_in_tree;
-
 #[cfg(feature = "in-rust-tree")]
 extern crate rustc_abi;
 
@@ -23,6 +20,24 @@ extern crate rustc_pattern_analysis;
 
 #[cfg(not(feature = "in-rust-tree"))]
 extern crate ra_ap_rustc_pattern_analysis as rustc_pattern_analysis;
+
+#[cfg(feature = "in-rust-tree")]
+extern crate rustc_ast_ir;
+
+#[cfg(not(feature = "in-rust-tree"))]
+extern crate ra_ap_rustc_ast_ir as rustc_ast_ir;
+
+#[cfg(feature = "in-rust-tree")]
+extern crate rustc_type_ir;
+
+#[cfg(not(feature = "in-rust-tree"))]
+extern crate ra_ap_rustc_type_ir as rustc_type_ir;
+
+#[cfg(feature = "in-rust-tree")]
+extern crate rustc_next_trait_solver;
+
+#[cfg(not(feature = "in-rust-tree"))]
+extern crate ra_ap_rustc_next_trait_solver as rustc_next_trait_solver;
 
 mod builder;
 mod chalk_db;

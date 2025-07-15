@@ -11,7 +11,7 @@ use rustc_type_ir::{
     inherent::{IntoKind, SliceLike},
     relate::Relate,
 };
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
 use super::{Binder, BoundVarKinds, DbInterner, Region, Ty, interned_vec_db};
 
@@ -307,6 +307,8 @@ impl<'db> std::fmt::Debug for Clauses<'db> {
     }
 }
 
+impl<'db> rustc_type_ir::inherent::Clauses<DbInterner<'db>> for Clauses<'db> {}
+
 impl<'db> rustc_type_ir::inherent::SliceLike for Clauses<'db> {
     type Item = Clause<'db>;
 
@@ -333,6 +335,30 @@ impl<'db> IntoIterator for Clauses<'db> {
 impl<'db> Default for Clauses<'db> {
     fn default() -> Self {
         Clauses::new_from_iter(DbInterner::new(), [])
+    }
+}
+
+impl<'db> rustc_type_ir::TypeSuperFoldable<DbInterner<'db>> for Clauses<'db> {
+    fn try_super_fold_with<F: rustc_type_ir::FallibleTypeFolder<DbInterner<'db>>>(
+        self,
+        folder: &mut F,
+    ) -> Result<Self, F::Error> {
+        let mut clauses: SmallVec<[_; 2]> = SmallVec::with_capacity(self.inner().0.len());
+        for c in self {
+            clauses.push(c.try_fold_with(folder)?);
+        }
+        Ok(Clauses::new_from_iter(folder.cx(), clauses))
+    }
+
+    fn super_fold_with<F: rustc_type_ir::TypeFolder<DbInterner<'db>>>(
+        self,
+        folder: &mut F,
+    ) -> Self {
+        let mut clauses: SmallVec<[_; 2]> = SmallVec::with_capacity(self.inner().0.len());
+        for c in self {
+            clauses.push(c.fold_with(folder));
+        }
+        Clauses::new_from_iter(folder.cx(), clauses)
     }
 }
 

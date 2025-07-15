@@ -34,6 +34,15 @@ impl<'db> std::fmt::Debug for GenericArg<'db> {
     }
 }
 
+impl<'db> From<Term<'db>> for GenericArg<'db> {
+    fn from(value: Term<'db>) -> Self {
+        match value {
+            Term::Ty(ty) => GenericArg::Ty(ty),
+            Term::Const(c) => GenericArg::Const(c),
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Term<'db> {
     Ty(Ty<'db>),

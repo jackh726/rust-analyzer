@@ -170,17 +170,13 @@ fn solve_nextsolver<'db>(
             context.instantiate_canonical(crate::next_solver::Span::dummy(), &goal);
         tracing::info!(?var_values);
 
-        let (res, _) = context.evaluate_root_goal(
-            goal.clone(),
-            rustc_next_trait_solver::solve::GenerateProofTree::No,
-            Span::dummy(),
-        );
+        let res = context.evaluate_root_goal(goal.clone(), Span::dummy(), None);
 
         let vars =
             var_values.var_values.iter().map(|g| context.0.resolve_vars_if_possible(g)).collect();
         let canonical_var_values = mini_canonicalize(context, vars);
 
-        let res = res.map(|r| (r.0, r.1, canonical_var_values));
+        let res = res.map(|r| (r.has_changed, r.certainty, canonical_var_values));
 
         tracing::debug!("solve_nextsolver({:?}) => {:?}", goal, res);
 

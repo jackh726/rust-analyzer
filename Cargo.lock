@@ -244,7 +244,7 @@ checksum = "eb4899682de915ca7c0b025bdd0a3d34c75fe12184122fda6805a7baddaa293c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
  "synstructure",
 ]
 
@@ -386,13 +386,13 @@ dependencies = [
 
 [[package]]
 name = "derive-where"
-version = "1.2.7"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62d671cc41a825ebabc75757b62d3d168c577f9149b2d49ece1dad1f72119d25"
+checksum = "510c292c8cf384b1a340b816a9a6cf2599eb8f566a44949024af88418000c50b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -403,7 +403,7 @@ checksum = "30542c1ad912e0e3d22a1935c290e12e8a29d704a420177a31faad4a601a0800"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -444,7 +444,7 @@ checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -768,14 +768,13 @@ dependencies = [
  "project-model",
  "query-group-macro",
  "ra-ap-rustc_abi",
+ "ra-ap-rustc_ast_ir",
  "ra-ap-rustc_index",
+ "ra-ap-rustc_next_trait_solver",
  "ra-ap-rustc_pattern_analysis",
+ "ra-ap-rustc_type_ir",
  "rustc-hash 2.1.1",
  "rustc_apfloat",
- "rustc_ast_ir",
- "rustc_index",
- "rustc_next_trait_solver",
- "rustc_type_ir",
  "salsa",
  "salsa-macros",
  "scoped-tls",
@@ -1785,7 +1784,7 @@ dependencies = [
  "quote",
  "salsa",
  "salsa-macros",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -1808,6 +1807,12 @@ dependencies = [
  "ra-ap-rustc_index",
  "tracing",
 ]
+
+[[package]]
+name = "ra-ap-rustc_ast_ir"
+version = "0.121.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "686682f52b2936f16a8633a14ca4c64d9b19beac783a2f27bc498bc2835b122d"
 
 [[package]]
 name = "ra-ap-rustc_hashes"
@@ -1836,7 +1841,7 @@ checksum = "b9b55910dbe1fe7ef34bdc1d1bcb41e99b377eb680ea58a1218d95d6b4152257"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -1848,6 +1853,19 @@ dependencies = [
  "memchr",
  "unicode-properties",
  "unicode-xid",
+]
+
+[[package]]
+name = "ra-ap-rustc_next_trait_solver"
+version = "0.121.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd89d58fefa8b5ec140182209c4077be54e8ebb93efdf448046da2664efa053f"
+dependencies = [
+ "derive-where",
+ "ra-ap-rustc_index",
+ "ra-ap-rustc_type_ir",
+ "ra-ap-rustc_type_ir_macros",
+ "tracing",
 ]
 
 [[package]]
@@ -1871,6 +1889,37 @@ dependencies = [
  "rustc_apfloat",
  "smallvec",
  "tracing",
+]
+
+[[package]]
+name = "ra-ap-rustc_type_ir"
+version = "0.121.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fecef2b504c3445fe7112a09c3d6d99d42ea8fcd074ed4f6291fc3d1eb2e9d7"
+dependencies = [
+ "bitflags 2.9.1",
+ "derive-where",
+ "ena",
+ "indexmap",
+ "ra-ap-rustc_ast_ir",
+ "ra-ap-rustc_index",
+ "ra-ap-rustc_type_ir_macros",
+ "rustc-hash 2.1.1",
+ "smallvec",
+ "thin-vec",
+ "tracing",
+]
+
+[[package]]
+name = "ra-ap-rustc_type_ir_macros"
+version = "0.121.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "997ced392016d16a7936163ee12d465c421bf5c4dc583acdf828c3a9b6437e92"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.103",
+ "synstructure",
 ]
 
 [[package]]
@@ -2032,71 +2081,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustc_ast_ir"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-
-[[package]]
-name = "rustc_index"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-dependencies = [
- "rustc_index_macros",
- "smallvec",
-]
-
-[[package]]
-name = "rustc_index_macros"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.100",
-]
-
-[[package]]
-name = "rustc_next_trait_solver"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-dependencies = [
- "derive-where",
- "rustc_index",
- "rustc_type_ir",
- "rustc_type_ir_macros",
- "tracing",
-]
-
-[[package]]
-name = "rustc_type_ir"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-dependencies = [
- "bitflags 2.9.1",
- "derive-where",
- "ena",
- "indexmap",
- "rustc-hash 1.1.0",
- "rustc_ast_ir",
- "rustc_index",
- "rustc_type_ir_macros",
- "smallvec",
- "thin-vec",
- "tracing",
-]
-
-[[package]]
-name = "rustc_type_ir_macros"
-version = "0.0.0"
-source = "git+https://github.com/jackh726/rust.git?branch=master#49e5e4e3a5610c240a717cb99003a5d5d3356679"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.100",
- "synstructure",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2141,7 +2125,7 @@ checksum = "d0778d6e209051bc4e75acfe83bcd7848601ec3dbe9c3dbb982829020e9128af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
  "synstructure",
 ]
 
@@ -2232,7 +2216,7 @@ checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2256,7 +2240,7 @@ checksum = "175ee3e80ae9982737ca543e96133087cbd9a485eecc3bc4de9c1a37b47ea59c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2347,9 +2331,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.100"
+version = "2.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b09a44accad81e1ba1cd74a32461ba89dee89095ba17b32f5d03683b1b1fc2a0"
+checksum = "e4307e30089d6fd6aff212f2da3a1f9e32f3223b1f010fb09b7c95f90f3ca1e8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2364,7 +2348,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2474,7 +2458,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2485,7 +2469,7 @@ checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2639,7 +2623,7 @@ checksum = "1b1ffbcf9c6f6b99d386e7444eb608ba646ae452a36b39737deb9663b610f662"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2879,7 +2863,7 @@ checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -2890,7 +2874,7 @@ checksum = "bd9211b69f8dcdfa817bfd14bf1c97c9188afa36f4750130fcdf3f400eca9fa8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]
@@ -3249,7 +3233,7 @@ checksum = "38da3c9736e16c5d3c8c597a9aaa5d1fa565d0532ae05e27c24aa62fb32c0ab6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
  "synstructure",
 ]
 
@@ -3270,7 +3254,7 @@ checksum = "d71e5d6e06ab090c67b5e44993ec16b72dcbaabc526db883a360057678b48502"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
  "synstructure",
 ]
 
@@ -3304,7 +3288,7 @@ checksum = "5b96237efa0c878c64bd89c436f661be4e46b2f3eff1ebb976f7ef2321d2f58f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.100",
+ "syn 2.0.103",
 ]
 
 [[package]]

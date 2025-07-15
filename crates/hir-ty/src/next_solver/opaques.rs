@@ -3,7 +3,7 @@ use rustc_ast_ir::try_visit;
 
 use crate::next_solver::SolverDefId;
 
-use super::{CanonicalVarInfo, DbInterner, interned_vec_nolifetime_salsa};
+use super::{CanonicalVarKind, DbInterner, interned_vec_nolifetime_salsa};
 
 pub type OpaqueTypeKey<'db> = rustc_type_ir::OpaqueTypeKey<DbInterner<'db>>;
 pub type PredefinedOpaquesData<'db> = rustc_type_ir::solve::PredefinedOpaquesData<DbInterner<'db>>;
@@ -79,7 +79,7 @@ impl<'db> std::ops::Deref for PredefinedOpaques<'db> {
     }
 }
 
-interned_vec_nolifetime_salsa!(DefiningOpaqueTypes, SolverDefId);
+interned_vec_nolifetime_salsa!(SolverDefIds, SolverDefId);
 
 #[salsa::interned(constructor = new_, debug)]
 pub struct ExternalConstraints<'db> {
