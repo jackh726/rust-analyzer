@@ -2061,6 +2061,12 @@ mod tls_cache {
 
     pub(super) fn with_cache<'db, T>(f: impl FnOnce(&mut GlobalCache<DbInterner<'db>>) -> T) -> T {
         // SAFETY: No idea
-        GLOBAL_CACHE.with(move |slot| f(unsafe { std::mem::transmute(&mut *slot.borrow_mut()) }))
+        let call =
+            move |slot: &RefCell<_>| f(unsafe { std::mem::transmute(&mut *slot.borrow_mut()) });
+        if GLOBAL_CACHE.is_set() {
+            GLOBAL_CACHE.with(call)
+        } else {
+            GLOBAL_CACHE.set(&RefCell::new(GlobalCache::default()), || GLOBAL_CACHE.with(call))
+        }
     }
 }
