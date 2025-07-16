@@ -9,7 +9,6 @@ use crate::next_solver::{
 
 pub(crate) mod table;
 
-pub(crate) type OpaqueTypeMap<'db> = FxIndexMap<OpaqueTypeKey<'db>, OpaqueTypeDecl<'db>>;
 pub(crate) use table::{OpaqueTypeStorage, OpaqueTypeTable};
 
 use crate::next_solver::{
@@ -35,20 +34,9 @@ use rustc_type_ir::{
 
 use super::{InferOk, traits::ObligationCause};
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct OpaqueHiddenType<'db> {
     pub ty: Ty<'db>,
-}
-
-/// Information about the opaque types whose values we
-/// are inferring in this function (these are the `impl Trait` that
-/// appear in the return type).
-#[derive(Clone, Debug)]
-pub struct OpaqueTypeDecl<'db> {
-    /// The hidden types that have been inferred for this opaque type.
-    /// There can be multiple, but they are all `lub`ed together at the end
-    /// to obtain the canonical hidden type.
-    pub hidden_type: OpaqueHiddenType<'db>,
 }
 
 impl<'db> InferCtxt<'db> {
@@ -72,98 +60,7 @@ impl<'db> InferCtxt<'db> {
         span: Span,
         param_env: ParamEnv<'db>,
     ) -> Result<Vec<Goal<'db, Predicate<'db>>>, TypeError<DbInterner<'db>>> {
-        let process = |a: Ty<'db>, b: Ty<'db>| match a.kind() {
-            TyKind::Alias(AliasTyKind::Opaque, AliasTy { def_id, args, .. })
-                if def_id.is_local() =>
-            {
-                let def_id = def_id.as_local().unwrap();
-                if let TypingMode::Coherence = self.typing_mode() {
-                    // See comment on `insert_hidden_type` for why this is sufficient in coherence
-                    return Some(self.register_hidden_type(
-                        OpaqueTypeKey { def_id, args },
-                        span,
-                        param_env.clone(),
-                        b,
-                    ));
-                }
-                // Check that this is `impl Trait` type is
-                // declared by `parent_def_id` -- i.e., one whose
-                // value we are inferring. At present, this is
-                // always true during the first phase of
-                // type-check, but not always true later on during
-                // NLL. Once we support named opaque types more fully,
-                // this same scenario will be able to arise during all phases.
-                //
-                // Here is an example using type alias `impl Trait`
-                // that indicates the distinction we are checking for:
-                //
-                // ```rust
-                // mod a {
-                //   pub type Foo = impl Iterator;
-                //   pub fn make_foo() -> Foo { .. }
-                // }
-                //
-                // mod b {
-                //   fn foo() -> a::Foo { a::make_foo() }
-                // }
-                // ```
-                //
-                // Here, the return type of `foo` references an
-                // `Opaque` indeed, but not one whose value is
-                // presently being inferred. You can get into a
-                // similar situation with closure return types
-                // today:
-                //
-                // ```rust
-                // fn foo() -> impl Iterator { .. }
-                // fn bar() {
-                //     let x = || foo(); // returns the Opaque assoc with `foo`
-                // }
-                // ```
-                if !self.can_define_opaque_ty(def_id) {
-                    return None;
-                }
-
-                if let TyKind::Alias(AliasTyKind::Opaque, AliasTy { def_id: b_def_id, .. }) =
-                    b.clone().kind()
-                {
-                    // We could accept this, but there are various ways to handle this situation,
-                    // and we don't want to make a decision on it right now. Likely this case is so
-                    // super rare anyway, that no one encounters it in practice. It does occur
-                    // however in `fn fut() -> impl Future<Output = i32> { async { 42 } }`, where
-                    // it is of no concern, so we only check for TAITs.
-                    /*
-                    if self.can_define_opaque_ty(b_def_id)
-                        && matches!(
-                            self.tcx.opaque_ty_origin(b_def_id),
-                            hir::OpaqueTyOrigin::TyAlias { .. }
-                        )
-                    {
-                        self.dcx().emit_err(OpaqueHiddenTypeDiag {
-                            span,
-                            hidden_type: self.tcx.def_span(b_def_id),
-                            opaque_type: self.tcx.def_span(def_id),
-                        });
-                    }
-                    */
-                }
-                Some(self.register_hidden_type(
-                    OpaqueTypeKey { def_id, args },
-                    span,
-                    param_env.clone(),
-                    b,
-                ))
-            }
-            _ => None,
-        };
-        if let Some(res) = process(a.clone(), b.clone()) {
-            res
-        } else if let Some(res) = process(b.clone(), a.clone()) {
-            res
-        } else {
-            let (a, b) = self.resolve_vars_if_possible((a, b));
-            Err(TypeError::Sorts(ExpectedFound::new(a, b)))
-        }
+        panic!("Next trait solver only")
     }
 
     /// Given the map `opaque_types` containing the opaque
@@ -486,6 +383,18 @@ impl<'db> InferCtxt<'db> {
         );
 
         Ok(goals)
+    }
+
+    /// Insert a hidden type into the opaque type storage, making sure
+    /// it hasn't previously been defined. This does not emit any
+    /// constraints and it's the responsibility of the caller to make
+    /// sure that the item bounds of the opaque are checked.
+    pub fn register_hidden_type_in_storage(
+        &self,
+        opaque_type_key: OpaqueTypeKey<'db>,
+        hidden_ty: OpaqueHiddenType<'db>,
+    ) -> Option<Ty<'db>> {
+        self.inner.borrow_mut().opaque_types().register(opaque_type_key, hidden_ty)
     }
 
     /// Insert a hidden type into the opaque type storage, making sure

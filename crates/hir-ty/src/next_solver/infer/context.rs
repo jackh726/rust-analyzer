@@ -1,12 +1,14 @@
 use rustc_type_ir::{
-    ConstVid, FloatVid, IntVid, RegionVid, TyVid, TypeFoldable, TypingMode, UniverseIndex,
-    inherent::{Const as _, Span as _, Ty as _},
+    ConstVid, FloatVarValue, FloatVid, GenericArgKind, InferConst, InferTy, IntTy, IntVarValue,
+    IntVid, RegionVid, TyVid, TypeFoldable, TypingMode, UniverseIndex,
+    inherent::{Const as _, IntoKind, Span as _, Ty as _},
     relate::combine::PredicateEmittingRelation,
 };
 
 use crate::next_solver::{
-    Binder, Const, DbInterner, DbIr, ErrorGuaranteed, GenericArgs, ParamEnv, Region, SolverDefId,
-    Span, Ty, infer::opaque_types::table::OpaqueTypeStorageEntries,
+    Binder, Const, ConstKind, DbInterner, DbIr, ErrorGuaranteed, GenericArgs, OpaqueTypeKey,
+    ParamEnv, Region, SolverDefId, Span, Ty, TyKind,
+    infer::opaque_types::{OpaqueHiddenType, table::OpaqueTypeStorageEntries},
 };
 
 ///! Definition of `InferCtxtLike` from the librarified type layer.
@@ -94,6 +96,57 @@ impl<'db> rustc_type_ir::InferCtxtLike for InferCtxt<'db> {
             .borrow_mut()
             .unwrap_region_constraints()
             .opportunistic_resolve_var(self.interner, vid)
+    }
+
+    fn is_changed_arg(&self, arg: <Self::Interner as rustc_type_ir::Interner>::GenericArg) -> bool {
+        match arg.kind() {
+            GenericArgKind::Lifetime(_) => {
+                // Lifetimes should not change affect trait selection.
+                false
+            }
+            GenericArgKind::Type(ty) => {
+                if let TyKind::Infer(infer_ty) = ty.kind() {
+                    match infer_ty {
+                        InferTy::TyVar(vid) => {
+                            !self.probe_ty_var(vid).is_err_and(|_| self.root_var(vid) == vid)
+                        }
+                        InferTy::IntVar(vid) => {
+                            let mut inner = self.inner.borrow_mut();
+                            !matches!(
+                                inner.int_unification_table().probe_value(vid),
+                                IntVarValue::Unknown
+                                    if inner.int_unification_table().find(vid) == vid
+                            )
+                        }
+                        InferTy::FloatVar(vid) => {
+                            let mut inner = self.inner.borrow_mut();
+                            !matches!(
+                                inner.float_unification_table().probe_value(vid),
+                                FloatVarValue::Unknown
+                                    if inner.float_unification_table().find(vid) == vid
+                            )
+                        }
+                        InferTy::FreshTy(_) | InferTy::FreshIntTy(_) | InferTy::FreshFloatTy(_) => {
+                            true
+                        }
+                    }
+                } else {
+                    true
+                }
+            }
+            GenericArgKind::Const(ct) => {
+                if let ConstKind::Infer(infer_ct) = ct.kind() {
+                    match infer_ct {
+                        InferConst::Var(vid) => !self
+                            .probe_const_var(vid)
+                            .is_err_and(|_| self.root_const_var(vid) == vid),
+                        InferConst::Fresh(_) => true,
+                    }
+                } else {
+                    true
+                }
+            }
+        }
     }
 
     fn next_ty_infer(&self) -> Ty<'db> {
@@ -232,63 +285,55 @@ impl<'db> rustc_type_ir::InferCtxtLike for InferCtxt<'db> {
         //self.register_region_obligation_with_cause(ty, r, &ObligationCause::dummy_with_span(Span::dummy()));
     }
 
-    fn is_changed_arg(&self, arg: <Self::Interner as rustc_type_ir::Interner>::GenericArg) -> bool {
-        todo!()
-    }
-
     type OpaqueTypeStorageEntries = OpaqueTypeStorageEntries;
 
-    fn opaque_types_storage_num_entries(&self) -> Self::OpaqueTypeStorageEntries {
-        todo!()
+    fn opaque_types_storage_num_entries(&self) -> OpaqueTypeStorageEntries {
+        self.inner.borrow_mut().opaque_types().num_entries()
     }
-
-    fn clone_opaque_types_lookup_table(
-        &self,
-    ) -> Vec<(
-        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        <Self::Interner as rustc_type_ir::Interner>::Ty,
-    )> {
-        todo!()
+    fn clone_opaque_types_lookup_table(&self) -> Vec<(OpaqueTypeKey<'db>, Ty<'db>)> {
+        self.inner.borrow_mut().opaque_types().iter_lookup_table().map(|(k, h)| (k, h.ty)).collect()
     }
-
-    fn clone_duplicate_opaque_types(
-        &self,
-    ) -> Vec<(
-        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        <Self::Interner as rustc_type_ir::Interner>::Ty,
-    )> {
-        todo!()
+    fn clone_duplicate_opaque_types(&self) -> Vec<(OpaqueTypeKey<'db>, Ty<'db>)> {
+        self.inner
+            .borrow_mut()
+            .opaque_types()
+            .iter_duplicate_entries()
+            .map(|(k, h)| (k, h.ty))
+            .collect()
     }
-
     fn clone_opaque_types_added_since(
         &self,
-        prev_entries: Self::OpaqueTypeStorageEntries,
-    ) -> Vec<(
-        rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        <Self::Interner as rustc_type_ir::Interner>::Ty,
-    )> {
-        todo!()
+        prev_entries: OpaqueTypeStorageEntries,
+    ) -> Vec<(OpaqueTypeKey<'db>, Ty<'db>)> {
+        self.inner
+            .borrow_mut()
+            .opaque_types()
+            .opaque_types_added_since(prev_entries)
+            .map(|(k, h)| (k, h.ty))
+            .collect()
     }
 
     fn register_hidden_type_in_storage(
         &self,
-        opaque_type_key: rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        hidden_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
-        span: <Self::Interner as rustc_type_ir::Interner>::Span,
-    ) -> Option<<Self::Interner as rustc_type_ir::Interner>::Ty> {
-        todo!()
+        opaque_type_key: OpaqueTypeKey<'db>,
+        hidden_ty: Ty<'db>,
+        _span: Span,
+    ) -> Option<Ty<'db>> {
+        self.register_hidden_type_in_storage(opaque_type_key, OpaqueHiddenType { ty: hidden_ty })
     }
-
     fn add_duplicate_opaque_type(
         &self,
-        opaque_type_key: rustc_type_ir::OpaqueTypeKey<Self::Interner>,
-        hidden_ty: <Self::Interner as rustc_type_ir::Interner>::Ty,
-        span: <Self::Interner as rustc_type_ir::Interner>::Span,
+        opaque_type_key: OpaqueTypeKey<'db>,
+        hidden_ty: Ty<'db>,
+        _span: Span,
     ) {
-        todo!()
+        self.inner
+            .borrow_mut()
+            .opaque_types()
+            .add_duplicate(opaque_type_key, OpaqueHiddenType { ty: hidden_ty })
     }
 
     fn reset_opaque_types(&self) {
-        todo!()
+        let _ = self.take_opaque_types();
     }
 }

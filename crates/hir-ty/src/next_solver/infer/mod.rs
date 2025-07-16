@@ -38,6 +38,7 @@ use type_variable::TypeVariableOrigin;
 use unify_key::{ConstVariableOrigin, ConstVariableValue, ConstVidKey};
 
 use crate::next_solver::fold::BoundVarReplacerDelegate;
+use crate::next_solver::infer::opaque_types::table::OpaqueTypeStorageEntries;
 use crate::next_solver::{BoundRegion, BoundTy, BoundVarKind};
 
 use super::generics::{GenericParamDef, GenericParamDefKind};
@@ -197,7 +198,7 @@ impl<'db> InferCtxtInner<'db> {
     }
 
     #[inline]
-    fn opaque_types(&mut self) -> opaque_types::OpaqueTypeTable<'db, '_> {
+    pub fn opaque_types(&mut self) -> opaque_types::OpaqueTypeTable<'_, 'db> {
         self.opaque_type_storage.with_log(&mut self.undo_log)
     }
 
@@ -222,18 +223,6 @@ impl<'db> InferCtxtInner<'db> {
             .as_mut()
             .expect("region constraints already solved")
             .with_log(&mut self.undo_log)
-    }
-
-    // Iterates through the opaque type definitions without taking them; this holds the
-    // `InferCtxtInner` lock, so make sure to not do anything with `InferCtxt` side-effects
-    // while looping through this.
-    pub fn iter_opaque_types(
-        &self,
-    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> + '_ {
-        self.opaque_type_storage
-            .opaque_types
-            .iter()
-            .map(|(k, v)| (k.clone(), v.hidden_type.clone()))
     }
 }
 
@@ -957,13 +946,13 @@ impl<'db> InferCtxt<'db> {
     }
 
     #[instrument(level = "debug", skip(self), ret)]
-    pub fn take_opaque_types(&self) -> opaque_types::OpaqueTypeMap<'db> {
-        std::mem::take(&mut self.inner.borrow_mut().opaque_type_storage.opaque_types)
+    pub fn take_opaque_types(&self) -> Vec<(OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        self.inner.borrow_mut().opaque_type_storage.take_opaque_types().collect()
     }
 
     #[instrument(level = "debug", skip(self), ret)]
-    pub fn clone_opaque_types(&self) -> opaque_types::OpaqueTypeMap<'db> {
-        self.inner.borrow().opaque_type_storage.opaque_types.clone()
+    pub fn clone_opaque_types(&self) -> Vec<(OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        self.inner.borrow_mut().opaque_type_storage.iter_opaque_types().collect()
     }
 
     #[inline(always)]

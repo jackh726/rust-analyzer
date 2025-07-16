@@ -20,7 +20,7 @@ use rustc_type_ir::lang_items::TraitSolverLangItem;
 use rustc_type_ir::solve::SizedTraitKind;
 use rustc_type_ir::{
     AliasTerm, AliasTermKind, AliasTy, EarlyBinder, Flags, ImplPolarity, InferTy,
-    ProjectionPredicate, TraitPredicate, TraitRef,
+    ProjectionPredicate, TraitPredicate, TraitRef, Upcast,
 };
 use salsa::plumbing::AsId;
 use smallvec::{SmallVec, smallvec};
@@ -896,6 +896,15 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         tls_cache::with_cache(f)
     }
 
+    fn canonical_param_env_cache_get_or_insert<R>(
+        self,
+        param_env: Self::ParamEnv,
+        f: impl FnOnce() -> rustc_type_ir::CanonicalParamEnvCacheEntry<Self>,
+        from_entry: impl FnOnce(&rustc_type_ir::CanonicalParamEnvCacheEntry<Self>) -> R,
+    ) -> R {
+        from_entry(&f())
+    }
+
     fn evaluation_is_concurrent(&self) -> bool {
         false
     }
@@ -1206,6 +1215,29 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
             .map(|p| (p, Span::dummy()))
             .collect();
         rustc_type_ir::EarlyBinder::bind(predicates)
+    }
+
+    fn impl_super_outlives(
+        self,
+        impl_def_id: Self::DefId,
+    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
+        let impl_id = match impl_def_id {
+            SolverDefId::ImplId(id) => id,
+            _ => unreachable!(),
+        };
+        let trait_ref = self.db().impl_trait_ns(impl_id).expect("expected an impl of trait");
+        trait_ref.map_bound(|trait_ref| {
+            let clause: Clause<'_> = trait_ref.upcast(self);
+            Clauses::new_from_iter(
+                self,
+                rustc_type_ir::elaborate::elaborate(self, [clause]).filter(|clause| {
+                    matches!(
+                        clause.kind().skip_binder(),
+                        ClauseKind::TypeOutlives(_) | ClauseKind::RegionOutlives(_)
+                    )
+                }),
+            )
+        })
     }
 
     fn const_conditions(
@@ -1864,24 +1896,8 @@ impl<'db> rustc_type_ir::Interner for DbInterner<'db> {
         false
     }
 
-    fn canonical_param_env_cache_get_or_insert<R>(
-        self,
-        param_env: Self::ParamEnv,
-        f: impl FnOnce() -> rustc_type_ir::CanonicalParamEnvCacheEntry<Self>,
-        from_entry: impl FnOnce(&rustc_type_ir::CanonicalParamEnvCacheEntry<Self>) -> R,
-    ) -> R {
-        todo!()
-    }
-
     fn impl_specializes(self, impl_def_id: Self::DefId, victim_def_id: Self::DefId) -> bool {
         false
-    }
-
-    fn impl_super_outlives(
-        self,
-        impl_def_id: Self::DefId,
-    ) -> rustc_type_ir::EarlyBinder<Self, impl IntoIterator<Item = Self::Clause>> {
-        rustc_type_ir::EarlyBinder::bind([todo!()])
     }
 
     fn next_trait_solver_globally(self) -> bool {

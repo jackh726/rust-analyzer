@@ -1,19 +1,18 @@
+use std::ops::Deref;
+
 use ena::undo_log::UndoLogs;
 use tracing::instrument;
 
-use super::{OpaqueHiddenType, OpaqueTypeDecl, OpaqueTypeMap};
+use super::OpaqueHiddenType;
 use crate::next_solver::{
-    OpaqueTypeKey, Ty,
+    FxIndexMap, OpaqueTypeKey, Ty,
     infer::snapshot::undo_log::{InferCtxtUndoLogs, UndoLog},
 };
 
 #[derive(Default, Debug, Clone)]
 pub(crate) struct OpaqueTypeStorage<'db> {
-    /// Opaque types found in explicit return types and their
-    /// associated fresh inference variable. Writeback resolves these
-    /// variables to get the concrete type, which can be used to
-    /// 'de-opaque' OpaqueTypeDecl, after typeck is done with all functions.
-    pub opaque_types: OpaqueTypeMap<'db>,
+    opaque_types: FxIndexMap<OpaqueTypeKey<'db>, OpaqueHiddenType<'db>>,
+    duplicate_entries: Vec<(OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)>,
 }
 
 /// The number of entries in the opaque type storage at a given point.
@@ -34,9 +33,9 @@ impl rustc_type_ir::inherent::OpaqueTypeStorageEntries for OpaqueTypeStorageEntr
 
 impl<'db> OpaqueTypeStorage<'db> {
     #[instrument(level = "debug")]
-    pub(crate) fn remove(&mut self, key: OpaqueTypeKey<'db>, idx: Option<OpaqueHiddenType<'db>>) {
-        if let Some(idx) = idx {
-            self.opaque_types.get_mut(&key).unwrap().hidden_type = idx;
+    pub(crate) fn remove(&mut self, key: OpaqueTypeKey<'db>, prev: Option<OpaqueHiddenType<'db>>) {
+        if let Some(prev) = prev {
+            *self.opaque_types.get_mut(&key).unwrap() = prev;
         } else {
             // FIXME(#120456) - is `swap_remove` correct?
             match self.opaque_types.swap_remove(&key) {
@@ -48,11 +47,75 @@ impl<'db> OpaqueTypeStorage<'db> {
         }
     }
 
+    pub(crate) fn pop_duplicate_entry(&mut self) {
+        let entry = self.duplicate_entries.pop();
+        assert!(entry.is_some());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let OpaqueTypeStorage { opaque_types, duplicate_entries } = self;
+        opaque_types.is_empty() && duplicate_entries.is_empty()
+    }
+
+    pub(crate) fn take_opaque_types(
+        &mut self,
+    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        let OpaqueTypeStorage { opaque_types, duplicate_entries } = self;
+        std::mem::take(opaque_types).into_iter().chain(std::mem::take(duplicate_entries))
+    }
+
+    pub fn num_entries(&self) -> OpaqueTypeStorageEntries {
+        OpaqueTypeStorageEntries {
+            opaque_types: self.opaque_types.len(),
+            duplicate_entries: self.duplicate_entries.len(),
+        }
+    }
+
+    pub fn opaque_types_added_since(
+        &self,
+        prev_entries: OpaqueTypeStorageEntries,
+    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        self.opaque_types
+            .iter()
+            .skip(prev_entries.opaque_types)
+            .map(|(k, v)| (*k, *v))
+            .chain(self.duplicate_entries.iter().skip(prev_entries.duplicate_entries).copied())
+    }
+
+    /// Only returns the opaque types from the lookup table. These are used
+    /// when normalizing opaque types and have a unique key.
+    ///
+    /// Outside of canonicalization one should generally use `iter_opaque_types`
+    /// to also consider duplicate entries.
+    pub fn iter_lookup_table(
+        &self,
+    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        self.opaque_types.iter().map(|(k, v)| (*k, *v))
+    }
+
+    /// Only returns the opaque types which are stored in `duplicate_entries`.
+    ///
+    /// These have to considered when checking all opaque type uses but are e.g.
+    /// irrelevant for canonical inputs as nested queries never meaningfully
+    /// accesses them.
+    pub fn iter_duplicate_entries(
+        &self,
+    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        self.duplicate_entries.iter().copied()
+    }
+
+    pub fn iter_opaque_types(
+        &self,
+    ) -> impl Iterator<Item = (OpaqueTypeKey<'db>, OpaqueHiddenType<'db>)> {
+        let OpaqueTypeStorage { opaque_types, duplicate_entries } = self;
+        opaque_types.iter().map(|(k, v)| (*k, *v)).chain(duplicate_entries.iter().copied())
+    }
+
     #[inline]
     pub(crate) fn with_log<'a>(
         &'a mut self,
         undo_log: &'a mut InferCtxtUndoLogs<'db>,
-    ) -> OpaqueTypeTable<'db, 'a> {
+    ) -> OpaqueTypeTable<'a, 'db> {
         OpaqueTypeTable { storage: self, undo_log }
     }
 }
@@ -65,27 +128,37 @@ impl<'db> Drop for OpaqueTypeStorage<'db> {
     }
 }
 
-pub(crate) struct OpaqueTypeTable<'db, 'a> {
+pub(crate) struct OpaqueTypeTable<'a, 'db> {
     storage: &'a mut OpaqueTypeStorage<'db>,
 
     undo_log: &'a mut InferCtxtUndoLogs<'db>,
 }
+impl<'db> Deref for OpaqueTypeTable<'_, 'db> {
+    type Target = OpaqueTypeStorage<'db>;
+    fn deref(&self) -> &Self::Target {
+        self.storage
+    }
+}
 
-impl<'db, 'a> OpaqueTypeTable<'db, 'a> {
+impl<'a, 'db> OpaqueTypeTable<'a, 'db> {
     #[instrument(skip(self), level = "debug")]
-    pub(crate) fn register(
+    pub fn register(
         &mut self,
         key: OpaqueTypeKey<'db>,
         hidden_type: OpaqueHiddenType<'db>,
     ) -> Option<Ty<'db>> {
-        if let Some(decl) = self.storage.opaque_types.get_mut(&key) {
-            let prev = std::mem::replace(&mut decl.hidden_type, hidden_type);
-            self.undo_log.push(UndoLog::OpaqueTypes(key, Some(prev.clone())));
+        if let Some(entry) = self.storage.opaque_types.get_mut(&key) {
+            let prev = std::mem::replace(entry, hidden_type);
+            self.undo_log.push(UndoLog::OpaqueTypes(key, Some(prev)));
             return Some(prev.ty);
         }
-        let decl = OpaqueTypeDecl { hidden_type };
-        self.storage.opaque_types.insert(key.clone(), decl);
+        self.storage.opaque_types.insert(key, hidden_type);
         self.undo_log.push(UndoLog::OpaqueTypes(key, None));
         None
+    }
+
+    pub fn add_duplicate(&mut self, key: OpaqueTypeKey<'db>, hidden_type: OpaqueHiddenType<'db>) {
+        self.storage.duplicate_entries.push((key, hidden_type));
+        self.undo_log.push(UndoLog::DuplicateOpaqueType);
     }
 }
