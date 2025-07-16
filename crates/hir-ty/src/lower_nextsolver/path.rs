@@ -189,6 +189,9 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
         infer_args: bool,
     ) -> (Ty<'db>, Option<TypeNs>) {
         let remaining_segments = self.segments.skip(self.current_segment_idx + 1);
+        tracing::debug!(?remaining_segments);
+        let rem_seg_len = remaining_segments.len();
+        tracing::debug!(?rem_seg_len);
 
         let ty = match resolution {
             TypeNs::TraitId(trait_) => {
@@ -198,6 +201,7 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
                             trait_,
                             Ty::new_error(self.ctx.interner, ErrorGuaranteed),
                         );
+                        tracing::debug!(?trait_ref);
                         self.skip_resolved_segment();
                         let segment = self.current_or_prev_segment;
                         let trait_id = match trait_ref.def_id {
@@ -207,6 +211,7 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
                         let found =
                             trait_id.trait_items(self.ctx.db).associated_type_by_name(segment.name);
 
+                        tracing::debug!(?found);
                         match found {
                             Some(associated_ty) => {
                                 // FIXME: `substs_from_path_segment()` pushes `TyKind::Error` for every parent
@@ -302,6 +307,8 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
             }
         };
 
+        tracing::debug!(?ty);
+
         self.skip_resolved_segment();
         self.lower_ty_relative_path(ty, Some(resolution))
     }
@@ -349,6 +356,7 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
         Some(res)
     }
 
+    #[tracing::instrument(skip(self), ret)]
     pub(crate) fn resolve_path_in_type_ns(&mut self) -> Option<(TypeNs, Option<usize>)> {
         let (resolution, remaining_index, _, prefix_info) =
             self.ctx.resolver.resolve_path_in_type_ns_with_prefix_info(self.ctx.db, self.path)?;
@@ -494,6 +502,7 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
         Some(res)
     }
 
+    #[tracing::instrument(skip(self), ret)]
     fn select_associated_type(&mut self, res: Option<TypeNs>) -> Ty<'db> {
         let interner = self.ctx.interner;
         let Some(res) = res else {
@@ -510,11 +519,14 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
             };
             let mut checked_traits = FxHashSet::default();
             let mut check_trait = |trait_id: TraitId| {
+                let name = &db.trait_signature(trait_id).name;
+                tracing::debug!(?trait_id, ?name);
                 if !checked_traits.insert(trait_id) {
                     return None;
                 }
                 let data = trait_id.trait_items(db);
 
+                tracing::debug!(?data.items);
                 for (name, assoc_id) in &data.items {
                     if let &AssocItemId::TypeAliasId(alias) = assoc_id {
                         if name != assoc_name {
@@ -541,30 +553,32 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
                 }
                 None
             };
-            let mut stack: SmallVec<[GenericDefId; 4]> = smallvec![GenericDefId::TraitId(trait_id)];
+            let mut stack: SmallVec<[_; 4]> = smallvec![trait_id];
             while let Some(trait_def_id) = stack.pop() {
-                if let Some(alias) = check_trait(trait_id) {
+                if let Some(alias) = check_trait(trait_def_id) {
                     return alias;
                 }
                 for pred in generic_predicates_filtered_by(
                     db,
-                    trait_def_id,
+                    GenericDefId::TraitId(trait_def_id),
                     PredicateFilter::SelfTrait,
-                    |pred| pred == trait_def_id,
+                    |pred| pred == GenericDefId::TraitId(trait_def_id),
                 )
                 .0
                 .deref()
                 {
+                    tracing::debug!(?pred);
                     let trait_id = match pred.kind().skip_binder() {
-                        rustc_type_ir::ClauseKind::Trait(trait_id) => trait_id.def_id(),
+                        rustc_type_ir::ClauseKind::Trait(pred) => pred.def_id(),
                         _ => continue,
                     };
                     let trait_id = match trait_id {
                         SolverDefId::TraitId(trait_id) => trait_id,
                         _ => continue,
                     };
-                    stack.push(GenericDefId::TraitId(trait_id));
+                    stack.push(trait_id);
                 }
+                tracing::debug!(?stack);
             }
 
             Ty::new_error(interner, ErrorGuaranteed)
@@ -587,6 +601,8 @@ impl<'a, 'b, 'db> PathLoweringContext<'a, 'b, 'db> {
                 // `generic_predicates_for_param`, but not sure that it's sufficient,
                 // see FIXME in `search`.
                 if let GenericDefId::TraitId(trait_id) = param_id.parent() {
+                    let trait_name = &db.trait_signature(trait_id).name;
+                    tracing::debug!(?trait_name);
                     let trait_generics = generics(db, trait_id.into());
                     tracing::debug!(?trait_generics);
                     if trait_generics[param_id.local_id()].is_trait_self() {

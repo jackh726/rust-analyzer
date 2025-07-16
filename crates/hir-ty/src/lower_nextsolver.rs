@@ -528,6 +528,7 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
         &'b mut self,
         where_predicate: &'b WherePredicate,
         ignore_bindings: bool,
+        generics: &Generics,
         predicate_filter: PredicateFilter,
     ) -> impl Iterator<Item = Clause<'db>> + use<'a, 'b, 'db> {
         match where_predicate {
@@ -538,6 +539,11 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
                     let self_type = 'is_self: {
                         if let TypeRef::Path(path) = target_type {
                             if path.is_self_type() {
+                                break 'is_self true;
+                            }
+                        }
+                        if let TypeRef::TypeParam(param) = target_type {
+                            if generics[param.local_id()].is_trait_self() {
                                 break 'is_self true;
                             }
                         }
@@ -1179,7 +1185,8 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
                     }
                 }();
                 if lower {
-                    ctx.lower_where_predicate(pred, true, PredicateFilter::All).for_each(drop);
+                    ctx.lower_where_predicate(pred, true, &generics, PredicateFilter::All)
+                        .for_each(drop);
                 }
                 return false;
             }
@@ -1219,7 +1226,12 @@ pub(crate) fn generic_predicates_for_param_query<'db>(
         ctx.store = maybe_parent_generics.store();
         for pred in maybe_parent_generics.where_predicates() {
             if predicate(pred, &mut ctx) {
-                predicates.extend(ctx.lower_where_predicate(pred, true, PredicateFilter::All));
+                predicates.extend(ctx.lower_where_predicate(
+                    pred,
+                    true,
+                    &maybe_parent_generics,
+                    PredicateFilter::All,
+                ));
             }
         }
     }
@@ -1320,7 +1332,12 @@ where
             if filter(maybe_parent_generics.def()) {
                 // We deliberately use `generics` and not `maybe_parent_generics` here. This is not a mistake!
                 // If we use the parent generics
-                predicates.extend(ctx.lower_where_predicate(pred, false, predicate_filter));
+                predicates.extend(ctx.lower_where_predicate(
+                    pred,
+                    false,
+                    &maybe_parent_generics,
+                    predicate_filter,
+                ));
             }
         }
     }
