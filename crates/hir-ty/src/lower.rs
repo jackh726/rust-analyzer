@@ -1192,7 +1192,7 @@ pub(crate) fn generic_predicates_without_parent_with_diagnostics_query(
 
 /// Resolve the where clause(s) of an item with generics,
 /// with a given filter
-pub(crate) fn generic_predicates_filtered_by<F>(
+fn generic_predicates_filtered_by<F>(
     db: &dyn HirDatabase,
     def: GenericDefId,
     filter: F,

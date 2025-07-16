@@ -11,7 +11,3 @@ linker = "rust-lld"
 
 [env]
 CARGO_WORKSPACE_DIR = { value = "", relative = true }
-
-[unstable.git]
-shallow_index = true
-shallow_deps = true

@@ -40,7 +40,6 @@ use crate::next_solver::{
 
 use super::{
     InferCtxt, InferOk, InferResult, TypeTrace, ValuePairs,
-    relate::lattice::{LatticeOp, LatticeOpKind},
     traits::{Obligation, ObligationCause},
 };
 
@@ -221,25 +220,6 @@ impl<'a, 'db> At<'a, 'db> {
         }
     }
 
-    /// Computes the least-upper-bound, or mutual supertype, of two
-    /// values. The order of the arguments doesn't matter, but since
-    /// this can result in an error (e.g., if asked to compute LUB of
-    /// u32 and i32), it is meaningful to call one of them the
-    /// "expected type".
-    pub fn lub<T>(self, expected: T, actual: T) -> InferResult<'db, T>
-    where
-        T: ToTrace<'db>,
-    {
-        let mut op = LatticeOp::new(
-            self.infcx,
-            ToTrace::to_trace(self.cause, expected.clone(), actual.clone()),
-            self.param_env,
-            LatticeOpKind::Lub,
-        );
-        let value = op.relate(expected, actual)?;
-        Ok(InferOk { value, obligations: op.into_obligations() })
-    }
-
     fn goals_to_obligations(&self, goals: Vec<Goal<'db, Predicate<'db>>>) -> InferOk<'db, ()> {
         InferOk {
             value: (),
@@ -257,25 +237,6 @@ impl<'a, 'db> At<'a, 'db> {
         }
     }
 }
-
-/*
-impl ToTrace for ImplSubject {
-    fn to_trace(cause: &ObligationCause, a: Self, b: Self) -> TypeTrace {
-        match (a, b) {
-            (ImplSubject::Trait(trait_ref_a), ImplSubject::Trait(trait_ref_b)) => {
-                ToTrace::to_trace(cause, trait_ref_a, trait_ref_b)
-            }
-            (ImplSubject::Inherent(ty_a), ImplSubject::Inherent(ty_b)) => {
-                ToTrace::to_trace(cause, ty_a, ty_b)
-            }
-            (ImplSubject::Trait(_), ImplSubject::Inherent(_))
-            | (ImplSubject::Inherent(_), ImplSubject::Trait(_)) => {
-                panic!("can not trace TraitRef and Ty");
-            }
-        }
-    }
-}
-*/
 
 impl<'db> ToTrace<'db> for Ty<'db> {
     fn to_trace(cause: &ObligationCause, a: Self, b: Self) -> TypeTrace<'db> {

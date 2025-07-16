@@ -9,7 +9,6 @@ pub use at::DefineOpaqueTypes;
 use ena::undo_log::UndoLogs;
 use ena::unify as ut;
 use extension_traits::extension;
-pub use freshen::TypeFreshener;
 use intern::Symbol;
 use opaque_types::{OpaqueHiddenType, OpaqueTypeStorage};
 use project::ProjectionCacheStorage;
@@ -55,7 +54,6 @@ pub mod at;
 pub mod canonical;
 mod context;
 mod data_structures;
-mod freshen;
 mod opaque_types;
 mod project;
 pub mod region_constraints;
@@ -600,10 +598,6 @@ impl<'db> InferCtxt<'db> {
         self.typing_mode.clone()
     }
 
-    pub fn freshen<T: TypeFoldable<DbInterner<'db>>>(&self, t: T) -> T {
-        t.fold_with(&mut self.freshener())
-    }
-
     /// Returns the origin of the type variable identified by `vid`.
     ///
     /// No attempt is made to resolve `vid` to its root variable.
@@ -619,10 +613,6 @@ impl<'db> InferCtxt<'db> {
             ConstVariableValue::Known { .. } => None,
             ConstVariableValue::Unknown { origin, .. } => Some(origin),
         }
-    }
-
-    pub fn freshener<'b>(&'b self) -> TypeFreshener<'b, 'db> {
-        freshen::TypeFreshener::new(self)
     }
 
     pub fn unresolved_variables(&self) -> Vec<Ty<'db>> {
@@ -1097,40 +1087,10 @@ impl<'db> InferCtxt<'db> {
         value.fold_with(&mut r)
     }
 
-    pub fn resolve_numeric_literals_with_default<T>(&self, value: T) -> T
-    where
-        T: TypeFoldable<DbInterner<'db>>,
-    {
-        if !value.has_infer() {
-            return value; // Avoid duplicated type-folding.
-        }
-        let mut r = InferenceLiteralEraser { interner: self.interner };
-        value.fold_with(&mut r)
-    }
-
     pub fn probe_const_var(&self, vid: ConstVid) -> Result<Const<'db>, UniverseIndex> {
         match self.inner.borrow_mut().const_unification_table().probe_value(vid) {
             ConstVariableValue::Known { value } => Ok(value),
             ConstVariableValue::Unknown { origin: _, universe } => Err(universe),
-        }
-    }
-
-    /// Attempts to resolve all type/region/const variables in
-    /// `value`. Region inference must have been run already (e.g.,
-    /// by calling `resolve_regions_and_report_errors`). If some
-    /// variable was never unified, an `Err` results.
-    ///
-    /// This method is idempotent, but it not typically not invoked
-    /// except during the writeback phase.
-    pub fn fully_resolve<T: TypeFoldable<DbInterner<'db>>>(&self, value: T) -> FixupResult<T> {
-        match resolve::fully_resolve(self, value) {
-            Ok(value) => {
-                if value.has_non_region_infer() || value.has_infer_regions() {
-                    panic!("`{value:?}` is not fully resolved");
-                }
-                Ok(value)
-            }
-            Err(e) => Err(e),
         }
     }
 
@@ -1185,22 +1145,6 @@ impl<'db> InferCtxt<'db> {
         }
         let delegate = ToFreshVars { args };
         self.interner.replace_bound_vars_uncached(value, delegate)
-    }
-
-    /// See the [`region_constraints::RegionConstraintCollector::verify_generic_bound`] method.
-    pub(crate) fn verify_generic_bound(
-        &self,
-        origin: SubregionOrigin<'db>,
-        kind: GenericKind<'db>,
-        a: Region<'db>,
-        bound: VerifyBound<'db>,
-    ) {
-        debug!("verify_generic_bound({:?}, {:?} <: {:?})", kind, a, bound);
-
-        self.inner
-            .borrow_mut()
-            .unwrap_region_constraints()
-            .verify_generic_bound(origin, kind, a, bound);
     }
 
     /// Obtains the latest type of the given closure; this may be a
@@ -1356,30 +1300,6 @@ impl TyOrConstInferVar {
         match ct.kind() {
             ConstKind::Infer(InferConst::Var(v)) => Some(TyOrConstInferVar::Const(v)),
             _ => None,
-        }
-    }
-}
-
-/// Replace `{integer}` with `i32` and `{float}` with `f64`.
-/// Used only for diagnostics.
-struct InferenceLiteralEraser<'db> {
-    interner: DbInterner<'db>,
-}
-
-impl<'db> TypeFolder<DbInterner<'db>> for InferenceLiteralEraser<'db> {
-    fn cx(&self) -> DbInterner<'db> {
-        self.interner
-    }
-
-    fn fold_ty(&mut self, ty: Ty<'db>) -> Ty<'db> {
-        match ty.clone().kind() {
-            TyKind::Infer(InferTy::IntVar(_) | InferTy::FreshIntTy(_)) => {
-                Ty::new_int(self.interner, IntTy::I32)
-            }
-            TyKind::Infer(InferTy::FloatVar(_) | InferTy::FreshFloatTy(_)) => {
-                Ty::new_float(self.interner, FloatTy::F64)
-            }
-            _ => ty.super_fold_with(self),
         }
     }
 }

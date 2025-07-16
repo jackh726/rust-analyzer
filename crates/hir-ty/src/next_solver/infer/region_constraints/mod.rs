@@ -520,16 +520,6 @@ impl<'db> RegionConstraintCollector<'db, '_> {
         }
     }
 
-    pub(super) fn verify_generic_bound(
-        &mut self,
-        origin: SubregionOrigin<'db>,
-        kind: GenericKind<'db>,
-        sub: Region<'db>,
-        bound: VerifyBound<'db>,
-    ) {
-        self.add_verify(Verify { kind, origin, region: sub, bound });
-    }
-
     pub(super) fn lub_regions(
         &mut self,
         cx: DbInterner<'db>,

@@ -119,7 +119,7 @@ impl<'a> LayoutCx<'a> {
     }
 }
 
-pub(super) fn layout_of_simd_ty(
+fn layout_of_simd_ty(
     db: &dyn HirDatabase,
     id: StructId,
     repr_packed: bool,

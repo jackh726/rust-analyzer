@@ -40,7 +40,6 @@ use rustc_type_ir::{
     ir_print, relate,
 };
 
-use crate::lower::generic_predicates_filtered_by;
 use crate::lower_nextsolver::{self, TyLoweringContext};
 use crate::method_resolution::{ALL_FLOAT_FPS, ALL_INT_FPS, TyFingerprint};
 use crate::next_solver::util::{explicit_item_bounds, for_trait_impls};
