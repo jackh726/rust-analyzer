@@ -106,7 +106,6 @@ impl<'db, P> From<Obligation<'db, P>> for Goal<'db, P> {
 
 pub type PredicateObligation<'db> = Obligation<'db, Predicate<'db>>;
 pub type TraitObligation<'db> = Obligation<'db, TraitPredicate<'db>>;
-pub type PolyTraitObligation<'db> = Obligation<'db, PolyTraitPredicate<'db>>;
 
 pub type PredicateObligations<'db> = Vec<PredicateObligation<'db>>;
 
@@ -123,11 +122,6 @@ impl<'db> PredicateObligation<'db> {
         })
     }
 }
-
-/// A callback that can be provided to `inspect_typeck`. Invoked on evaluation
-/// of root obligations.
-pub type ObligationInspector<'db> =
-    fn(&InferCtxt<'db>, &PredicateObligation<'db>, Result<Certainty, NoSolution>);
 
 impl<'db, O> Obligation<'db, O> {
     pub fn new(
@@ -180,15 +174,5 @@ impl<'db, O> Obligation<'db, O> {
             self.param_env.clone(),
             value,
         )
-    }
-}
-
-impl<'db> PolyTraitObligation<'db> {
-    pub fn polarity(&self) -> PredicatePolarity {
-        self.predicate.clone().skip_binder().polarity
-    }
-
-    pub fn self_ty(&self) -> Binder<'db, Ty<'db>> {
-        self.predicate.clone().map_bound(|p| p.self_ty())
     }
 }

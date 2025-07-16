@@ -86,17 +86,4 @@ impl<'db> InferCtxt<'db> {
         debug!(?value);
         f(value)
     }
-
-    /// See [RegionConstraintCollector::leak_check][1]. We only check placeholder
-    /// leaking into `outer_universe`, i.e. placeholders which cannot be named by that
-    /// universe.
-    ///
-    /// [1]: crate::infer::region_constraints::RegionConstraintCollector::leak_check
-    pub fn leak_check(
-        &self,
-        outer_universe: UniverseIndex,
-        only_consider_snapshot: Option<&CombinedSnapshot>,
-    ) -> RelateResult<'db, ()> {
-        Ok(())
-    }
 }

@@ -74,13 +74,11 @@ impl<'db> InferCtxt<'db> {
             interner: self.interner,
             typing_mode: self.typing_mode.clone(),
             considering_regions: self.considering_regions,
-            skip_leak_check: self.skip_leak_check,
             inner: self.inner.clone(),
             reported_trait_errors: self.reported_trait_errors.clone(),
             reported_signature_mismatch: self.reported_signature_mismatch.clone(),
             tainted_by_errors: self.tainted_by_errors.clone(),
             universe: self.universe.clone(),
-            obligation_inspector: self.obligation_inspector.clone(),
         }
     }
 
@@ -94,13 +92,11 @@ impl<'db> InferCtxt<'db> {
             interner: self.interner,
             typing_mode,
             considering_regions: self.considering_regions,
-            skip_leak_check: self.skip_leak_check,
             inner: self.inner.clone(),
             reported_trait_errors: self.reported_trait_errors.clone(),
             reported_signature_mismatch: self.reported_signature_mismatch.clone(),
             tainted_by_errors: self.tainted_by_errors.clone(),
             universe: self.universe.clone(),
-            obligation_inspector: self.obligation_inspector.clone(),
         };
         forked
     }

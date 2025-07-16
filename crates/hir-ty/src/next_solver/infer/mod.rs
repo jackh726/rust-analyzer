@@ -31,7 +31,7 @@ use rustc_type_ir::{
 use rustc_type_ir::{TypeFoldable, TypeFolder, TypeSuperFoldable};
 use snapshot::undo_log::InferCtxtUndoLogs;
 use tracing::{debug, instrument};
-use traits::{ObligationCause, ObligationInspector, PredicateObligations};
+use traits::{ObligationCause, PredicateObligations};
 use type_variable::TypeVariableOrigin;
 use unify_key::{ConstVariableOrigin, ConstVariableValue, ConstVidKey};
 
@@ -56,7 +56,6 @@ mod opaque_types;
 pub mod region_constraints;
 pub mod relate;
 pub mod resolve;
-pub(crate) mod select;
 pub(crate) mod snapshot;
 mod traits;
 mod type_variable;
@@ -227,12 +226,6 @@ pub struct InferCtxt<'db> {
     /// solving is left to borrowck instead.
     pub considering_regions: bool,
 
-    /// If set, this flag causes us to skip the 'leak check' during
-    /// higher-ranked subtyping operations. This flag is a temporary one used
-    /// to manage the removal of the leak-check: for the time being, we still run the
-    /// leak-check, but we issue warnings.
-    skip_leak_check: bool,
-
     pub inner: RefCell<InferCtxtInner<'db>>,
 
     /// The set of predicates on which errors have been reported, to
@@ -260,8 +253,6 @@ pub struct InferCtxt<'db> {
     /// when we enter into a higher-ranked (`for<..>`) type or trait
     /// bound.
     universe: Cell<UniverseIndex>,
-
-    pub obligation_inspector: Cell<Option<ObligationInspector<'db>>>,
 }
 
 /// See the `error_reporting` module for more details.
@@ -514,24 +505,18 @@ pub struct RegionObligation<'db> {
 pub struct InferCtxtBuilder<'db> {
     interner: DbInterner<'db>,
     considering_regions: bool,
-    skip_leak_check: bool,
 }
 
 #[extension(pub trait DbInternerInferExt)]
 impl<'db> DbInterner<'db> {
     fn infer_ctxt(self) -> InferCtxtBuilder<'db> {
-        InferCtxtBuilder { interner: self, considering_regions: true, skip_leak_check: false }
+        InferCtxtBuilder { interner: self, considering_regions: true }
     }
 }
 
 impl<'db> InferCtxtBuilder<'db> {
     pub fn ignoring_regions(mut self) -> Self {
         self.considering_regions = false;
-        self
-    }
-
-    pub fn skip_leak_check(mut self, skip_leak_check: bool) -> Self {
-        self.skip_leak_check = skip_leak_check;
         self
     }
 
@@ -556,18 +541,16 @@ impl<'db> InferCtxtBuilder<'db> {
     }
 
     pub fn build(&mut self, typing_mode: TypingMode<'db>) -> InferCtxt<'db> {
-        let InferCtxtBuilder { interner, considering_regions, skip_leak_check } = *self;
+        let InferCtxtBuilder { interner, considering_regions } = *self;
         InferCtxt {
             interner,
             typing_mode,
             considering_regions,
-            skip_leak_check,
             inner: RefCell::new(InferCtxtInner::new()),
             reported_trait_errors: Default::default(),
             reported_signature_mismatch: Default::default(),
             tainted_by_errors: Cell::new(None),
             universe: Cell::new(UniverseIndex::ROOT),
-            obligation_inspector: Cell::new(None),
         }
     }
 }
@@ -1215,15 +1198,6 @@ impl<'db> InferCtxt<'db> {
                 }
             }
         }
-    }
-
-    /// Attach a callback to be invoked on each root obligation evaluated in the new trait solver.
-    pub fn attach_obligation_inspector(&self, inspector: ObligationInspector<'db>) {
-        debug_assert!(
-            self.obligation_inspector.get().is_none(),
-            "shouldn't override a set obligation inspector"
-        );
-        self.obligation_inspector.set(Some(inspector));
     }
 }
 

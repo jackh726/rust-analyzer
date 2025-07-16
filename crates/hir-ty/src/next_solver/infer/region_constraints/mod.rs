@@ -481,44 +481,6 @@ impl<'db> RegionConstraintCollector<'db, '_> {
         }
     }
 
-    pub(super) fn lub_regions(
-        &mut self,
-        cx: DbInterner<'db>,
-        origin: SubregionOrigin<'db>,
-        a: Region<'db>,
-        b: Region<'db>,
-    ) -> Region<'db> {
-        // cannot add constraints once regions are resolved
-        debug!("RegionConstraintCollector: lub_regions({:?}, {:?})", a, b);
-        if a.is_static() || b.is_static() {
-            a // nothing lives longer than static
-        } else if a == b {
-            a // LUB(a,a) = a
-        } else {
-            self.combine_vars(cx, Lub, a, b, origin)
-        }
-    }
-
-    pub(super) fn glb_regions(
-        &mut self,
-        cx: DbInterner<'db>,
-        origin: SubregionOrigin<'db>,
-        a: Region<'db>,
-        b: Region<'db>,
-    ) -> Region<'db> {
-        // cannot add constraints once regions are resolved
-        debug!("RegionConstraintCollector: glb_regions({:?}, {:?})", a, b);
-        if a.is_static() {
-            b // static lives longer than everything else
-        } else if b.is_static() {
-            a // static lives longer than everything else
-        } else if a == b {
-            a // GLB(a,a) = a
-        } else {
-            self.combine_vars(cx, Glb, a, b, origin)
-        }
-    }
-
     /// Resolves a region var to its value in the unification table, if it exists.
     /// Otherwise, it is resolved to the root `ReVar` in the table.
     pub fn opportunistic_resolve_var(
@@ -591,27 +553,6 @@ impl<'db> RegionConstraintCollector<'db, '_> {
             },
             RegionKind::ReBound(..) => panic!("universe(): encountered bound region {:?}", region),
         }
-    }
-
-    pub fn vars_since_snapshot(
-        &self,
-        value_count: usize,
-    ) -> (Range<RegionVid>, Vec<RegionVariableOrigin>) {
-        let range =
-            RegionVid::from(value_count)..RegionVid::from(self.storage.unification_table.len());
-        (
-            range.clone(),
-            (range.start.index()..range.end.index())
-                .map(|index| self.storage.var_infos[RegionVid::from(index)].origin.clone())
-                .collect(),
-        )
-    }
-
-    /// See `InferCtxt::region_constraints_added_in_snapshot`.
-    pub fn region_constraints_added_in_snapshot(&self, mark: &Snapshot) -> bool {
-        self.undo_log
-            .region_constraints_in_snapshot(mark)
-            .any(|elt| matches!(elt, AddConstraint(_)))
     }
 
     #[inline]
