@@ -58,7 +58,7 @@ pub(crate) struct PathDiagnosticCallback<'a, 'db> {
         fn(&CallbackData<'_>, &mut TyLoweringContext<'db, '_>, PathLoweringDiagnostic),
 }
 
-pub(crate) struct PathLoweringContext<'a, 'b, 'db: 'a + 'b> {
+pub(crate) struct PathLoweringContext<'a, 'b, 'db> {
     ctx: &'a mut TyLoweringContext<'db, 'b>,
     on_diagnostic: PathDiagnosticCallback<'a, 'db>,
     path: &'a Path,
@@ -1425,7 +1425,7 @@ fn unknown_subst<'db>(
     )
 }
 
-pub fn builtin<'db>(interner: DbInterner<'db>, builtin: BuiltinType) -> Ty<'db> {
+pub(crate) fn builtin<'db>(interner: DbInterner<'db>, builtin: BuiltinType) -> Ty<'db> {
     match builtin {
         BuiltinType::Char => Ty::new(interner, rustc_type_ir::TyKind::Char),
         BuiltinType::Bool => Ty::new_bool(interner),

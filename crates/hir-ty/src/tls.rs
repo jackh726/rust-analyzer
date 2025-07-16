@@ -10,7 +10,7 @@ use crate::{
 };
 use hir_def::{AdtId, ItemContainerId, Lookup, TypeAliasId};
 
-pub(crate) use unsafe_tls::{set_current_program, with_current_program};
+pub(crate) use unsafe_tls::with_current_program;
 
 pub(crate) struct DebugContext<'a>(&'a dyn HirDatabase);
 
@@ -125,7 +125,6 @@ impl DebugContext<'_> {
 
 mod unsafe_tls {
     use super::DebugContext;
-    use crate::db::HirDatabase;
     use scoped_tls::scoped_thread_local;
 
     scoped_thread_local!(static PROGRAM: DebugContext<'_>);
@@ -134,20 +133,5 @@ mod unsafe_tls {
         op: impl for<'a> FnOnce(Option<&'a DebugContext<'a>>) -> R,
     ) -> R {
         if PROGRAM.is_set() { PROGRAM.with(|prog| op(Some(prog))) } else { op(None) }
-    }
-
-    pub(crate) fn set_current_program<OP, R>(p: &dyn HirDatabase, op: OP) -> R
-    where
-        OP: FnOnce() -> R,
-    {
-        let ctx = DebugContext(p);
-        // we're transmuting the lifetime in the DebugContext to static. This is
-        // fine because we only keep the reference for the lifetime of this
-        // function, *and* the only way to access the context is through
-        // `with_current_program`, which hides the lifetime through the `for`
-        // type.
-        let static_p: &DebugContext<'static> =
-            unsafe { std::mem::transmute::<&DebugContext<'_>, &DebugContext<'static>>(&ctx) };
-        PROGRAM.set(static_p, op)
     }
 }

@@ -1,3 +1,5 @@
+// FIXME(next-solver): this should get removed as things get moved to rustc_type_ir from chalk_ir
+#![allow(unused)]
 //! Constant evaluation details
 
 use base_db::Crate;

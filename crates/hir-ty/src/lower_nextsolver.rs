@@ -1,3 +1,5 @@
+// FIXME(next-solver): this should get removed as things get moved to rustc_type_ir from chalk_ir
+#![allow(unused)]
 //! Methods for lowering the HIR to types. There are two main cases here:
 //!
 //!  - Lowering a type reference like `&usize` or `Option<foo::bar::Baz>` to a
@@ -71,11 +73,11 @@ pub struct ImplTraits<'db> {
 }
 
 #[derive(PartialEq, Eq, Debug, Hash)]
-pub struct ImplTrait<'db> {
+pub(crate) struct ImplTrait<'db> {
     pub(crate) predicates: Vec<Clause<'db>>,
 }
 
-pub type ImplTraitIdx<'db> = Idx<ImplTrait<'db>>;
+pub(crate) type ImplTraitIdx<'db> = Idx<ImplTrait<'db>>;
 
 #[derive(Debug, Default)]
 struct ImplTraitLoweringState<'db> {
@@ -94,7 +96,7 @@ impl<'db> ImplTraitLoweringState<'db> {
 }
 
 #[derive(Debug, Clone)]
-pub enum LifetimeElisionKind<'db> {
+pub(crate) enum LifetimeElisionKind<'db> {
     /// Create a new anonymous lifetime parameter and reference it.
     ///
     /// If `report_in_path`, report an error when encountering lifetime elision in a path:
@@ -163,7 +165,7 @@ impl<'db> LifetimeElisionKind<'db> {
 }
 
 #[derive(Debug)]
-pub struct TyLoweringContext<'db: 'a, 'a> {
+pub(crate) struct TyLoweringContext<'db, 'a> {
     pub db: &'db dyn HirDatabase,
     interner: DbInterner<'db>,
     resolver: &'a Resolver<'db>,
@@ -178,8 +180,8 @@ pub struct TyLoweringContext<'db: 'a, 'a> {
     lifetime_elision: LifetimeElisionKind<'db>,
 }
 
-impl<'db: 'a, 'a> TyLoweringContext<'db, 'a> {
-    pub fn new(
+impl<'db, 'a> TyLoweringContext<'db, 'a> {
+    pub(crate) fn new(
         db: &'db dyn HirDatabase,
         resolver: &'a Resolver<'db>,
         store: &'a ExpressionStore,
@@ -203,7 +205,7 @@ impl<'db: 'a, 'a> TyLoweringContext<'db, 'a> {
         }
     }
 
-    pub fn with_debruijn<T>(
+    pub(crate) fn with_debruijn<T>(
         &mut self,
         debruijn: DebruijnIndex,
         f: impl FnOnce(&mut TyLoweringContext<'db, '_>) -> T,
@@ -214,7 +216,7 @@ impl<'db: 'a, 'a> TyLoweringContext<'db, 'a> {
         result
     }
 
-    pub fn with_shifted_in<T>(
+    pub(crate) fn with_shifted_in<T>(
         &mut self,
         debruijn: DebruijnIndex,
         f: impl FnOnce(&mut TyLoweringContext<'db, '_>) -> T,
@@ -222,22 +224,22 @@ impl<'db: 'a, 'a> TyLoweringContext<'db, 'a> {
         self.with_debruijn(self.in_binders.shifted_in(debruijn.as_u32()), f)
     }
 
-    pub fn with_impl_trait_mode(self, impl_trait_mode: ImplTraitLoweringMode) -> Self {
+    pub(crate) fn with_impl_trait_mode(self, impl_trait_mode: ImplTraitLoweringMode) -> Self {
         Self { impl_trait_mode: ImplTraitLoweringState::new(impl_trait_mode), ..self }
     }
 
-    pub fn impl_trait_mode(&mut self, impl_trait_mode: ImplTraitLoweringMode) -> &mut Self {
+    pub(crate) fn impl_trait_mode(&mut self, impl_trait_mode: ImplTraitLoweringMode) -> &mut Self {
         self.impl_trait_mode = ImplTraitLoweringState::new(impl_trait_mode);
         self
     }
 
-    pub fn push_diagnostic(&mut self, type_ref: TypeRefId, kind: TyLoweringDiagnosticKind) {
+    pub(crate) fn push_diagnostic(&mut self, type_ref: TypeRefId, kind: TyLoweringDiagnosticKind) {
         self.diagnostics.push(TyLoweringDiagnostic { source: type_ref, kind });
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
-pub enum ImplTraitLoweringMode {
+pub(crate) enum ImplTraitLoweringMode {
     /// `impl Trait` gets lowered into an opaque type that doesn't unify with
     /// anything except itself. This is used in places where values flow 'out',
     /// i.e. for arguments of the function we're currently checking, and return
@@ -249,11 +251,11 @@ pub enum ImplTraitLoweringMode {
 }
 
 impl<'db, 'a> TyLoweringContext<'db, 'a> {
-    pub fn lower_ty(&mut self, type_ref: TypeRefId) -> Ty<'db> {
+    pub(crate) fn lower_ty(&mut self, type_ref: TypeRefId) -> Ty<'db> {
         self.lower_ty_ext(type_ref).0
     }
 
-    pub fn lower_const(&mut self, const_ref: &ConstRef, const_type: Ty<'db>) -> Const<'db> {
+    pub(crate) fn lower_const(&mut self, const_ref: &ConstRef, const_type: Ty<'db>) -> Const<'db> {
         let const_ref = &self.store[const_ref.expr];
         match const_ref {
             hir_def::hir::Expr::Path(path) => {
@@ -279,7 +281,7 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
         }
     }
 
-    pub fn lower_path_as_const(&mut self, path: &Path, const_type: Ty<'db>) -> Const<'db> {
+    pub(crate) fn lower_path_as_const(&mut self, path: &Path, const_type: Ty<'db>) -> Const<'db> {
         path_to_const(self.db, self.resolver, path, || self.generics(), const_type.clone())
             .unwrap_or_else(|| unknown_const(const_type))
     }
@@ -289,7 +291,7 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
     }
 
     #[tracing::instrument(skip(self), ret)]
-    pub fn lower_ty_ext(&mut self, type_ref_id: TypeRefId) -> (Ty<'db>, Option<TypeNs>) {
+    pub(crate) fn lower_ty_ext(&mut self, type_ref_id: TypeRefId) -> (Ty<'db>, Option<TypeNs>) {
         let interner = self.interner;
         let mut res = None;
         let type_ref = &self.store[type_ref_id];
@@ -859,7 +861,7 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
         ImplTrait { predicates }
     }
 
-    pub fn lower_lifetime(&self, lifetime: LifetimeRefId) -> Region<'db> {
+    pub(crate) fn lower_lifetime(&self, lifetime: LifetimeRefId) -> Region<'db> {
         match self.resolver.resolve_lifetime(&self.store[lifetime]) {
             Some(resolution) => match resolution {
                 LifetimeNs::Static => Region::new_static(self.interner),
@@ -1602,7 +1604,7 @@ fn fn_sig_for_enum_variant_constructor<'db>(
     }))
 }
 
-pub fn associated_type_by_name_including_super_traits<'db>(
+pub(crate) fn associated_type_by_name_including_super_traits<'db>(
     db: &'db dyn HirDatabase,
     trait_ref: TraitRef<'db>,
     name: &Name,

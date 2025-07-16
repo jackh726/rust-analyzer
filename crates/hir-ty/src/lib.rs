@@ -202,8 +202,6 @@ pub type WhereClause = chalk_ir::WhereClause<Interner>;
 
 pub(crate) type DomainGoal = chalk_ir::DomainGoal<Interner>;
 pub(crate) type Goal = chalk_ir::Goal<Interner>;
-pub(crate) type Solution = chalk_solve::Solution<Interner>;
-pub(crate) type Guidance = chalk_solve::Guidance<Interner>;
 
 pub(crate) type CanonicalVarKind = chalk_ir::CanonicalVarKind<Interner>;
 pub(crate) type GoalData = chalk_ir::GoalData<Interner>;
@@ -326,25 +324,6 @@ where
     T: TypeFoldable<Interner> + HasInterner<Interner = Interner>,
 {
     Binders::empty(Interner, value.shifted_in_from(Interner, DebruijnIndex::ONE))
-}
-
-pub(crate) fn make_type_and_const_binders<T: HasInterner<Interner = Interner>>(
-    which_is_const: impl Iterator<Item = Option<Ty>>,
-    value: T,
-) -> Binders<T> {
-    Binders::new(
-        chalk_ir::VariableKinds::from_iter(
-            Interner,
-            which_is_const.map(|x| {
-                if let Some(ty) = x {
-                    chalk_ir::VariableKind::Const(ty)
-                } else {
-                    chalk_ir::VariableKind::Ty(chalk_ir::TyVariableKind::General)
-                }
-            }),
-        ),
-        value,
-    )
 }
 
 pub(crate) fn make_single_type_binders<T: HasInterner<Interner = Interner>>(
