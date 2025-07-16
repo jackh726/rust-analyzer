@@ -73,10 +73,7 @@ impl<'db> InferCtxt<'db> {
         Self {
             interner: self.interner,
             typing_mode: self.typing_mode.clone(),
-            considering_regions: self.considering_regions,
             inner: self.inner.clone(),
-            reported_trait_errors: self.reported_trait_errors.clone(),
-            reported_signature_mismatch: self.reported_signature_mismatch.clone(),
             tainted_by_errors: self.tainted_by_errors.clone(),
             universe: self.universe.clone(),
         }
@@ -91,10 +88,7 @@ impl<'db> InferCtxt<'db> {
         let forked = Self {
             interner: self.interner,
             typing_mode,
-            considering_regions: self.considering_regions,
             inner: self.inner.clone(),
-            reported_trait_errors: self.reported_trait_errors.clone(),
-            reported_signature_mismatch: self.reported_signature_mismatch.clone(),
             tainted_by_errors: self.tainted_by_errors.clone(),
             universe: self.universe.clone(),
         };

@@ -221,18 +221,7 @@ pub struct InferCtxt<'db> {
     /// for more details.
     typing_mode: TypingMode<'db>,
 
-    /// Whether this inference context should care about region obligations in
-    /// the root universe. Most notably, this is used during hir typeck as region
-    /// solving is left to borrowck instead.
-    pub considering_regions: bool,
-
     pub inner: RefCell<InferCtxtInner<'db>>,
-
-    /// The set of predicates on which errors have been reported, to
-    /// avoid reporting the same error twice.
-    pub reported_trait_errors: RefCell<FxIndexMap<Span, (Vec<Predicate<'db>>, ErrorGuaranteed)>>,
-
-    pub reported_signature_mismatch: RefCell<FxHashSet<(Span, Option<Span>)>>,
 
     /// When an error occurs, we want to avoid reporting "derived"
     /// errors that are due to this original failure. We have this
@@ -332,61 +321,6 @@ pub enum SubregionOrigin<'db> {
     },
 
     AscribeUserTypeProvePredicate(Span),
-}
-
-/// Outlives-constraints can be categorized to determine whether and why they
-/// are interesting (for error reporting). Order of variants indicates sort
-/// order of the category, thereby influencing diagnostic output.
-///
-/// See also `rustc_const_eval::borrow_check::constraints`.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ConstraintCategory<'db> {
-    Return,
-    Yield,
-    UseAsConst,
-    UseAsStatic,
-    TypeAnnotation,
-    Cast {
-        /// Whether this cast is a coercion that was automatically inserted by the compiler.
-        is_implicit_coercion: bool,
-        /// Whether this is an unsizing coercion and if yes, this contains the target type.
-        /// Region variables are erased to ReErased.
-        unsize_to: Option<Ty<'db>>,
-    },
-
-    /// A constraint that came from checking the body of a closure.
-    ///
-    /// We try to get the category that the closure used when reporting this.
-    ClosureBounds,
-
-    /// Contains the function type if available.
-    CallArgument(Option<Ty<'db>>),
-    CopyBound,
-    SizedBound,
-    Assignment,
-    /// A constraint that came from a usage of a variable (e.g. in an ADT expression
-    /// like `Foo { field: my_val }`)
-    Usage,
-    OpaqueType,
-    ClosureUpvar,
-
-    /// A constraint from a user-written predicate
-    /// with the provided span, written on the item
-    /// with the given `DefId`
-    Predicate(Span),
-
-    /// A "boring" constraint (caused by the given location) is one that
-    /// the user probably doesn't want to see described in diagnostics,
-    /// because it is kind of an artifact of the type system setup.
-    Boring,
-    // Boring and applicable everywhere.
-    BoringNoLocation,
-
-    /// A constraint that doesn't correspond to anything the user sees.
-    Internal,
-
-    /// An internal constraint derived from an illegal universe relation.
-    IllegalUniverse,
 }
 
 /// Times when we replace bound regions with existentials:
@@ -504,22 +438,16 @@ pub struct RegionObligation<'db> {
 /// Used to configure inference contexts before their creation.
 pub struct InferCtxtBuilder<'db> {
     interner: DbInterner<'db>,
-    considering_regions: bool,
 }
 
 #[extension(pub trait DbInternerInferExt)]
 impl<'db> DbInterner<'db> {
     fn infer_ctxt(self) -> InferCtxtBuilder<'db> {
-        InferCtxtBuilder { interner: self, considering_regions: true }
+        InferCtxtBuilder { interner: self }
     }
 }
 
 impl<'db> InferCtxtBuilder<'db> {
-    pub fn ignoring_regions(mut self) -> Self {
-        self.considering_regions = false;
-        self
-    }
-
     /// Given a canonical value `C` as a starting point, create an
     /// inference context that contains each of the bound values
     /// within instantiated as a fresh variable. The `f` closure is
@@ -541,14 +469,11 @@ impl<'db> InferCtxtBuilder<'db> {
     }
 
     pub fn build(&mut self, typing_mode: TypingMode<'db>) -> InferCtxt<'db> {
-        let InferCtxtBuilder { interner, considering_regions } = *self;
+        let InferCtxtBuilder { interner } = *self;
         InferCtxt {
             interner,
             typing_mode,
-            considering_regions,
             inner: RefCell::new(InferCtxtInner::new()),
-            reported_trait_errors: Default::default(),
-            reported_signature_mismatch: Default::default(),
             tainted_by_errors: Cell::new(None),
             universe: Cell::new(UniverseIndex::ROOT),
         }
