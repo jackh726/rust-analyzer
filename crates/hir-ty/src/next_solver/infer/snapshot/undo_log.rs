@@ -9,7 +9,6 @@ use tracing::debug;
 
 use crate::next_solver::OpaqueTypeKey;
 use crate::next_solver::infer::opaque_types::OpaqueHiddenType;
-use crate::next_solver::infer::project::ProjectUndoLog;
 use crate::next_solver::infer::unify_key::ConstVidKey;
 use crate::next_solver::infer::unify_key::RegionVidKey;
 use crate::next_solver::infer::{InferCtxtInner, region_constraints, type_variable};
@@ -30,7 +29,6 @@ pub(crate) enum UndoLog<'db> {
     FloatUnificationTable(sv::UndoLog<ut::Delegate<FloatVid>>),
     RegionConstraintCollector(region_constraints::UndoLog<'db>),
     RegionUnificationTable(sv::UndoLog<ut::Delegate<RegionVidKey<'db>>>),
-    ProjectionCache(ProjectUndoLog<'db>),
     PushRegionObligation,
 }
 
@@ -57,7 +55,6 @@ impl_from! {
     ConstUnificationTable(sv::UndoLog<ut::Delegate<ConstVidKey<'db>>>),
 
     RegionUnificationTable(sv::UndoLog<ut::Delegate<RegionVidKey<'db>>>),
-    ProjectionCache(ProjectUndoLog<'db>),
 }
 
 /// The Rollback trait defines how to rollback a particular action.
@@ -76,7 +73,6 @@ impl<'db> Rollback<UndoLog<'db>> for InferCtxtInner<'db> {
             UndoLog::RegionUnificationTable(undo) => {
                 self.region_constraint_storage.as_mut().unwrap().unification_table.reverse(undo)
             }
-            UndoLog::ProjectionCache(undo) => self.projection_cache.reverse(undo),
             UndoLog::PushRegionObligation => {
                 self.region_obligations.pop();
             }

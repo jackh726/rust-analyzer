@@ -11,7 +11,6 @@ use ena::unify as ut;
 use extension_traits::extension;
 use intern::Symbol;
 use opaque_types::{OpaqueHiddenType, OpaqueTypeStorage};
-use project::ProjectionCacheStorage;
 use region_constraints::{
     GenericKind, RegionConstraintCollector, RegionConstraintStorage, UndoLog, VarInfos, VerifyBound,
 };
@@ -53,9 +52,7 @@ use super::{
 pub mod at;
 pub mod canonical;
 mod context;
-mod data_structures;
 mod opaque_types;
-mod project;
 pub mod region_constraints;
 pub mod relate;
 pub mod resolve;
@@ -93,11 +90,6 @@ pub(crate) type UnificationTable<'a, 'db, T> = ut::UnificationTable<
 #[derive(Clone)]
 pub struct InferCtxtInner<'db> {
     pub(crate) undo_log: InferCtxtUndoLogs<'db>,
-
-    /// Cache for projections.
-    ///
-    /// This cache is snapshotted along with the infcx.
-    pub(crate) projection_cache: ProjectionCacheStorage<'db>,
 
     /// We instantiate `UnificationTable` with `bounds<Ty>` because the types
     /// that might instantiate a general type variable have an order,
@@ -164,7 +156,6 @@ impl<'db> InferCtxtInner<'db> {
         InferCtxtInner {
             undo_log: InferCtxtUndoLogs::default(),
 
-            projection_cache: Default::default(),
             type_variable_storage: Default::default(),
             const_unification_storage: Default::default(),
             int_unification_storage: Default::default(),
@@ -641,26 +632,6 @@ impl<'db> InferCtxt<'db> {
     #[instrument(skip(self), level = "debug")]
     pub fn sub_regions(&self, origin: SubregionOrigin<'db>, a: Region<'db>, b: Region<'db>) {
         self.inner.borrow_mut().unwrap_region_constraints().make_subregion(origin, a, b);
-    }
-
-    /// Require that the region `r` be equal to one of the regions in
-    /// the set `regions`.
-    #[instrument(skip(self), level = "debug")]
-    pub fn member_constraint(
-        &self,
-        key: OpaqueTypeKey<'db>,
-        definition_span: Span,
-        hidden_ty: Ty<'db>,
-        region: Region<'db>,
-        in_regions: Arc<Vec<Region<'db>>>,
-    ) {
-        self.inner.borrow_mut().unwrap_region_constraints().member_constraint(
-            key,
-            definition_span,
-            hidden_ty,
-            region,
-            in_regions,
-        );
     }
 
     /// Processes a `Coerce` predicate from the fulfillment context.

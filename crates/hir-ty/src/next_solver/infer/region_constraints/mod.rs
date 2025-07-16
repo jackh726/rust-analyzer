@@ -405,22 +405,6 @@ impl<'db> RegionConstraintCollector<'db, '_> {
         self.undo_log.push(AddConstraint(index));
     }
 
-    fn add_verify(&mut self, verify: Verify<'db>) {
-        // cannot add verifys once regions are resolved
-        debug!("RegionConstraintCollector: add_verify({:?})", verify);
-
-        // skip no-op cases known to be satisfied
-        if let VerifyBound::AllBounds(ref bs) = verify.bound {
-            if bs.is_empty() {
-                return;
-            }
-        }
-
-        let index = self.storage.data.verifys.len();
-        self.storage.data.verifys.push(verify);
-        self.undo_log.push(AddVerify(index));
-    }
-
     pub(super) fn make_eqregion(
         &mut self,
         origin: SubregionOrigin<'db>,
@@ -463,29 +447,6 @@ impl<'db> RegionConstraintCollector<'db, '_> {
                 (_, _) => {}
             }
         }
-    }
-
-    pub(super) fn member_constraint(
-        &mut self,
-        key: OpaqueTypeKey<'db>,
-        definition_span: Span,
-        hidden_ty: Ty<'db>,
-        member_region: Region<'db>,
-        choice_regions: Arc<Vec<Region<'db>>>,
-    ) {
-        debug!("member_constraint({:?} in {:#?})", member_region, choice_regions);
-
-        if choice_regions.iter().any(|r| r == &member_region) {
-            return;
-        }
-
-        self.storage.data.member_constraints.push(MemberConstraint {
-            key,
-            definition_span,
-            hidden_ty,
-            member_region,
-            choice_regions,
-        });
     }
 
     #[instrument(skip(self, origin), level = "debug")]
