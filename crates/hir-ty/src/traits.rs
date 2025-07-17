@@ -98,6 +98,36 @@ pub(crate) fn normalize_projection_query(
     table.resolve_completely(ty)
 }
 
+fn identity_subst(
+    binders: chalk_ir::CanonicalVarKinds<Interner>,
+) -> chalk_ir::Canonical<chalk_ir::Substitution<Interner>> {
+    let identity_subst = chalk_ir::Substitution::from_iter(
+        Interner,
+        binders.iter(Interner).enumerate().map(|(index, c)| {
+            let index_db = chalk_ir::BoundVar::new(DebruijnIndex::INNERMOST, index);
+            match &c.kind {
+                chalk_ir::VariableKind::Ty(_) => {
+                    chalk_ir::GenericArgData::Ty(TyKind::BoundVar(index_db).intern(Interner))
+                        .intern(Interner)
+                }
+                chalk_ir::VariableKind::Lifetime => chalk_ir::GenericArgData::Lifetime(
+                    chalk_ir::LifetimeData::BoundVar(index_db).intern(Interner),
+                )
+                .intern(Interner),
+                chalk_ir::VariableKind::Const(ty) => chalk_ir::GenericArgData::Const(
+                    chalk_ir::ConstData {
+                        ty: ty.clone(),
+                        value: chalk_ir::ConstValue::BoundVar(index_db),
+                    }
+                    .intern(Interner),
+                )
+                .intern(Interner),
+            }
+        }),
+    );
+    chalk_ir::Canonical { binders, value: identity_subst }
+}
+
 /// Solve a trait goal using Chalk.
 pub(crate) fn trait_solve_query(
     db: &dyn HirDatabase,
@@ -123,7 +153,7 @@ pub(crate) fn trait_solve_query(
     {
         if let TyKind::BoundVar(_) = projection_ty.self_type_parameter(db).kind(Interner) {
             // Hack: don't ask Chalk to normalize with an unknown self type, it'll say that's impossible
-            return NextTraitSolveResult::Uncertain;
+            return NextTraitSolveResult::Uncertain(identity_subst(goal.binders.clone()));
         }
     }
 
@@ -187,7 +217,7 @@ fn solve_nextsolver<'db>(
 #[derive(Clone, Debug, PartialEq)]
 pub enum NextTraitSolveResult {
     Certain(chalk_ir::Canonical<chalk_ir::ConstrainedSubst<Interner>>),
-    Uncertain,
+    Uncertain(chalk_ir::Canonical<chalk_ir::Substitution<Interner>>),
     NoSolution,
 }
 
@@ -201,7 +231,7 @@ impl NextTraitSolveResult {
     }
 
     pub fn uncertain(&self) -> bool {
-        matches!(self, NextTraitSolveResult::Uncertain)
+        matches!(self, NextTraitSolveResult::Uncertain(..))
     }
 }
 
@@ -230,7 +260,7 @@ pub fn next_trait_solve(
         if let TyKind::BoundVar(_) = projection_ty.self_type_parameter(db).kind(Interner) {
             // Hack: don't ask Chalk to normalize with an unknown self type, it'll say that's impossible
             // FIXME
-            return NextTraitSolveResult::Uncertain;
+            return NextTraitSolveResult::Uncertain(identity_subst(goal.binders.clone()));
         }
     }
 
@@ -252,7 +282,13 @@ pub fn next_trait_solve(
         Ok((_, Certainty::Yes, args)) => NextTraitSolveResult::Certain(
             convert_canonical_args_for_result(DbInterner::new(), args),
         ),
-        Ok((_, Certainty::Maybe(_), _)) => NextTraitSolveResult::Uncertain,
+        Ok((_, Certainty::Maybe(_), args)) => {
+            let subst = convert_canonical_args_for_result(DbInterner::new(), args);
+            NextTraitSolveResult::Uncertain(chalk_ir::Canonical {
+                binders: subst.binders,
+                value: subst.value.subst,
+            })
+        }
     })
 }
 

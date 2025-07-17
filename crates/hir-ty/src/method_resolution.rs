@@ -1791,7 +1791,7 @@ fn is_valid_impl_fn_candidate(
                         },
                     );
                 }
-                NextTraitSolveResult::Uncertain => {}
+                NextTraitSolveResult::Uncertain(..) => {}
                 NextTraitSolveResult::NoSolution => return IsValidCandidate::No,
             }
         }

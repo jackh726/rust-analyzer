@@ -949,7 +949,10 @@ impl<'a> InferenceTable<'a> {
                 );
             }
             // ...so, should think about how to get some actually get some guidance here
-            NextTraitSolveResult::Uncertain | NextTraitSolveResult::NoSolution => {}
+            NextTraitSolveResult::Uncertain(v) => {
+                canonicalized.apply_solution(self, v.clone());
+            }
+            NextTraitSolveResult::NoSolution => {}
         }
 
         solution

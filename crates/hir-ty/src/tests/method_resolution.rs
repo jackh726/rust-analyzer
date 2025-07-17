@@ -1825,6 +1825,33 @@ fn test() {
 }
 
 #[test]
+fn deref_fun_3() {
+    check_types(
+        r#"
+//- minicore: receiver
+
+struct A<T, U>(T, U);
+struct B<T>(T);
+struct C<T>(T);
+
+impl<T> core::ops::Deref for A<B<T>, u32> {
+    type Target = B<T>;
+    fn deref(&self) -> &B<T> { &self.0 }
+}
+
+fn make<T>() -> T { loop {} }
+
+fn test() {
+    let a1 = A(make(), make());
+    let _: usize = (*a1).0;
+    a1;
+  //^^ A<B<usize>, u32>
+}
+"#,
+    );
+}
+
+#[test]
 fn deref_into_inference_var() {
     check_types(
         r#"
@@ -2078,7 +2105,7 @@ impl Foo {
 }
 fn test() {
     Box::new(Foo).foo();
-  //^^^^^^^^^^^^^ adjustments: Deref(None), Borrow(Ref('?3, Not))
+  //^^^^^^^^^^^^^ adjustments: Deref(None), Borrow(Ref('?5, Not))
 }
 "#,
     );
@@ -2096,7 +2123,7 @@ impl Foo {
 use core::mem::ManuallyDrop;
 fn test() {
     ManuallyDrop::new(Foo).foo();
-  //^^^^^^^^^^^^^^^^^^^^^^ adjustments: Deref(Some(OverloadedDeref(Some(Not)))), Borrow(Ref('?4, Not))
+  //^^^^^^^^^^^^^^^^^^^^^^ adjustments: Deref(Some(OverloadedDeref(Some(Not)))), Borrow(Ref('?6, Not))
 }
 "#,
     );
