@@ -45,6 +45,7 @@ pub enum TyFingerprint {
     Slice,
     Array,
     Never,
+    Ref(Mutability),
     RawPtr(Mutability),
     Scalar(Scalar),
     // These can have user-defined impls:
@@ -90,7 +91,7 @@ impl TyFingerprint {
             TyKind::Raw(mutability, ..) => TyFingerprint::RawPtr(*mutability),
             TyKind::Foreign(alias_id, ..) => TyFingerprint::ForeignType(*alias_id),
             TyKind::Dyn(_) => ty.dyn_trait().map(TyFingerprint::Dyn)?,
-            TyKind::Ref(_, _, ty) => return TyFingerprint::for_trait_impl(ty),
+            TyKind::Ref(mutability, _, _) => TyFingerprint::Ref(*mutability),
             TyKind::Tuple(_, subst) => {
                 let first_ty = subst.interned().first().map(|arg| arg.assert_ty_ref(Interner));
                 match first_ty {
@@ -173,7 +174,10 @@ impl TyFingerprint {
                 };
                 TyFingerprint::Dyn(trait_id)
             }
-            TyKind::Ref(_, ty, _) => return TyFingerprint::for_trait_impl_ns(&ty),
+            TyKind::Ref(_, _, mutability) => match mutability {
+                rustc_ast_ir::Mutability::Mut => TyFingerprint::Ref(Mutability::Mut),
+                rustc_ast_ir::Mutability::Not => TyFingerprint::Ref(Mutability::Not),
+            },
             TyKind::Tuple(tys) => {
                 let first_ty = tys.as_slice().iter().next();
                 match first_ty {
