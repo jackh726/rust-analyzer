@@ -17,6 +17,7 @@ use hir_def::{
 };
 use hir_expand::name::Name;
 use intern::sym;
+use rustc_type_ir::EarlyBinder;
 use rustc_type_ir::inherent::{AdtDef, IntoKind, SliceLike, Ty as _};
 use stdx::always;
 use syntax::ast::RangeOp;
@@ -2473,18 +2474,17 @@ impl<'db> InferenceContext<'db> {
     }
 
     fn register_obligations_for_call(&mut self, callable_ty: &Ty) {
+        let interner = DbInterner::new_with(self.db, None, None);
         let callable_ty = self.table.structurally_resolve_type(callable_ty);
         if let TyKind::FnDef(fn_def, parameters) = callable_ty.kind(Interner) {
+            let args: crate::next_solver::GenericArgs<'_> = parameters.to_nextsolver(interner);
             let def: CallableDefId = from_chalk(self.db, *fn_def);
             let generic_predicates =
-                self.db.generic_predicates(GenericDefId::from_callable(self.db, def));
+                self.db.generic_predicates_ns(GenericDefId::from_callable(self.db, def));
             for predicate in generic_predicates.iter() {
-                let (predicate, binders) = predicate
-                    .clone()
-                    .substitute(Interner, parameters)
-                    .into_value_and_skipped_binders();
-                always!(binders.len(Interner) == 0); // quantified where clauses not yet handled
-                self.push_obligation(predicate.cast(Interner));
+                let predicate = EarlyBinder::bind(*predicate)
+                    .instantiate(interner, args);
+                self.push_obligation_ns(predicate.as_predicate());
             }
             // add obligation for trait implementation, if this is a trait method
             match def {

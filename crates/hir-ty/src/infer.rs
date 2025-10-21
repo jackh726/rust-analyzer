@@ -56,7 +56,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use stdx::{always, never};
 use triomphe::Arc;
 
-use crate::db::InternedClosureId;
+use crate::{db::InternedClosureId, next_solver::Predicate};
 use crate::{
     AliasEq, AliasTy, Binders, ClosureId, Const, DomainGoal, GenericArg, ImplTraitId, ImplTraitIdx,
     IncorrectGenericsLenKind, Interner, Lifetime, OpaqueTyId, ParamLoweringMode,
@@ -1543,6 +1543,10 @@ impl<'db> InferenceContext<'db> {
     fn push_obligation(&mut self, o: DomainGoal) {
         let goal: crate::Goal = o.cast(Interner);
         self.table.register_obligation(goal.to_nextsolver(self.table.interner));
+    }
+
+    fn push_obligation_ns(&mut self, o: Predicate<'db>) {
+        self.table.register_obligation(o);
     }
 
     fn unify(&mut self, ty1: &Ty, ty2: &Ty) -> bool {

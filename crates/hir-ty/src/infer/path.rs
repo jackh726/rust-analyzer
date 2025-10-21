@@ -7,6 +7,7 @@ use hir_def::{
     resolver::{ResolveValueResult, TypeNs, ValueNs},
 };
 use hir_expand::name::Name;
+use rustc_type_ir::EarlyBinder;
 use stdx::never;
 
 use crate::{
@@ -249,13 +250,12 @@ impl<'db> InferenceContext<'db> {
     }
 
     fn add_required_obligations_for_value_path(&mut self, def: GenericDefId, subst: &Substitution) {
-        let predicates = self.db.generic_predicates(def);
+        let interner = DbInterner::new_with(self.db, None, None);
+        let args: crate::next_solver::GenericArgs<'_> = subst.to_nextsolver(interner);
+        let predicates = self.db.generic_predicates_ns(def);
         for predicate in predicates.iter() {
-            let (predicate, binders) =
-                predicate.clone().substitute(Interner, &subst).into_value_and_skipped_binders();
-            // Quantified where clauses are not yet handled.
-            stdx::always!(binders.is_empty(Interner));
-            self.push_obligation(predicate.cast(Interner));
+            let predicate= EarlyBinder::bind(*predicate).instantiate(interner, args);
+            self.push_obligation_ns(predicate.as_predicate());
         }
 
         // We need to add `Self: Trait` obligation when `def` is a trait assoc item.
